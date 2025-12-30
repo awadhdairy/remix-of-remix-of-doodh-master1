@@ -254,10 +254,10 @@ export default function AuditLogsPage() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
               <label className="text-sm font-medium">Entity Type</label>
-              <Select value={entityFilter} onValueChange={setEntityFilter}>
+              <Select value={entityFilter || "all"} onValueChange={(v) => setEntityFilter(v === "all" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="All entities" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Entities</SelectItem>
+                  <SelectItem value="all">All Entities</SelectItem>
                   {entityTypes.map(type => (
                     <SelectItem key={type} value={type}>{entityLabels[type] || type}</SelectItem>
                   ))}
@@ -266,10 +266,10 @@ export default function AuditLogsPage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium">Action</label>
-              <Select value={actionFilter} onValueChange={setActionFilter}>
+              <Select value={actionFilter || "all"} onValueChange={(v) => setActionFilter(v === "all" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="All actions" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Actions</SelectItem>
+                  <SelectItem value="all">All Actions</SelectItem>
                   {actionTypes.map(action => (
                     <SelectItem key={action} value={action}>{action}</SelectItem>
                   ))}
