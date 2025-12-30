@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Users, Edit, Trash2, Phone, MapPin, Loader2, Palmtree, BookOpen } from "lucide-react";
 import { VacationManager } from "@/components/customers/VacationManager";
 import { CustomerLedger } from "@/components/customers/CustomerLedger";
+import { CustomerAccountApprovals } from "@/components/customers/CustomerAccountApprovals";
 
 interface Customer {
   id: string;
@@ -320,6 +321,9 @@ export default function CustomersPage() {
           onClick: () => handleOpenDialog(),
         }}
       />
+
+      {/* Pending Customer Approvals */}
+      <CustomerAccountApprovals />
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
