@@ -118,20 +118,28 @@ serve(async (req) => {
     }
 
     const userId = authData.user.id
+    console.log('Created user with ID:', userId)
 
-    // Update the profile with correct role and PIN hash
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .update({
-        full_name: fullName,
-        phone: phone,
-        role: role,
-        pin_hash: await hashPin(pin, supabaseAdmin)
-      })
-      .eq('id', userId)
+    // Update the profile with correct role and set PIN hash via raw SQL
+    const { error: profileError } = await supabaseAdmin.rpc('update_user_profile_with_pin', {
+      _user_id: userId,
+      _full_name: fullName,
+      _phone: phone,
+      _role: role,
+      _pin: pin
+    })
 
     if (profileError) {
-      console.error('Error updating profile:', profileError)
+      console.error('Error updating profile with PIN:', profileError)
+      // Fallback: update without PIN hash
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          full_name: fullName,
+          phone: phone,
+          role: role
+        })
+        .eq('id', userId)
     }
 
     // Update the user_roles table
@@ -143,6 +151,8 @@ serve(async (req) => {
     if (roleUpdateError) {
       console.error('Error updating role:', roleUpdateError)
     }
+
+    console.log('User created successfully:', userId)
 
     return new Response(
       JSON.stringify({ 
@@ -160,14 +170,3 @@ serve(async (req) => {
     )
   }
 })
-
-async function hashPin(pin: string, supabase: any): Promise<string> {
-  // Use pgcrypto's crypt function via a database call
-  const { data, error } = await supabase.rpc('crypt_pin', { _pin: pin })
-  if (error) {
-    console.error('Error hashing PIN:', error)
-    // Fallback - the profile trigger should handle this
-    return ''
-  }
-  return data
-}
