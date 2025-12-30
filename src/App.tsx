@@ -4,6 +4,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { CustomerLayout } from "@/components/customer/CustomerLayout";
+import { CustomerAuthProvider } from "@/hooks/useCustomerAuth";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import CattlePage from "./pages/Cattle";
@@ -27,6 +29,13 @@ import PriceRulesPage from "./pages/PriceRules";
 import AuditLogsPage from "./pages/AuditLogs";
 import NotificationsPage from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
+// Customer App Pages
+import CustomerAuth from "./pages/customer/CustomerAuth";
+import CustomerDashboard from "./pages/customer/CustomerDashboard";
+import CustomerSubscription from "./pages/customer/CustomerSubscription";
+import CustomerDeliveries from "./pages/customer/CustomerDeliveries";
+import CustomerBilling from "./pages/customer/CustomerBilling";
+import CustomerProfile from "./pages/customer/CustomerProfile";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +48,8 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/auth" element={<Auth />} />
+          
+          {/* Staff Dashboard Routes */}
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/cattle" element={<CattlePage />} />
@@ -62,6 +73,17 @@ const App = () => (
             <Route path="/audit-logs" element={<AuditLogsPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
+
+          {/* Customer App Routes */}
+          <Route path="/customer/auth" element={<CustomerAuthProvider><CustomerAuth /></CustomerAuthProvider>} />
+          <Route element={<CustomerAuthProvider><CustomerLayout /></CustomerAuthProvider>}>
+            <Route path="/customer/dashboard" element={<CustomerDashboard />} />
+            <Route path="/customer/subscription" element={<CustomerSubscription />} />
+            <Route path="/customer/deliveries" element={<CustomerDeliveries />} />
+            <Route path="/customer/billing" element={<CustomerBilling />} />
+            <Route path="/customer/profile" element={<CustomerProfile />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.change-pin]
 verify_jwt = false
+
+[functions.customer-auth]
+verify_jwt = false
