@@ -969,6 +969,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           phone: string | null
+          pin_hash: string | null
           role: Database["public"]["Enums"]["user_role"]
           updated_at: string | null
         }
@@ -979,6 +980,7 @@ export type Database = {
           id: string
           is_active?: boolean | null
           phone?: string | null
+          pin_hash?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string | null
         }
@@ -989,6 +991,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           phone?: string | null
+          pin_hash?: string | null
           role?: Database["public"]["Enums"]["user_role"]
           updated_at?: string | null
         }
@@ -1058,6 +1061,7 @@ export type Database = {
         Returns: boolean
       }
       is_authenticated: { Args: never; Returns: boolean }
+      verify_pin: { Args: { _phone: string; _pin: string }; Returns: string }
     }
     Enums: {
       bottle_size: "500ml" | "1L" | "2L"

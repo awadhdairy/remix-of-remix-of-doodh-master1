@@ -7,21 +7,35 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Droplets, Mail, Lock, User, Loader2 } from "lucide-react";
+import { Droplets, Phone, Lock, User, Loader2 } from "lucide-react";
 import { z } from "zod";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  phone: z.string()
+    .min(10, "Phone number must be at least 10 digits")
+    .max(15, "Phone number too long")
+    .regex(/^[0-9+\-\s]+$/, "Invalid phone number format"),
+  pin: z.string().length(4, "PIN must be exactly 4 digits"),
 });
 
-const signupSchema = loginSchema.extend({
+const signupSchema = z.object({
+  phone: z.string()
+    .min(10, "Phone number must be at least 10 digits")
+    .max(15, "Phone number too long")
+    .regex(/^[0-9+\-\s]+$/, "Invalid phone number format"),
+  pin: z.string().length(4, "PIN must be exactly 4 digits"),
+  confirmPin: z.string().length(4, "PIN must be exactly 4 digits"),
   fullName: z.string().min(2, "Name must be at least 2 characters"),
+}).refine(data => data.pin === data.confirmPin, {
+  message: "PINs don't match",
+  path: ["confirmPin"],
 });
 
 export default function Auth() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -44,12 +58,18 @@ export default function Auth() {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
+  // Format phone to create a unique email-like identifier
+  const phoneToEmail = (phoneNumber: string) => {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    return `${cleanPhone}@doodhwallah.app`;
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
 
     try {
-      loginSchema.parse({ email, password });
+      loginSchema.parse({ phone, pin });
     } catch (err) {
       if (err instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
@@ -63,9 +83,12 @@ export default function Auth() {
 
     setLoading(true);
 
+    // Use phone as email identifier for Supabase auth
+    const email = phoneToEmail(phone);
+    
     const { error } = await supabase.auth.signInWithPassword({
       email,
-      password,
+      password: pin,
     });
 
     setLoading(false);
@@ -74,7 +97,7 @@ export default function Auth() {
       toast({
         title: "Login failed",
         description: error.message === "Invalid login credentials" 
-          ? "Invalid email or password. Please try again."
+          ? "Invalid mobile number or PIN. Please try again."
           : error.message,
         variant: "destructive",
       });
@@ -92,7 +115,7 @@ export default function Auth() {
     setErrors({});
 
     try {
-      signupSchema.parse({ email, password, fullName });
+      signupSchema.parse({ phone, pin, confirmPin, fullName });
     } catch (err) {
       if (err instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
@@ -106,15 +129,18 @@ export default function Auth() {
 
     setLoading(true);
 
+    const email = phoneToEmail(phone);
     const redirectUrl = `${window.location.origin}/dashboard`;
 
     const { error } = await supabase.auth.signUp({
       email,
-      password,
+      password: pin,
       options: {
         emailRedirectTo: redirectUrl,
         data: {
           full_name: fullName,
+          phone: phone.replace(/[^0-9]/g, ''),
+          pin: pin,
         },
       },
     });
@@ -125,7 +151,7 @@ export default function Auth() {
       if (error.message.includes("already registered")) {
         toast({
           title: "Account exists",
-          description: "This email is already registered. Please login instead.",
+          description: "This mobile number is already registered. Please login instead.",
           variant: "destructive",
         });
       } else {
@@ -185,7 +211,7 @@ export default function Auth() {
             </div>
             <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
             <CardDescription>
-              Sign in to manage your dairy operations
+              Sign in with your mobile number & PIN
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -198,37 +224,40 @@ export default function Auth() {
               <TabsContent value="login" className="mt-6">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
+                    <Label htmlFor="login-phone">Mobile Number</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        id="login-email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        id="login-phone"
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
                         className="pl-10"
                       />
                     </div>
-                    {errors.email && (
-                      <p className="text-xs text-destructive">{errors.email}</p>
+                    {errors.phone && (
+                      <p className="text-xs text-destructive">{errors.phone}</p>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="login-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10"
-                      />
+                    <Label htmlFor="login-pin">4-Digit PIN</Label>
+                    <div className="flex justify-center">
+                      <InputOTP 
+                        maxLength={4} 
+                        value={pin} 
+                        onChange={setPin}
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                        </InputOTPGroup>
+                      </InputOTP>
                     </div>
-                    {errors.password && (
-                      <p className="text-xs text-destructive">{errors.password}</p>
+                    {errors.pin && (
+                      <p className="text-xs text-destructive text-center">{errors.pin}</p>
                     )}
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
@@ -264,37 +293,60 @@ export default function Auth() {
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
+                    <Label htmlFor="signup-phone">Mobile Number</Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
-                        id="signup-email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        id="signup-phone"
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
                         className="pl-10"
                       />
                     </div>
-                    {errors.email && (
-                      <p className="text-xs text-destructive">{errors.email}</p>
+                    {errors.phone && (
+                      <p className="text-xs text-destructive">{errors.phone}</p>
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="signup-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10"
-                      />
+                    <Label htmlFor="signup-pin">Create 4-Digit PIN</Label>
+                    <div className="flex justify-center">
+                      <InputOTP 
+                        maxLength={4} 
+                        value={pin} 
+                        onChange={setPin}
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                        </InputOTPGroup>
+                      </InputOTP>
                     </div>
-                    {errors.password && (
-                      <p className="text-xs text-destructive">{errors.password}</p>
+                    {errors.pin && (
+                      <p className="text-xs text-destructive text-center">{errors.pin}</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-confirm-pin">Confirm PIN</Label>
+                    <div className="flex justify-center">
+                      <InputOTP 
+                        maxLength={4} 
+                        value={confirmPin} 
+                        onChange={setConfirmPin}
+                      >
+                        <InputOTPGroup>
+                          <InputOTPSlot index={0} />
+                          <InputOTPSlot index={1} />
+                          <InputOTPSlot index={2} />
+                          <InputOTPSlot index={3} />
+                        </InputOTPGroup>
+                      </InputOTP>
+                    </div>
+                    {errors.confirmPin && (
+                      <p className="text-xs text-destructive text-center">{errors.confirmPin}</p>
                     )}
                   </div>
                   <Button type="submit" className="w-full" disabled={loading}>
