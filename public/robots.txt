@@ -1,8 +1,15 @@
+# Doodh Wallah - Dairy Management System
+# robots.txt
+
 User-agent: Googlebot
 Allow: /
+Disallow: /dashboard
+Disallow: /auth
 
 User-agent: Bingbot
 Allow: /
+Disallow: /dashboard
+Disallow: /auth
 
 User-agent: Twitterbot
 Allow: /
@@ -12,3 +19,8 @@ Allow: /
 
 User-agent: *
 Allow: /
+Disallow: /dashboard
+Disallow: /auth
+
+# Sitemap
+Sitemap: https://doodhwallah.app/sitemap.xml
