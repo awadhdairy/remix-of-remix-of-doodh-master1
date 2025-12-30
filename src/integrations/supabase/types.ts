@@ -384,6 +384,83 @@ export type Database = {
           },
         ]
       }
+      customer_accounts: {
+        Row: {
+          approval_status: string | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          customer_id: string
+          id: string
+          is_approved: boolean | null
+          last_login: string | null
+          phone: string
+          pin_hash: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          customer_id: string
+          id?: string
+          is_approved?: boolean | null
+          last_login?: string | null
+          phone: string
+          pin_hash?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          approval_status?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          customer_id?: string
+          id?: string
+          is_approved?: boolean | null
+          last_login?: string | null
+          phone?: string
+          pin_hash?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_accounts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_auth_attempts: {
+        Row: {
+          failed_count: number | null
+          id: string
+          last_attempt: string | null
+          locked_until: string | null
+          phone: string
+        }
+        Insert: {
+          failed_count?: number | null
+          id?: string
+          last_attempt?: string | null
+          locked_until?: string | null
+          phone: string
+        }
+        Update: {
+          failed_count?: number | null
+          id?: string
+          last_attempt?: string | null
+          locked_until?: string | null
+          phone?: string
+        }
+        Relationships: []
+      }
       customer_bottles: {
         Row: {
           bottle_id: string
@@ -1752,7 +1829,15 @@ export type Database = {
         Returns: boolean
       }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      register_customer_account: {
+        Args: { _phone: string; _pin: string }
+        Returns: Json
+      }
       setup_initial_admin: { Args: never; Returns: undefined }
+      update_customer_pin: {
+        Args: { _current_pin: string; _customer_id: string; _new_pin: string }
+        Returns: Json
+      }
       update_pin_only: {
         Args: { _pin: string; _user_id: string }
         Returns: undefined
@@ -1766,6 +1851,14 @@ export type Database = {
           _user_id: string
         }
         Returns: undefined
+      }
+      verify_customer_pin: {
+        Args: { _phone: string; _pin: string }
+        Returns: {
+          customer_id: string
+          is_approved: boolean
+          user_id: string
+        }[]
       }
       verify_pin: { Args: { _phone: string; _pin: string }; Returns: string }
     }
