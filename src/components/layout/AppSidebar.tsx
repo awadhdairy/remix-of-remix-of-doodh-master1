@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useUserRole, rolePermissions } from "@/hooks/useUserRole";
 import {
   LayoutDashboard,
   Beef,
@@ -19,35 +20,56 @@ import {
   LogOut,
   UserCircle,
   Milk,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface NavItem {
   title: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  section: string;
   badge?: number;
 }
 
-const mainNavItems: NavItem[] = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Cattle", href: "/cattle", icon: Beef },
-  { title: "Milk Production", href: "/production", icon: Droplets },
-  { title: "Products", href: "/products", icon: Milk },
-  { title: "Customers", href: "/customers", icon: Users },
-  { title: "Deliveries", href: "/deliveries", icon: Truck },
-  { title: "Billing", href: "/billing", icon: Receipt },
+const allNavItems: NavItem[] = [
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, section: "main" },
+  { title: "Cattle", href: "/cattle", icon: Beef, section: "cattle" },
+  { title: "Milk Production", href: "/production", icon: Droplets, section: "production" },
+  { title: "Products", href: "/products", icon: Milk, section: "main" },
+  { title: "Customers", href: "/customers", icon: Users, section: "customers" },
+  { title: "Deliveries", href: "/deliveries", icon: Truck, section: "deliveries" },
+  { title: "Billing", href: "/billing", icon: Receipt, section: "billing" },
+  { title: "Bottles", href: "/bottles", icon: Package, section: "bottles" },
+  { title: "Health Records", href: "/health", icon: Stethoscope, section: "health" },
+  { title: "Feed & Inventory", href: "/inventory", icon: Wheat, section: "inventory" },
+  { title: "Expenses", href: "/expenses", icon: Wallet, section: "expenses" },
+  { title: "Reports", href: "/reports", icon: BarChart3, section: "reports" },
 ];
 
-const managementNavItems: NavItem[] = [
-  { title: "Bottles", href: "/bottles", icon: Package },
-  { title: "Health Records", href: "/health", icon: Stethoscope },
-  { title: "Feed & Inventory", href: "/inventory", icon: Wheat },
-  { title: "Expenses", href: "/expenses", icon: Wallet },
-  { title: "Reports", href: "/reports", icon: BarChart3 },
-];
+// Define which sections each role can access
+const roleSections: Record<string, string[]> = {
+  super_admin: ["main", "cattle", "production", "customers", "deliveries", "billing", "bottles", "health", "inventory", "expenses", "reports", "settings"],
+  manager: ["main", "cattle", "production", "customers", "deliveries", "billing", "bottles", "health", "inventory", "expenses", "reports", "settings"],
+  accountant: ["main", "billing", "expenses", "reports", "customers"],
+  delivery_staff: ["main", "deliveries", "customers", "bottles"],
+  farm_worker: ["main", "cattle", "production", "health", "inventory"],
+  vet_staff: ["main", "cattle", "health"],
+  auditor: ["main", "billing", "expenses", "reports"],
+};
+
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  manager: "Manager",
+  accountant: "Accountant",
+  delivery_staff: "Delivery Staff",
+  farm_worker: "Farm Worker",
+  vet_staff: "Vet Staff",
+  auditor: "Auditor",
+};
 
 interface AppSidebarProps {
   onLogout: () => void;
@@ -56,6 +78,23 @@ interface AppSidebarProps {
 export function AppSidebar({ onLogout }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { role, loading, userName } = useUserRole();
+
+  // Get sections this role can access
+  const allowedSections = role ? roleSections[role] || [] : [];
+  
+  // Filter nav items based on role
+  const visibleNavItems = allNavItems.filter(item => 
+    allowedSections.includes(item.section)
+  );
+
+  // Split into main and management sections for display
+  const mainItems = visibleNavItems.filter(item => 
+    ["main", "cattle", "production", "customers", "deliveries", "billing"].includes(item.section)
+  );
+  const managementItems = visibleNavItems.filter(item => 
+    ["bottles", "health", "inventory", "expenses", "reports"].includes(item.section)
+  );
 
   const NavLink = ({ item }: { item: NavItem }) => {
     const isActive = location.pathname === item.href;
@@ -84,6 +123,8 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       </Link>
     );
   };
+
+  const canAccessSettings = role === "super_admin" || role === "manager";
 
   return (
     <aside
@@ -114,41 +155,57 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
 
       {/* Navigation */}
       <ScrollArea className="flex-1 px-3 py-4">
-        <nav className="flex flex-col gap-1">
-          {mainNavItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </nav>
+        {loading ? (
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map(i => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : (
+          <>
+            <nav className="flex flex-col gap-1">
+              {mainItems.map((item) => (
+                <NavLink key={item.href} item={item} />
+              ))}
+            </nav>
 
-        <Separator className="my-4 bg-sidebar-border" />
+            {managementItems.length > 0 && (
+              <>
+                <Separator className="my-4 bg-sidebar-border" />
 
-        {!collapsed && (
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-            Management
-          </p>
+                {!collapsed && (
+                  <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                    Management
+                  </p>
+                )}
+                
+                <nav className="flex flex-col gap-1">
+                  {managementItems.map((item) => (
+                    <NavLink key={item.href} item={item} />
+                  ))}
+                </nav>
+              </>
+            )}
+          </>
         )}
-        
-        <nav className="flex flex-col gap-1">
-          {managementNavItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </nav>
       </ScrollArea>
 
       {/* Footer */}
       <div className="border-t border-sidebar-border p-3">
-        <Link
-          to="/settings"
-          className={cn(
-            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-            "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            location.pathname === "/settings" && "bg-sidebar-accent text-sidebar-accent-foreground",
-            collapsed && "justify-center px-2"
-          )}
-        >
-          <Settings className="h-5 w-5 shrink-0" />
-          {!collapsed && <span>Settings</span>}
-        </Link>
+        {canAccessSettings && (
+          <Link
+            to="/settings"
+            className={cn(
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
+              "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              location.pathname === "/settings" && "bg-sidebar-accent text-sidebar-accent-foreground",
+              collapsed && "justify-center px-2"
+            )}
+          >
+            <Settings className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>Settings</span>}
+          </Link>
+        )}
 
         <Button
           variant="ghost"
@@ -171,8 +228,13 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           </div>
           {!collapsed && (
             <div className="flex flex-col overflow-hidden">
-              <span className="truncate text-xs font-medium text-sidebar-foreground">Admin</span>
-              <span className="truncate text-[10px] text-sidebar-foreground/50">Super Admin</span>
+              <span className="truncate text-xs font-medium text-sidebar-foreground">
+                {userName || "User"}
+              </span>
+              <span className="truncate text-[10px] text-sidebar-foreground/50 flex items-center gap-1">
+                <Shield className="h-2.5 w-2.5" />
+                {role ? roleLabels[role] || role : "Loading..."}
+              </span>
             </div>
           )}
         </div>

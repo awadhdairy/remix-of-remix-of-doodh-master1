@@ -1,36 +1,35 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { StatCard } from "@/components/dashboard/StatCard";
-import { RecentActivityCard } from "@/components/dashboard/RecentActivityCard";
-import { QuickActionsCard } from "@/components/dashboard/QuickActionsCard";
-import { ProductionChart } from "@/components/dashboard/ProductionChart";
-import { AlertsCard } from "@/components/dashboard/AlertsCard";
-import { 
-  Droplets, 
-  Beef, 
-  Users, 
-  IndianRupee,
-  Calendar,
-  Loader2
-} from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { Calendar, Loader2, Shield } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
+import { AdminDashboard } from "@/components/dashboard/AdminDashboard";
+import { DeliveryDashboard } from "@/components/dashboard/DeliveryDashboard";
+import { FarmDashboard } from "@/components/dashboard/FarmDashboard";
+import { AccountantDashboard } from "@/components/dashboard/AccountantDashboard";
+import { VetDashboard } from "@/components/dashboard/VetDashboard";
+import { AuditorDashboard } from "@/components/dashboard/AuditorDashboard";
+import { Badge } from "@/components/ui/badge";
 
-interface DashboardStats {
-  todayProduction: number;
-  morningProduction: number;
-  eveningProduction: number;
-  totalCattle: number;
-  lactatingCattle: number;
-  dryCattle: number;
-  totalCustomers: number;
-  activeCustomers: number;
-  monthlyRevenue: number;
-  pendingAmount: number;
-}
+const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
+  manager: "Manager",
+  accountant: "Accountant",
+  delivery_staff: "Delivery Staff",
+  farm_worker: "Farm Worker",
+  vet_staff: "Veterinary Staff",
+  auditor: "Auditor",
+};
+
+const roleColors: Record<string, string> = {
+  super_admin: "bg-primary text-primary-foreground",
+  manager: "bg-blue-500 text-white",
+  accountant: "bg-green-500 text-white",
+  delivery_staff: "bg-orange-500 text-white",
+  farm_worker: "bg-amber-600 text-white",
+  vet_staff: "bg-purple-500 text-white",
+  auditor: "bg-slate-500 text-white",
+};
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { role, loading, userName } = useUserRole();
 
   const today = new Date().toLocaleDateString('en-IN', { 
     weekday: 'long', 
@@ -38,64 +37,6 @@ export default function Dashboard() {
     month: 'long', 
     day: 'numeric' 
   });
-
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async () => {
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
-    const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
-
-    const [productionRes, cattleRes, customersRes, invoicesRes] = await Promise.all([
-      supabase
-        .from("milk_production")
-        .select("session, quantity_liters")
-        .eq("production_date", todayStr),
-      supabase
-        .from("cattle")
-        .select("status, lactation_status"),
-      supabase
-        .from("customers")
-        .select("is_active"),
-      supabase
-        .from("invoices")
-        .select("final_amount, paid_amount")
-        .gte("created_at", monthStart)
-        .lte("created_at", monthEnd),
-    ]);
-
-    const production = productionRes.data || [];
-    const cattle = cattleRes.data || [];
-    const customers = customersRes.data || [];
-    const invoices = invoicesRes.data || [];
-
-    const morningProduction = production
-      .filter(p => p.session === "morning")
-      .reduce((sum, p) => sum + Number(p.quantity_liters), 0);
-    
-    const eveningProduction = production
-      .filter(p => p.session === "evening")
-      .reduce((sum, p) => sum + Number(p.quantity_liters), 0);
-
-    const activeCattle = cattle.filter(c => c.status === "active");
-    
-    setStats({
-      todayProduction: morningProduction + eveningProduction,
-      morningProduction,
-      eveningProduction,
-      totalCattle: activeCattle.length,
-      lactatingCattle: cattle.filter(c => c.lactation_status === "lactating").length,
-      dryCattle: cattle.filter(c => c.lactation_status === "dry").length,
-      totalCustomers: customers.length,
-      activeCustomers: customers.filter(c => c.is_active).length,
-      monthlyRevenue: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
-      pendingAmount: invoices.reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount)), 0),
-    });
-
-    setLoading(false);
-  };
 
   if (loading) {
     return (
@@ -105,66 +46,51 @@ export default function Dashboard() {
     );
   }
 
+  const renderDashboard = () => {
+    switch (role) {
+      case "super_admin":
+      case "manager":
+        return <AdminDashboard />;
+      case "accountant":
+        return <AccountantDashboard />;
+      case "delivery_staff":
+        return <DeliveryDashboard />;
+      case "farm_worker":
+        return <FarmDashboard />;
+      case "vet_staff":
+        return <VetDashboard />;
+      case "auditor":
+        return <AuditorDashboard />;
+      default:
+        return <AdminDashboard />;
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-1 animate-fade-in">
-        <h1 className="text-2xl font-bold text-foreground md:text-3xl">Dashboard</h1>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Calendar className="h-4 w-4" />
-          <span>{today}</span>
+      <div className="flex flex-col gap-2 animate-fade-in">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground md:text-3xl">
+              {userName ? `Welcome, ${userName}` : "Dashboard"}
+            </h1>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+              <Calendar className="h-4 w-4" />
+              <span>{today}</span>
+            </div>
+          </div>
+          {role && (
+            <Badge className={`${roleColors[role] || "bg-muted"} flex items-center gap-1.5 px-3 py-1.5`}>
+              <Shield className="h-3.5 w-3.5" />
+              {roleLabels[role] || role}
+            </Badge>
+          )}
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <QuickActionsCard />
-
-      {/* Stats Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Today's Production"
-          value={`${stats?.todayProduction || 0} L`}
-          subtitle={`Morning: ${stats?.morningProduction || 0}L | Evening: ${stats?.eveningProduction || 0}L`}
-          icon={Droplets}
-          variant="info"
-          delay={0}
-        />
-        <StatCard
-          title="Active Cattle"
-          value={String(stats?.totalCattle || 0)}
-          subtitle={`${stats?.lactatingCattle || 0} Lactating | ${stats?.dryCattle || 0} Dry`}
-          icon={Beef}
-          variant="primary"
-          delay={100}
-        />
-        <StatCard
-          title="Total Customers"
-          value={String(stats?.totalCustomers || 0)}
-          subtitle={`${stats?.activeCustomers || 0} active`}
-          icon={Users}
-          variant="success"
-          delay={200}
-        />
-        <StatCard
-          title="Monthly Revenue"
-          value={`₹${(stats?.monthlyRevenue || 0).toLocaleString()}`}
-          subtitle={`Pending: ₹${(stats?.pendingAmount || 0).toLocaleString()}`}
-          icon={IndianRupee}
-          variant="warning"
-          delay={300}
-        />
-      </div>
-
-      {/* Charts & Activity */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <ProductionChart />
-        <RecentActivityCard />
-      </div>
-
-      {/* Alerts */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AlertsCard />
-      </div>
+      {/* Role-specific Dashboard Content */}
+      {renderDashboard()}
     </div>
   );
 }
