@@ -23,7 +23,7 @@ export default function Auth() {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -50,10 +50,54 @@ export default function Auth() {
     return `${cleanPhone}@doodhwallah.app`;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrors({});
+  const handleBootstrap = async () => {
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+    
+    if (cleanPhone !== '7897716792' || pin !== '101101') {
+      toast({
+        title: "Invalid credentials",
+        description: "Only the designated admin can bootstrap the account.",
+        variant: "destructive",
+      });
+      return;
+    }
 
+    setBootstrapping(true);
+
+    try {
+      const response = await supabase.functions.invoke('bootstrap-admin', {
+        body: { phone: cleanPhone, pin }
+      });
+
+      if (response.error) {
+        toast({
+          title: "Bootstrap failed",
+          description: response.error.message || "Could not create admin account.",
+          variant: "destructive",
+        });
+        setBootstrapping(false);
+        return;
+      }
+
+      toast({
+        title: "Admin account ready",
+        description: "You can now sign in with your credentials.",
+      });
+
+      // Now try to login
+      setBootstrapping(false);
+      await handleLogin();
+    } catch (err) {
+      toast({
+        title: "Bootstrap failed",
+        description: "Could not create admin account. Please try again.",
+        variant: "destructive",
+      });
+      setBootstrapping(false);
+    }
+  };
+
+  const handleLogin = async () => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
 
     try {
@@ -73,61 +117,44 @@ export default function Auth() {
 
     const email = phoneToEmail(cleanPhone);
     
-    if (isSignUp) {
-      // Sign up with phone metadata
-      const { error } = await supabase.auth.signUp({
-        email,
-        password: pin,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`,
-          data: {
-            phone: cleanPhone,
-            full_name: 'User',
-            pin: pin
-          }
-        }
-      });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pin,
+    });
 
-      setLoading(false);
+    setLoading(false);
 
-      if (error) {
+    if (error) {
+      // If login fails and this is the admin phone, offer to bootstrap
+      if (cleanPhone === '7897716792' && pin === '101101') {
         toast({
-          title: "Sign up failed",
-          description: sanitizeError(error, "Could not create account. Please try again."),
-          variant: "destructive",
+          title: "Account not found",
+          description: "Click 'Setup Admin Account' to create your admin account.",
         });
       } else {
-        toast({
-          title: "Account created!",
-          description: "You can now sign in.",
-        });
-        setIsSignUp(false);
-        setPin("");
-      }
-    } else {
-      // Sign in
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password: pin,
-      });
-
-      setLoading(false);
-
-      if (error) {
         toast({
           title: "Login failed",
           description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
           variant: "destructive",
         });
-      } else {
-        toast({
-          title: "Welcome back!",
-          description: "Successfully logged in.",
-        });
-        navigate('/dashboard');
       }
+    } else {
+      toast({
+        title: "Welcome back!",
+        description: "Successfully logged in.",
+      });
+      navigate('/dashboard');
     }
   };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+    await handleLogin();
+  };
+
+  const cleanPhone = phone.replace(/[^0-9]/g, '');
+  const isAdminCredentials = cleanPhone === '7897716792' && pin === '101101';
 
   return (
     <div className="flex min-h-screen">
@@ -161,20 +188,16 @@ export default function Auth() {
         </div>
       </div>
 
-      {/* Right side - Login form */}
+      {/* Right side - Login form only */}
       <div className="flex w-full items-center justify-center bg-background p-6 lg:w-1/2">
         <Card className="w-full max-w-md border-border/50 shadow-lg animate-slide-up">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary lg:hidden">
               <Droplets className="h-6 w-6 text-primary-foreground" />
             </div>
-            <CardTitle className="text-2xl font-bold">
-              {isSignUp ? "Create Account" : "Welcome"}
-            </CardTitle>
+            <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
             <CardDescription>
-              {isSignUp 
-                ? "Enter your mobile number & create a 6-digit PIN" 
-                : "Sign in with your mobile number & PIN"}
+              Sign in with your mobile number & PIN
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -186,7 +209,7 @@ export default function Auth() {
                   <Input
                     id="login-phone"
                     type="tel"
-                    placeholder="7897716792"
+                    placeholder="Enter mobile number"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
                     className="pl-10"
@@ -219,32 +242,36 @@ export default function Auth() {
                   <p className="text-xs text-destructive text-center">{errors.pin}</p>
                 )}
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
+              
+              <Button type="submit" className="w-full" disabled={loading || bootstrapping}>
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {isSignUp ? "Creating account..." : "Signing in..."}
+                    Signing in...
                   </>
                 ) : (
-                  isSignUp ? "Create Account" : "Sign In"
+                  "Sign In"
                 )}
               </Button>
-              
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignUp(!isSignUp);
-                    setPin("");
-                    setErrors({});
-                  }}
-                  className="text-sm text-primary hover:underline"
+
+              {isAdminCredentials && (
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="w-full" 
+                  disabled={loading || bootstrapping}
+                  onClick={handleBootstrap}
                 >
-                  {isSignUp 
-                    ? "Already have an account? Sign in" 
-                    : "First time? Create account"}
-                </button>
-              </div>
+                  {bootstrapping ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Setting up...
+                    </>
+                  ) : (
+                    "Setup Admin Account"
+                  )}
+                </Button>
+              )}
               
               <p className="text-xs text-center text-muted-foreground mt-4">
                 Contact your administrator for account access
