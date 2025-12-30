@@ -21,6 +21,7 @@ import {
   UserCircle,
   Milk,
   Shield,
+  UsersRound,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -48,11 +49,12 @@ const allNavItems: NavItem[] = [
   { title: "Feed & Inventory", href: "/inventory", icon: Wheat, section: "inventory" },
   { title: "Expenses", href: "/expenses", icon: Wallet, section: "expenses" },
   { title: "Reports", href: "/reports", icon: BarChart3, section: "reports" },
+  { title: "User Management", href: "/users", icon: UsersRound, section: "users" },
 ];
 
 // Define which sections each role can access
 const roleSections: Record<string, string[]> = {
-  super_admin: ["main", "cattle", "production", "customers", "deliveries", "billing", "bottles", "health", "inventory", "expenses", "reports", "settings"],
+  super_admin: ["main", "cattle", "production", "customers", "deliveries", "billing", "bottles", "health", "inventory", "expenses", "reports", "settings", "users"],
   manager: ["main", "cattle", "production", "customers", "deliveries", "billing", "bottles", "health", "inventory", "expenses", "reports", "settings"],
   accountant: ["main", "billing", "expenses", "reports", "customers"],
   delivery_staff: ["main", "deliveries", "customers", "bottles"],
@@ -93,7 +95,7 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
     ["main", "cattle", "production", "customers", "deliveries", "billing"].includes(item.section)
   );
   const managementItems = visibleNavItems.filter(item => 
-    ["bottles", "health", "inventory", "expenses", "reports"].includes(item.section)
+    ["bottles", "health", "inventory", "expenses", "reports", "users"].includes(item.section)
   );
 
   const NavLink = ({ item }: { item: NavItem }) => {
