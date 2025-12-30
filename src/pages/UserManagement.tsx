@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Users, Shield, Phone, KeyRound, User, Power, PowerOff } from "lucide-react";
+import { UserPlus, Users, Shield, Phone, KeyRound, User, RotateCcw } from "lucide-react";
 import { sanitizeError } from "@/lib/errors";
 import { Switch } from "@/components/ui/switch";
 
@@ -63,7 +63,11 @@ export default function UserManagement() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [resetPinDialogOpen, setResetPinDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [newPin, setNewPin] = useState("");
   const [creating, setCreating] = useState(false);
+  const [resettingPin, setResettingPin] = useState(false);
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
 
   // Form state
@@ -187,6 +191,51 @@ export default function UserManagement() {
     }
   };
 
+  const handleResetPin = async () => {
+    if (!selectedUser || !newPin) {
+      toast.error("Please enter a new PIN");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(newPin)) {
+      toast.error("PIN must be exactly 6 digits");
+      return;
+    }
+
+    setResettingPin(true);
+    try {
+      const response = await supabase.functions.invoke("reset-user-pin", {
+        body: {
+          userId: selectedUser.id,
+          newPin,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to reset PIN");
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success(response.data.message);
+      setResetPinDialogOpen(false);
+      setSelectedUser(null);
+      setNewPin("");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reset PIN");
+    } finally {
+      setResettingPin(false);
+    }
+  };
+
+  const openResetPinDialog = (user: UserProfile) => {
+    setSelectedUser(user);
+    setNewPin("");
+    setResetPinDialogOpen(true);
+  };
+
   const columns = [
     {
       key: "full_name",
@@ -237,10 +286,20 @@ export default function UserManagement() {
       ),
     },
     {
-      key: "created_at",
-      header: "Created",
-      render: (user: UserProfile) =>
-        new Date(user.created_at).toLocaleDateString(),
+      key: "actions",
+      header: "Actions",
+      render: (user: UserProfile) => (
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1"
+          onClick={() => openResetPinDialog(user)}
+          disabled={user.role === "super_admin"}
+        >
+          <RotateCcw className="h-3 w-3" />
+          Reset PIN
+        </Button>
+      ),
     },
   ];
 
@@ -362,6 +421,57 @@ export default function UserManagement() {
         searchable
         searchPlaceholder="Search users..."
       />
+
+      {/* Reset PIN Dialog */}
+      <Dialog open={resetPinDialogOpen} onOpenChange={setResetPinDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <RotateCcw className="h-5 w-5" />
+              Reset PIN
+            </DialogTitle>
+            <DialogDescription>
+              Set a new 6-digit PIN for {selectedUser?.full_name}. They will use this PIN to log in.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPin" className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4" />
+                New PIN
+              </Label>
+              <Input
+                id="newPin"
+                type="password"
+                placeholder="6-digit PIN"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                maxLength={6}
+              />
+              <p className="text-xs text-muted-foreground">
+                PIN must be exactly 6 digits
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setResetPinDialogOpen(false);
+                setSelectedUser(null);
+                setNewPin("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleResetPin} disabled={resettingPin}>
+              {resettingPin ? "Resetting..." : "Reset PIN"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
