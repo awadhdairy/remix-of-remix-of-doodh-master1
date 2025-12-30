@@ -86,6 +86,13 @@ export type Database = {
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "attendance_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_auditor_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       auth_attempts: {
@@ -1074,7 +1081,72 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      dairy_settings_public: {
+        Row: {
+          currency: string | null
+          dairy_name: string | null
+          financial_year_start: number | null
+          id: string | null
+          invoice_prefix: string | null
+          logo_url: string | null
+        }
+        Insert: {
+          currency?: string | null
+          dairy_name?: string | null
+          financial_year_start?: number | null
+          id?: string | null
+          invoice_prefix?: string | null
+          logo_url?: string | null
+        }
+        Update: {
+          currency?: string | null
+          dairy_name?: string | null
+          financial_year_start?: number | null
+          id?: string | null
+          invoice_prefix?: string | null
+          logo_url?: string | null
+        }
+        Relationships: []
+      }
+      employees_auditor_view: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          id: string | null
+          is_active: boolean | null
+          joining_date: string | null
+          name: string | null
+          phone: string | null
+          role: Database["public"]["Enums"]["user_role"] | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          joining_date?: string | null
+          name?: string | null
+          phone?: string | null
+          role?: Database["public"]["Enums"]["user_role"] | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          joining_date?: string | null
+          name?: string | null
+          phone?: string | null
+          role?: Database["public"]["Enums"]["user_role"] | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       has_any_role: {
