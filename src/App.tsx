@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import Auth from "./pages/Auth";
+import InitialSetup from "./pages/InitialSetup";
 import Dashboard from "./pages/Dashboard";
 import CattlePage from "./pages/Cattle";
 import ProductionPage from "./pages/Production";
@@ -31,6 +32,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/setup-admin-7897716792" element={<InitialSetup />} />
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/cattle" element={<CattlePage />} />

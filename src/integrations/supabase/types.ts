@@ -1093,6 +1093,7 @@ export type Database = {
       }
       is_authenticated: { Args: never; Returns: boolean }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      setup_initial_admin: { Args: never; Returns: undefined }
       verify_pin: { Args: { _phone: string; _pin: string }; Returns: string }
     }
     Enums: {
