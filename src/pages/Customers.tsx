@@ -25,7 +25,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Edit, Trash2, Phone, MapPin, IndianRupee, Loader2 } from "lucide-react";
+import { Users, Edit, Trash2, Phone, MapPin, Loader2, Palmtree, BookOpen } from "lucide-react";
+import { VacationManager } from "@/components/customers/VacationManager";
+import { CustomerLedger } from "@/components/customers/CustomerLedger";
 
 interface Customer {
   id: string;
@@ -59,6 +61,8 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [vacationDialogOpen, setVacationDialogOpen] = useState(false);
+  const [ledgerDialogOpen, setLedgerDialogOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState(emptyFormData);
   const [saving, setSaving] = useState(false);
@@ -255,6 +259,30 @@ export default function CustomersPage() {
       header: "Actions",
       render: (item: Customer) => (
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Vacation/Pause"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedCustomer(item);
+              setVacationDialogOpen(true);
+            }}
+          >
+            <Palmtree className="h-4 w-4 text-primary" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Ledger"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedCustomer(item);
+              setLedgerDialogOpen(true);
+            }}
+          >
+            <BookOpen className="h-4 w-4 text-info" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -489,6 +517,22 @@ export default function CustomersPage() {
         confirmText="Delete"
         onConfirm={handleDelete}
         variant="destructive"
+      />
+
+      {/* Vacation Manager */}
+      <VacationManager
+        customerId={selectedCustomer?.id || ""}
+        customerName={selectedCustomer?.name || ""}
+        open={vacationDialogOpen}
+        onOpenChange={setVacationDialogOpen}
+      />
+
+      {/* Customer Ledger */}
+      <CustomerLedger
+        customerId={selectedCustomer?.id || ""}
+        customerName={selectedCustomer?.name || ""}
+        open={ledgerDialogOpen}
+        onOpenChange={setLedgerDialogOpen}
       />
     </div>
   );

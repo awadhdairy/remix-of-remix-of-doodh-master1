@@ -24,8 +24,10 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, CheckCircle, XCircle, Clock, Loader2, Calendar } from "lucide-react";
+import { Truck, CheckCircle, XCircle, Clock, Loader2, Calendar, Zap, Palmtree } from "lucide-react";
 import { format } from "date-fns";
+import { BulkDeliveryActions } from "@/components/deliveries/BulkDeliveryActions";
+import { Badge } from "@/components/ui/badge";
 
 interface Customer {
   id: string;
@@ -53,9 +55,11 @@ export default function DeliveriesPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [statusFilter, setStatusFilter] = useState("all");
+  const [vacationCustomers, setVacationCustomers] = useState<Set<string>>(new Set());
   const [formData, setFormData] = useState({
     customer_id: "",
     delivery_date: format(new Date(), "yyyy-MM-dd"),
@@ -102,6 +106,17 @@ export default function DeliveriesPage() {
     } else {
       setDeliveries((deliveryData as DeliveryWithCustomer[]) || []);
     }
+
+    // Fetch customers on vacation for the selected date
+    const { data: vacationData } = await supabase
+      .from("customer_vacations")
+      .select("customer_id")
+      .eq("is_active", true)
+      .lte("start_date", selectedDate)
+      .gte("end_date", selectedDate);
+
+    setVacationCustomers(new Set((vacationData || []).map(v => v.customer_id)));
+
     setLoading(false);
   };
 
@@ -173,6 +188,16 @@ export default function DeliveriesPage() {
     ? deliveries 
     : deliveries.filter(d => d.status === statusFilter);
 
+  const pendingDeliveries = deliveries
+    .filter(d => d.status === "pending")
+    .map(d => ({
+      id: d.id,
+      customer_id: d.customer_id,
+      customer_name: d.customer?.name || "Unknown",
+      delivery_date: d.delivery_date,
+      status: d.status,
+    }));
+
   const stats = {
     total: deliveries.length,
     pending: deliveries.filter(d => d.status === "pending").length,
@@ -186,7 +211,15 @@ export default function DeliveriesPage() {
       header: "Customer",
       render: (item: DeliveryWithCustomer) => (
         <div className="flex flex-col">
-          <span className="font-semibold">{item.customer?.name}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold">{item.customer?.name}</span>
+            {vacationCustomers.has(item.customer_id) && (
+              <Badge variant="outline" className="text-xs">
+                <Palmtree className="h-3 w-3 mr-1" />
+                On Vacation
+              </Badge>
+            )}
+          </div>
           {item.customer?.area && (
             <span className="text-xs text-muted-foreground">{item.customer.area}</span>
           )}
@@ -264,6 +297,17 @@ export default function DeliveriesPage() {
             onChange={(e) => setSelectedDate(e.target.value)}
             className="w-auto"
           />
+          {stats.pending > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDialogOpen(true)}
+              className="ml-2"
+            >
+              <Zap className="h-4 w-4 mr-1" />
+              Bulk Update ({stats.pending})
+            </Button>
+          )}
         </div>
       </PageHeader>
 
@@ -381,6 +425,15 @@ export default function DeliveriesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Update Dialog */}
+      <BulkDeliveryActions
+        selectedDate={selectedDate}
+        pendingDeliveries={pendingDeliveries}
+        open={bulkDialogOpen}
+        onOpenChange={setBulkDialogOpen}
+        onComplete={fetchData}
+      />
     </div>
   );
 }

@@ -432,6 +432,56 @@ export type Database = {
           },
         ]
       }
+      customer_ledger: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          credit_amount: number | null
+          customer_id: string
+          debit_amount: number | null
+          description: string
+          id: string
+          reference_id: string | null
+          running_balance: number | null
+          transaction_date: string
+          transaction_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          credit_amount?: number | null
+          customer_id: string
+          debit_amount?: number | null
+          description: string
+          id?: string
+          reference_id?: string | null
+          running_balance?: number | null
+          transaction_date?: string
+          transaction_type: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          credit_amount?: number | null
+          customer_id?: string
+          debit_amount?: number | null
+          description?: string
+          id?: string
+          reference_id?: string | null
+          running_balance?: number | null
+          transaction_date?: string
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_ledger_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_products: {
         Row: {
           created_at: string | null
@@ -473,6 +523,47 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_vacations: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          customer_id: string
+          end_date: string
+          id: string
+          is_active: boolean | null
+          reason: string | null
+          start_date: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          customer_id: string
+          end_date: string
+          id?: string
+          is_active?: boolean | null
+          reason?: string | null
+          start_date: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          customer_id?: string
+          end_date?: string
+          id?: string
+          is_active?: boolean | null
+          reason?: string | null
+          start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_vacations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
         ]
@@ -1656,6 +1747,10 @@ export type Database = {
         Returns: boolean
       }
       is_authenticated: { Args: never; Returns: boolean }
+      is_customer_on_vacation: {
+        Args: { _check_date?: string; _customer_id: string }
+        Returns: boolean
+      }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
       setup_initial_admin: { Args: never; Returns: undefined }
       update_pin_only: {
