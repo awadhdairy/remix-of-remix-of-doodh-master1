@@ -2,3 +2,15 @@ project_id = "eqedibnoatuxczjwkbbx"
 
 [functions.bootstrap-admin]
 verify_jwt = false
+
+[functions.create-user]
+verify_jwt = false
+
+[functions.update-user-status]
+verify_jwt = false
+
+[functions.reset-user-pin]
+verify_jwt = false
+
+[functions.change-pin]
+verify_jwt = false
