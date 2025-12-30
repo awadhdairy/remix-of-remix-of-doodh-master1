@@ -6,6 +6,13 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import CattlePage from "./pages/Cattle";
+import ProductionPage from "./pages/Production";
+import ProductsPage from "./pages/Products";
+import CustomersPage from "./pages/Customers";
+import DeliveriesPage from "./pages/Deliveries";
+import BillingPage from "./pages/Billing";
+import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,18 +28,18 @@ const App = () => (
           <Route path="/auth" element={<Auth />} />
           <Route element={<DashboardLayout />}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/cattle" element={<Dashboard />} />
-            <Route path="/production" element={<Dashboard />} />
-            <Route path="/products" element={<Dashboard />} />
-            <Route path="/customers" element={<Dashboard />} />
-            <Route path="/deliveries" element={<Dashboard />} />
-            <Route path="/billing" element={<Dashboard />} />
+            <Route path="/cattle" element={<CattlePage />} />
+            <Route path="/production" element={<ProductionPage />} />
+            <Route path="/products" element={<ProductsPage />} />
+            <Route path="/customers" element={<CustomersPage />} />
+            <Route path="/deliveries" element={<DeliveriesPage />} />
+            <Route path="/billing" element={<BillingPage />} />
             <Route path="/bottles" element={<Dashboard />} />
             <Route path="/health" element={<Dashboard />} />
             <Route path="/inventory" element={<Dashboard />} />
             <Route path="/expenses" element={<Dashboard />} />
             <Route path="/reports" element={<Dashboard />} />
-            <Route path="/settings" element={<Dashboard />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
