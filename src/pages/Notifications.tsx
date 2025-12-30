@@ -23,7 +23,7 @@ interface NotificationTemplate {
   channel: string;
   subject: string | null;
   body: string;
-  variables: string[];
+  variables: any;
   is_active: boolean;
 }
 

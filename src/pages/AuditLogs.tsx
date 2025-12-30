@@ -192,12 +192,11 @@ export default function AuditLogsPage() {
       <PageHeader
         title="Audit Trail"
         description="Track all system activities and changes"
-        action={
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" /> Export
-          </Button>
-        }
-      />
+      >
+        <Button variant="outline" onClick={handleExport}>
+          <Download className="mr-2 h-4 w-4" /> Export
+        </Button>
+      </PageHeader>
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

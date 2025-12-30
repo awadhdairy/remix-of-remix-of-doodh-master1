@@ -19,6 +19,13 @@ import ExpensesPage from "./pages/Expenses";
 import ReportsPage from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
 import UserManagement from "./pages/UserManagement";
+import EmployeesPage from "./pages/Employees";
+import BreedingPage from "./pages/Breeding";
+import EquipmentPage from "./pages/Equipment";
+import RoutesPage from "./pages/Routes";
+import PriceRulesPage from "./pages/PriceRules";
+import AuditLogsPage from "./pages/AuditLogs";
+import NotificationsPage from "./pages/Notifications";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +54,13 @@ const App = () => (
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/users" element={<UserManagement />} />
+            <Route path="/employees" element={<EmployeesPage />} />
+            <Route path="/breeding" element={<BreedingPage />} />
+            <Route path="/equipment" element={<EquipmentPage />} />
+            <Route path="/routes" element={<RoutesPage />} />
+            <Route path="/price-rules" element={<PriceRulesPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

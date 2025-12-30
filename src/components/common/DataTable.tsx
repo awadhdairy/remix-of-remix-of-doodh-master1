@@ -28,6 +28,7 @@ interface DataTableProps<T> {
   onRowClick?: (item: T) => void;
   emptyMessage?: string;
   className?: string;
+  itemsPerPage?: number;
 }
 
 export function DataTable<T extends { id: string }>({
@@ -39,10 +40,10 @@ export function DataTable<T extends { id: string }>({
   onRowClick,
   emptyMessage = "No data found",
   className,
+  itemsPerPage = 10,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   const filteredData = searchable
     ? data.filter((item) =>
