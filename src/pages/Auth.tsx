@@ -5,32 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Droplets, Phone, Mail, Loader2, Lock } from "lucide-react";
+import { Droplets, Phone, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { sanitizeError } from "@/lib/errors";
 
-const phoneLoginSchema = z.object({
+const loginSchema = z.object({
   phone: z.string()
     .min(10, "Phone number must be at least 10 digits")
     .max(15, "Phone number too long")
-    .regex(/^[0-9+\-\s]+$/, "Invalid phone number format"),
+    .regex(/^[0-9]+$/, "Phone number must contain only digits"),
   pin: z.string().length(6, "PIN must be exactly 6 digits"),
-});
-
-const emailLoginSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 export default function Auth() {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -57,12 +50,14 @@ export default function Auth() {
     return `${cleanPhone}@doodhwallah.app`;
   };
 
-  const handlePhoneLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
 
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+
     try {
-      phoneLoginSchema.parse({ phone, pin });
+      loginSchema.parse({ phone: cleanPhone, pin });
     } catch (err) {
       if (err instanceof z.ZodError) {
         const newErrors: Record<string, string> = {};
@@ -76,69 +71,61 @@ export default function Auth() {
 
     setLoading(true);
 
-    // Use phone as email identifier for Supabase auth
-    const emailFromPhone = phoneToEmail(phone);
+    const email = phoneToEmail(cleanPhone);
     
-    const { error } = await supabase.auth.signInWithPassword({
-      email: emailFromPhone,
-      password: pin,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      toast({
-        title: "Login failed",
-        description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
-        variant: "destructive",
+    if (isSignUp) {
+      // Sign up with phone metadata
+      const { error } = await supabase.auth.signUp({
+        email,
+        password: pin,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            phone: cleanPhone,
+            full_name: 'User',
+            pin: pin
+          }
+        }
       });
-    } else {
-      toast({
-        title: "Welcome back!",
-        description: "Successfully logged in.",
-      });
-      navigate('/dashboard');
-    }
-  };
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrors({});
+      setLoading(false);
 
-    try {
-      emailLoginSchema.parse({ email, password });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        const newErrors: Record<string, string> = {};
-        err.errors.forEach((e) => {
-          if (e.path[0]) newErrors[e.path[0] as string] = e.message;
+      if (error) {
+        toast({
+          title: "Sign up failed",
+          description: sanitizeError(error, "Could not create account. Please try again."),
+          variant: "destructive",
         });
-        setErrors(newErrors);
-        return;
+      } else {
+        toast({
+          title: "Account created!",
+          description: "You can now sign in.",
+        });
+        setIsSignUp(false);
+        setPin("");
       }
-    }
-
-    setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      toast({
-        title: "Login failed",
-        description: sanitizeError(error, "Invalid email or password. Please try again."),
-        variant: "destructive",
-      });
     } else {
-      toast({
-        title: "Welcome back!",
-        description: "Successfully logged in.",
+      // Sign in
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pin,
       });
-      navigate('/dashboard');
+
+      setLoading(false);
+
+      if (error) {
+        toast({
+          title: "Login failed",
+          description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Welcome back!",
+          description: "Successfully logged in.",
+        });
+        navigate('/dashboard');
+      }
     }
   };
 
@@ -181,130 +168,88 @@ export default function Auth() {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary lg:hidden">
               <Droplets className="h-6 w-6 text-primary-foreground" />
             </div>
-            <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
+            <CardTitle className="text-2xl font-bold">
+              {isSignUp ? "Create Account" : "Welcome"}
+            </CardTitle>
             <CardDescription>
-              Sign in to your account
+              {isSignUp 
+                ? "Enter your mobile number & create a 6-digit PIN" 
+                : "Sign in with your mobile number & PIN"}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="email" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="email" className="flex items-center gap-2">
-                  <Mail className="h-4 w-4" />
-                  Email
-                </TabsTrigger>
-                <TabsTrigger value="phone" className="flex items-center gap-2">
-                  <Phone className="h-4 w-4" />
-                  Phone
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="email">
-                <form onSubmit={handleEmailLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email Address</Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="login-email"
-                        type="email"
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                    {errors.email && (
-                      <p className="text-xs text-destructive">{errors.email}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="login-password"
-                        type="password"
-                        placeholder="••••••••"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                    {errors.password && (
-                      <p className="text-xs text-destructive">{errors.password}</p>
-                    )}
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      "Sign In"
-                    )}
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="phone">
-                <form onSubmit={handlePhoneLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-phone">Mobile Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="login-phone"
-                        type="tel"
-                        placeholder="+91 98765 43210"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="pl-10"
-                      />
-                    </div>
-                    {errors.phone && (
-                      <p className="text-xs text-destructive">{errors.phone}</p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="login-pin">6-Digit PIN</Label>
-                    <div className="flex justify-center">
-                      <InputOTP 
-                        maxLength={6} 
-                        value={pin} 
-                        onChange={setPin}
-                      >
-                        <InputOTPGroup>
-                          <InputOTPSlot index={0} />
-                          <InputOTPSlot index={1} />
-                          <InputOTPSlot index={2} />
-                          <InputOTPSlot index={3} />
-                          <InputOTPSlot index={4} />
-                          <InputOTPSlot index={5} />
-                        </InputOTPGroup>
-                      </InputOTP>
-                    </div>
-                    {errors.pin && (
-                      <p className="text-xs text-destructive text-center">{errors.pin}</p>
-                    )}
-                  </div>
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      "Sign In"
-                    )}
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
-            <p className="text-xs text-center text-muted-foreground mt-4">
-              Contact your administrator for account access
-            </p>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="login-phone">Mobile Number</Label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="login-phone"
+                    type="tel"
+                    placeholder="7897716792"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="pl-10"
+                    maxLength={15}
+                  />
+                </div>
+                {errors.phone && (
+                  <p className="text-xs text-destructive">{errors.phone}</p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="login-pin">6-Digit PIN</Label>
+                <div className="flex justify-center">
+                  <InputOTP 
+                    maxLength={6} 
+                    value={pin} 
+                    onChange={setPin}
+                  >
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                {errors.pin && (
+                  <p className="text-xs text-destructive text-center">{errors.pin}</p>
+                )}
+              </div>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {isSignUp ? "Creating account..." : "Signing in..."}
+                  </>
+                ) : (
+                  isSignUp ? "Create Account" : "Sign In"
+                )}
+              </Button>
+              
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignUp(!isSignUp);
+                    setPin("");
+                    setErrors({});
+                  }}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {isSignUp 
+                    ? "Already have an account? Sign in" 
+                    : "First time? Create account"}
+                </button>
+              </div>
+              
+              <p className="text-xs text-center text-muted-foreground mt-4">
+                Contact your administrator for account access
+              </p>
+            </form>
           </CardContent>
         </Card>
       </div>
