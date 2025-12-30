@@ -12,6 +12,11 @@ import ProductsPage from "./pages/Products";
 import CustomersPage from "./pages/Customers";
 import DeliveriesPage from "./pages/Deliveries";
 import BillingPage from "./pages/Billing";
+import BottlesPage from "./pages/Bottles";
+import HealthPage from "./pages/Health";
+import InventoryPage from "./pages/Inventory";
+import ExpensesPage from "./pages/Expenses";
+import ReportsPage from "./pages/Reports";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
@@ -34,11 +39,11 @@ const App = () => (
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/deliveries" element={<DeliveriesPage />} />
             <Route path="/billing" element={<BillingPage />} />
-            <Route path="/bottles" element={<Dashboard />} />
-            <Route path="/health" element={<Dashboard />} />
-            <Route path="/inventory" element={<Dashboard />} />
-            <Route path="/expenses" element={<Dashboard />} />
-            <Route path="/reports" element={<Dashboard />} />
+            <Route path="/bottles" element={<BottlesPage />} />
+            <Route path="/health" element={<HealthPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/expenses" element={<ExpensesPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
           <Route path="*" element={<NotFound />} />
