@@ -26,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Package, Plus, Loader2, ArrowUpCircle, ArrowDownCircle, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { handleError } from "@/lib/errors";
 
 interface Bottle {
   id: string;
@@ -114,7 +115,7 @@ export default function BottlesPage() {
     setSaving(false);
 
     if (error) {
-      toast({ title: "Error adding bottles", description: error.message, variant: "destructive" });
+      toast({ title: "Error adding bottles", description: handleError(error, "bottles"), variant: "destructive" });
     } else {
       toast({ title: "Bottles added", description: `${qty} ${bottleForm.size} ${bottleForm.bottle_type} bottles added` });
       setDialogOpen(false);
@@ -165,7 +166,7 @@ export default function BottlesPage() {
     setSaving(false);
 
     if (transError || updateError) {
-      toast({ title: "Error recording transaction", description: transError?.message || updateError?.message, variant: "destructive" });
+      toast({ title: "Error recording transaction", description: handleError(transError || updateError, "bottle-transaction"), variant: "destructive" });
     } else {
       toast({ title: "Transaction recorded" });
       setTransactionDialogOpen(false);

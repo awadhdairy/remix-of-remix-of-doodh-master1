@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Droplets, Phone, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { sanitizeError } from "@/lib/errors";
 
 const loginSchema = z.object({
   phone: z.string()
@@ -78,22 +79,11 @@ export default function Auth() {
     setLoading(false);
 
     if (error) {
-      // Check if account is locked
-      if (error.message.includes("locked")) {
-        toast({
-          title: "Account Locked",
-          description: "Too many failed attempts. Please try again after 15 minutes.",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Login failed",
-          description: error.message === "Invalid login credentials" 
-            ? "Invalid mobile number or PIN. Please try again."
-            : error.message,
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Login failed",
+        description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
+        variant: "destructive",
+      });
     } else {
       toast({
         title: "Welcome back!",
