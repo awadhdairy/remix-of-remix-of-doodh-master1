@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save } from "lucide-react";
+import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound } from "lucide-react";
 
 interface DairySettings {
   id: string;
@@ -32,6 +32,10 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [changingPin, setChangingPin] = useState(false);
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -128,6 +132,69 @@ export default function SettingsPage() {
     }
   };
 
+  const handleChangePin = async () => {
+    if (!currentPin || !newPin || !confirmPin) {
+      toast({
+        title: "Missing fields",
+        description: "Please fill in all PIN fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!/^\d{6}$/.test(newPin)) {
+      toast({
+        title: "Invalid PIN",
+        description: "New PIN must be exactly 6 digits",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPin !== confirmPin) {
+      toast({
+        title: "PIN mismatch",
+        description: "New PIN and confirmation do not match",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setChangingPin(true);
+    try {
+      const response = await supabase.functions.invoke("change-pin", {
+        body: {
+          currentPin,
+          newPin,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to change PIN");
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast({
+        title: "PIN changed",
+        description: "Your login PIN has been updated successfully",
+      });
+      setCurrentPin("");
+      setNewPin("");
+      setConfirmPin("");
+    } catch (error: any) {
+      toast({
+        title: "Error changing PIN",
+        description: error.message || "Failed to change PIN",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPin(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -151,6 +218,9 @@ export default function SettingsPage() {
           </TabsTrigger>
           <TabsTrigger value="profile" className="gap-2">
             <User className="h-4 w-4" /> Profile
+          </TabsTrigger>
+          <TabsTrigger value="security" className="gap-2">
+            <KeyRound className="h-4 w-4" /> Security
           </TabsTrigger>
           <TabsTrigger value="notifications" className="gap-2">
             <Bell className="h-4 w-4" /> Notifications
@@ -298,6 +368,68 @@ export default function SettingsPage() {
                   </Button>
                 </>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="security">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <KeyRound className="h-5 w-5" />
+                Change Login PIN
+              </CardTitle>
+              <CardDescription>
+                Update your 6-digit PIN used for logging in
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="current_pin">Current PIN</Label>
+                  <Input
+                    id="current_pin"
+                    type="password"
+                    placeholder="••••••"
+                    maxLength={6}
+                    value={currentPin}
+                    onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new_pin">New PIN</Label>
+                  <Input
+                    id="new_pin"
+                    type="password"
+                    placeholder="••••••"
+                    maxLength={6}
+                    value={newPin}
+                    onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm_pin">Confirm New PIN</Label>
+                  <Input
+                    id="confirm_pin"
+                    type="password"
+                    placeholder="••••••"
+                    maxLength={6}
+                    value={confirmPin}
+                    onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                PIN must be exactly 6 digits. This will be used for your next login.
+              </p>
+              <Button onClick={handleChangePin} disabled={changingPin} className="gap-2">
+                {changingPin ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <KeyRound className="h-4 w-4" />
+                )}
+                Change PIN
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>

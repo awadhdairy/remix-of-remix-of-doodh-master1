@@ -25,8 +25,9 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Users, Shield, Phone, KeyRound, User } from "lucide-react";
+import { UserPlus, Users, Shield, Phone, KeyRound, User, Power, PowerOff } from "lucide-react";
 import { sanitizeError } from "@/lib/errors";
+import { Switch } from "@/components/ui/switch";
 
 interface UserProfile {
   id: string;
@@ -63,6 +64,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [togglingUser, setTogglingUser] = useState<string | null>(null);
 
   // Form state
   const [fullName, setFullName] = useState("");
@@ -158,6 +160,33 @@ export default function UserManagement() {
     setSelectedRole("");
   };
 
+  const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
+    setTogglingUser(userId);
+    try {
+      const response = await supabase.functions.invoke("update-user-status", {
+        body: {
+          userId,
+          isActive: !currentStatus,
+        },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to update status");
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success(response.data.message);
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update user status");
+    } finally {
+      setTogglingUser(null);
+    }
+  };
+
   const columns = [
     {
       key: "full_name",
@@ -195,9 +224,16 @@ export default function UserManagement() {
       key: "is_active",
       header: "Status",
       render: (user: UserProfile) => (
-        <Badge variant={user.is_active ? "default" : "secondary"}>
-          {user.is_active ? "Active" : "Inactive"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={user.is_active}
+            onCheckedChange={() => handleToggleStatus(user.id, user.is_active)}
+            disabled={togglingUser === user.id || user.role === "super_admin"}
+          />
+          <span className={user.is_active ? "text-green-600" : "text-muted-foreground"}>
+            {user.is_active ? "Active" : "Inactive"}
+          </span>
+        </div>
       ),
     },
     {
