@@ -1166,6 +1166,10 @@ export type Database = {
       is_authenticated: { Args: never; Returns: boolean }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
       setup_initial_admin: { Args: never; Returns: undefined }
+      update_pin_only: {
+        Args: { _pin: string; _user_id: string }
+        Returns: undefined
+      }
       update_user_profile_with_pin: {
         Args: {
           _full_name: string
