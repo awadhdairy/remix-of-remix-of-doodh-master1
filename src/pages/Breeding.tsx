@@ -229,126 +229,125 @@ export default function BreedingPage() {
       <PageHeader
         title="Breeding Management"
         description="Track heat cycles, inseminations, pregnancies, and calvings"
-        action={
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" /> Add Record</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>Add Breeding Record</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
-                <div className="space-y-2">
-                  <Label>Cattle *</Label>
-                  <Select value={selectedCattle} onValueChange={setSelectedCattle}>
-                    <SelectTrigger><SelectValue placeholder="Select cattle" /></SelectTrigger>
-                    <SelectContent>
-                      {cattle.map(c => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.tag_number} {c.name && `- ${c.name}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+      >
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button><Plus className="mr-2 h-4 w-4" /> Add Record</Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add Breeding Record</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
+              <div className="space-y-2">
+                <Label>Cattle *</Label>
+                <Select value={selectedCattle} onValueChange={setSelectedCattle}>
+                  <SelectTrigger><SelectValue placeholder="Select cattle" /></SelectTrigger>
+                  <SelectContent>
+                    {cattle.map(c => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.tag_number} {c.name && `- ${c.name}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="space-y-2">
-                  <Label>Record Type *</Label>
-                  <Select value={recordType} onValueChange={setRecordType}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="heat_detection">Heat Detection</SelectItem>
-                      <SelectItem value="artificial_insemination">Artificial Insemination</SelectItem>
-                      <SelectItem value="pregnancy_check">Pregnancy Check</SelectItem>
-                      <SelectItem value="calving">Calving</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label>Record Type *</Label>
+                <Select value={recordType} onValueChange={setRecordType}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="heat_detection">Heat Detection</SelectItem>
+                    <SelectItem value="artificial_insemination">Artificial Insemination</SelectItem>
+                    <SelectItem value="pregnancy_check">Pregnancy Check</SelectItem>
+                    <SelectItem value="calving">Calving</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-                <div className="space-y-2">
-                  <Label>Date *</Label>
-                  <Input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)} />
-                </div>
+              <div className="space-y-2">
+                <Label>Date *</Label>
+                <Input type="date" value={recordDate} onChange={e => setRecordDate(e.target.value)} />
+              </div>
 
-                {recordType === "heat_detection" && (
+              {recordType === "heat_detection" && (
+                <div className="space-y-2">
+                  <Label>Heat Cycle Day</Label>
+                  <Input type="number" value={heatCycleDay} onChange={e => setHeatCycleDay(e.target.value)} placeholder="e.g., 21" />
+                </div>
+              )}
+
+              {recordType === "artificial_insemination" && (
+                <>
                   <div className="space-y-2">
-                    <Label>Heat Cycle Day</Label>
-                    <Input type="number" value={heatCycleDay} onChange={e => setHeatCycleDay(e.target.value)} placeholder="e.g., 21" />
+                    <Label>Bull/Semen ID</Label>
+                    <Input value={inseminationBull} onChange={e => setInseminationBull(e.target.value)} placeholder="Bull name or semen batch" />
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label>Technician</Label>
+                    <Input value={inseminationTech} onChange={e => setInseminationTech(e.target.value)} placeholder="AI technician name" />
+                  </div>
+                  <p className="text-sm text-muted-foreground">Expected calving will be calculated automatically (283 days)</p>
+                </>
+              )}
 
-                {recordType === "artificial_insemination" && (
-                  <>
+              {recordType === "pregnancy_check" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Pregnancy Confirmed?</Label>
+                    <Select value={pregnancyConfirmed} onValueChange={setPregnancyConfirmed}>
+                      <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="yes">Yes - Pregnant</SelectItem>
+                        <SelectItem value="no">No - Not Pregnant</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {pregnancyConfirmed === "yes" && (
                     <div className="space-y-2">
-                      <Label>Bull/Semen ID</Label>
-                      <Input value={inseminationBull} onChange={e => setInseminationBull(e.target.value)} placeholder="Bull name or semen batch" />
+                      <Label>Expected Calving Date</Label>
+                      <Input type="date" value={expectedCalving} onChange={e => setExpectedCalving(e.target.value)} />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Technician</Label>
-                      <Input value={inseminationTech} onChange={e => setInseminationTech(e.target.value)} placeholder="AI technician name" />
-                    </div>
-                    <p className="text-sm text-muted-foreground">Expected calving will be calculated automatically (283 days)</p>
-                  </>
-                )}
+                  )}
+                </>
+              )}
 
-                {recordType === "pregnancy_check" && (
-                  <>
+              {recordType === "calving" && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Actual Calving Date</Label>
+                    <Input type="date" value={actualCalving} onChange={e => setActualCalving(e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label>Pregnancy Confirmed?</Label>
-                      <Select value={pregnancyConfirmed} onValueChange={setPregnancyConfirmed}>
+                      <Label>Calf Gender</Label>
+                      <Select value={calfGender} onValueChange={setCalfGender}>
                         <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="yes">Yes - Pregnant</SelectItem>
-                          <SelectItem value="no">No - Not Pregnant</SelectItem>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    {pregnancyConfirmed === "yes" && (
-                      <div className="space-y-2">
-                        <Label>Expected Calving Date</Label>
-                        <Input type="date" value={expectedCalving} onChange={e => setExpectedCalving(e.target.value)} />
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {recordType === "calving" && (
-                  <>
                     <div className="space-y-2">
-                      <Label>Actual Calving Date</Label>
-                      <Input type="date" value={actualCalving} onChange={e => setActualCalving(e.target.value)} />
+                      <Label>Calf Weight (kg)</Label>
+                      <Input type="number" value={calfWeight} onChange={e => setCalfWeight(e.target.value)} />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Calf Gender</Label>
-                        <Select value={calfGender} onValueChange={setCalfGender}>
-                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="male">Male</SelectItem>
-                            <SelectItem value="female">Female</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Calf Weight (kg)</Label>
-                        <Input type="number" value={calfWeight} onChange={e => setCalfWeight(e.target.value)} />
-                      </div>
-                    </div>
-                  </>
-                )}
+                  </div>
+                </>
+              )}
 
-                <div className="space-y-2">
-                  <Label>Notes</Label>
-                  <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional notes..." />
-                </div>
-
-                <Button className="w-full" onClick={handleCreateRecord}>Save Record</Button>
+              <div className="space-y-2">
+                <Label>Notes</Label>
+                <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional notes..." />
               </div>
-            </DialogContent>
-          </Dialog>
-        }
-      />
+
+              <Button className="w-full" onClick={handleCreateRecord}>Save Record</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </PageHeader>
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

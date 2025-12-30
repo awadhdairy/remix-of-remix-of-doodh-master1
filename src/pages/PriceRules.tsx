@@ -203,95 +203,94 @@ export default function PriceRulesPage() {
       <PageHeader
         title="Quality-Based Pricing"
         description="Set price adjustments based on Fat and SNF percentages"
-        action={
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button><Plus className="mr-2 h-4 w-4" /> Add Price Rule</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Price Rule</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Rule Name *</Label>
-                  <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Premium Fat Bonus" />
-                </div>
+      >
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button><Plus className="mr-2 h-4 w-4" /> Add Price Rule</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Price Rule</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Rule Name *</Label>
+                <Input value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Premium Fat Bonus" />
+              </div>
 
+              <div className="space-y-2">
+                <Label>Apply to Product</Label>
+                <Select value={productId} onValueChange={setProductId}>
+                  <SelectTrigger><SelectValue placeholder="All products" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All Products</SelectItem>
+                    {products.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-4">
+                <p className="text-sm font-medium">Fat Percentage Range</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Minimum %</Label>
+                    <Input type="number" step="0.1" value={minFat} onChange={e => setMinFat(e.target.value)} placeholder="e.g., 4.0" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Maximum %</Label>
+                    <Input type="number" step="0.1" value={maxFat} onChange={e => setMaxFat(e.target.value)} placeholder="e.g., 5.0" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-4">
+                <p className="text-sm font-medium">SNF Percentage Range</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Minimum %</Label>
+                    <Input type="number" step="0.1" value={minSnf} onChange={e => setMinSnf(e.target.value)} placeholder="e.g., 8.0" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Maximum %</Label>
+                    <Input type="number" step="0.1" value={maxSnf} onChange={e => setMaxSnf(e.target.value)} placeholder="e.g., 9.0" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Apply to Product</Label>
-                  <Select value={productId} onValueChange={setProductId}>
-                    <SelectTrigger><SelectValue placeholder="All products" /></SelectTrigger>
+                  <Label>Adjustment Type</Label>
+                  <Select value={adjustmentType} onValueChange={setAdjustmentType}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Products</SelectItem>
-                      {products.map(p => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
+                      <SelectItem value="fixed">Fixed (₹ per liter)</SelectItem>
+                      <SelectItem value="percentage">Percentage (%)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
-                <div className="rounded-lg border p-4 space-y-4">
-                  <p className="text-sm font-medium">Fat Percentage Range</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Minimum %</Label>
-                      <Input type="number" step="0.1" value={minFat} onChange={e => setMinFat(e.target.value)} placeholder="e.g., 4.0" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Maximum %</Label>
-                      <Input type="number" step="0.1" value={maxFat} onChange={e => setMaxFat(e.target.value)} placeholder="e.g., 5.0" />
-                    </div>
-                  </div>
+                <div className="space-y-2">
+                  <Label>Adjustment Value *</Label>
+                  <Input 
+                    type="number" 
+                    step="0.01" 
+                    value={adjustment} 
+                    onChange={e => setAdjustment(e.target.value)} 
+                    placeholder={adjustmentType === "percentage" ? "e.g., 5" : "e.g., 2.50"}
+                  />
                 </div>
-
-                <div className="rounded-lg border p-4 space-y-4">
-                  <p className="text-sm font-medium">SNF Percentage Range</p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Minimum %</Label>
-                      <Input type="number" step="0.1" value={minSnf} onChange={e => setMinSnf(e.target.value)} placeholder="e.g., 8.0" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Maximum %</Label>
-                      <Input type="number" step="0.1" value={maxSnf} onChange={e => setMaxSnf(e.target.value)} placeholder="e.g., 9.0" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Adjustment Type</Label>
-                    <Select value={adjustmentType} onValueChange={setAdjustmentType}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="fixed">Fixed (₹ per liter)</SelectItem>
-                        <SelectItem value="percentage">Percentage (%)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Adjustment Value *</Label>
-                    <Input 
-                      type="number" 
-                      step="0.01" 
-                      value={adjustment} 
-                      onChange={e => setAdjustment(e.target.value)} 
-                      placeholder={adjustmentType === "percentage" ? "e.g., 5" : "e.g., 2.50"}
-                    />
-                  </div>
-                </div>
-
-                <p className="text-sm text-muted-foreground">
-                  Use positive values for bonuses, negative for deductions.
-                </p>
-
-                <Button className="w-full" onClick={handleCreateRule}>Create Rule</Button>
               </div>
-            </DialogContent>
-          </Dialog>
-        }
-      />
+
+              <p className="text-sm text-muted-foreground">
+                Use positive values for bonuses, negative for deductions.
+              </p>
+
+              <Button className="w-full" onClick={handleCreateRule}>Create Rule</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </PageHeader>
 
       {/* Stats Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
