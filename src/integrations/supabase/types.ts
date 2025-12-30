@@ -203,6 +203,65 @@ export type Database = {
         }
         Relationships: []
       }
+      breeding_records: {
+        Row: {
+          actual_calving_date: string | null
+          calf_details: Json | null
+          cattle_id: string
+          created_at: string | null
+          expected_calving_date: string | null
+          heat_cycle_day: number | null
+          id: string
+          insemination_bull: string | null
+          insemination_technician: string | null
+          notes: string | null
+          pregnancy_confirmed: boolean | null
+          record_date: string
+          record_type: string
+          recorded_by: string | null
+        }
+        Insert: {
+          actual_calving_date?: string | null
+          calf_details?: Json | null
+          cattle_id: string
+          created_at?: string | null
+          expected_calving_date?: string | null
+          heat_cycle_day?: number | null
+          id?: string
+          insemination_bull?: string | null
+          insemination_technician?: string | null
+          notes?: string | null
+          pregnancy_confirmed?: boolean | null
+          record_date: string
+          record_type: string
+          recorded_by?: string | null
+        }
+        Update: {
+          actual_calving_date?: string | null
+          calf_details?: Json | null
+          cattle_id?: string
+          created_at?: string | null
+          expected_calving_date?: string | null
+          heat_cycle_day?: number | null
+          id?: string
+          insemination_bull?: string | null
+          insemination_technician?: string | null
+          notes?: string | null
+          pregnancy_confirmed?: boolean | null
+          record_date?: string
+          record_type?: string
+          recorded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "breeding_records_cattle_id_fkey"
+            columns: ["cattle_id"]
+            isOneToOne: false
+            referencedRelation: "cattle"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cattle: {
         Row: {
           breed: string
@@ -611,6 +670,55 @@ export type Database = {
           },
         ]
       }
+      employee_shifts: {
+        Row: {
+          created_at: string | null
+          effective_from: string
+          effective_to: string | null
+          employee_id: string
+          id: string
+          shift_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          effective_from: string
+          effective_to?: string | null
+          employee_id: string
+          id?: string
+          shift_id: string
+        }
+        Update: {
+          created_at?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          employee_id?: string
+          id?: string
+          shift_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "employee_shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_shifts_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_auditor_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "employee_shifts_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       employees: {
         Row: {
           address: string | null
@@ -650,6 +758,54 @@ export type Database = {
           salary?: number | null
           updated_at?: string | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      equipment: {
+        Row: {
+          category: string
+          created_at: string | null
+          id: string
+          location: string | null
+          model: string | null
+          name: string
+          notes: string | null
+          purchase_cost: number | null
+          purchase_date: string | null
+          serial_number: string | null
+          status: string | null
+          updated_at: string | null
+          warranty_expiry: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          id?: string
+          location?: string | null
+          model?: string | null
+          name: string
+          notes?: string | null
+          purchase_cost?: number | null
+          purchase_date?: string | null
+          serial_number?: string | null
+          status?: string | null
+          updated_at?: string | null
+          warranty_expiry?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          id?: string
+          location?: string | null
+          model?: string | null
+          name?: string
+          notes?: string | null
+          purchase_cost?: number | null
+          purchase_date?: string | null
+          serial_number?: string | null
+          status?: string | null
+          updated_at?: string | null
+          warranty_expiry?: string | null
         }
         Relationships: []
       }
@@ -849,6 +1005,53 @@ export type Database = {
           },
         ]
       }
+      maintenance_records: {
+        Row: {
+          cost: number | null
+          created_at: string | null
+          description: string | null
+          equipment_id: string
+          id: string
+          maintenance_date: string
+          maintenance_type: string
+          next_maintenance_date: string | null
+          notes: string | null
+          performed_by: string | null
+        }
+        Insert: {
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          equipment_id: string
+          id?: string
+          maintenance_date: string
+          maintenance_type: string
+          next_maintenance_date?: string | null
+          notes?: string | null
+          performed_by?: string | null
+        }
+        Update: {
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          equipment_id?: string
+          id?: string
+          maintenance_date?: string
+          maintenance_type?: string
+          next_maintenance_date?: string | null
+          notes?: string | null
+          performed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_records_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       milk_production: {
         Row: {
           cattle_id: string
@@ -895,6 +1098,98 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notification_logs: {
+        Row: {
+          body: string
+          channel: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          recipient_contact: string | null
+          recipient_id: string
+          recipient_type: string
+          sent_at: string | null
+          status: string | null
+          subject: string | null
+          template_id: string | null
+        }
+        Insert: {
+          body: string
+          channel: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          recipient_contact?: string | null
+          recipient_id: string
+          recipient_type: string
+          sent_at?: string | null
+          status?: string | null
+          subject?: string | null
+          template_id?: string | null
+        }
+        Update: {
+          body?: string
+          channel?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          recipient_contact?: string | null
+          recipient_id?: string
+          recipient_type?: string
+          sent_at?: string | null
+          status?: string | null
+          subject?: string | null
+          template_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_logs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "notification_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_templates: {
+        Row: {
+          body: string
+          channel: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          subject: string | null
+          template_type: string
+          updated_at: string | null
+          variables: Json | null
+        }
+        Insert: {
+          body: string
+          channel: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          subject?: string | null
+          template_type: string
+          updated_at?: string | null
+          variables?: Json | null
+        }
+        Update: {
+          body?: string
+          channel?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          subject?: string | null
+          template_type?: string
+          updated_at?: string | null
+          variables?: Json | null
+        }
+        Relationships: []
       }
       payments: {
         Row: {
@@ -946,6 +1241,131 @@ export type Database = {
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_records: {
+        Row: {
+          base_salary: number
+          bonus: number | null
+          created_at: string | null
+          created_by: string | null
+          deductions: number | null
+          employee_id: string
+          id: string
+          net_salary: number
+          notes: string | null
+          overtime_hours: number | null
+          overtime_rate: number | null
+          pay_period_end: string
+          pay_period_start: string
+          payment_date: string | null
+          payment_mode: string | null
+          payment_status: string | null
+        }
+        Insert: {
+          base_salary?: number
+          bonus?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deductions?: number | null
+          employee_id: string
+          id?: string
+          net_salary?: number
+          notes?: string | null
+          overtime_hours?: number | null
+          overtime_rate?: number | null
+          pay_period_end: string
+          pay_period_start: string
+          payment_date?: string | null
+          payment_mode?: string | null
+          payment_status?: string | null
+        }
+        Update: {
+          base_salary?: number
+          bonus?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          deductions?: number | null
+          employee_id?: string
+          id?: string
+          net_salary?: number
+          notes?: string | null
+          overtime_hours?: number | null
+          overtime_rate?: number | null
+          pay_period_end?: string
+          pay_period_start?: string
+          payment_date?: string | null
+          payment_mode?: string | null
+          payment_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_records_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_records_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: false
+            referencedRelation: "employees_auditor_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      price_rules: {
+        Row: {
+          adjustment_type: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          max_fat_percentage: number | null
+          max_snf_percentage: number | null
+          min_fat_percentage: number | null
+          min_snf_percentage: number | null
+          name: string
+          price_adjustment: number
+          product_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          adjustment_type?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_fat_percentage?: number | null
+          max_snf_percentage?: number | null
+          min_fat_percentage?: number | null
+          min_snf_percentage?: number | null
+          name: string
+          price_adjustment?: number
+          product_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          adjustment_type?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_fat_percentage?: number | null
+          max_snf_percentage?: number | null
+          min_fat_percentage?: number | null
+          min_snf_percentage?: number | null
+          name?: string
+          price_adjustment?: number
+          product_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_rules_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -1028,6 +1448,51 @@ export type Database = {
         }
         Relationships: []
       }
+      route_stops: {
+        Row: {
+          created_at: string | null
+          customer_id: string
+          estimated_arrival_time: string | null
+          id: string
+          notes: string | null
+          route_id: string
+          stop_order: number
+        }
+        Insert: {
+          created_at?: string | null
+          customer_id: string
+          estimated_arrival_time?: string | null
+          id?: string
+          notes?: string | null
+          route_id: string
+          stop_order: number
+        }
+        Update: {
+          created_at?: string | null
+          customer_id?: string
+          estimated_arrival_time?: string | null
+          id?: string
+          notes?: string | null
+          route_id?: string
+          stop_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_stops_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "route_stops_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       routes: {
         Row: {
           area: string | null
@@ -1055,6 +1520,33 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           sequence_order?: number | null
+        }
+        Relationships: []
+      }
+      shifts: {
+        Row: {
+          created_at: string | null
+          end_time: string
+          id: string
+          is_active: boolean | null
+          name: string
+          start_time: string
+        }
+        Insert: {
+          created_at?: string | null
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          start_time: string
+        }
+        Update: {
+          created_at?: string | null
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          start_time?: string
         }
         Relationships: []
       }
