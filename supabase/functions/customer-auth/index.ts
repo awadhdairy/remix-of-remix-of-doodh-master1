@@ -190,8 +190,10 @@ serve(async (req) => {
           const existingUser = userData?.users?.find(u => u.email === email);
           
           if (existingUser) {
+            // Update password AND confirm email
             await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
-              password: pin
+              password: pin,
+              email_confirm: true
             });
 
             // Retry login
