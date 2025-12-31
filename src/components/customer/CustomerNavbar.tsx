@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Home, Package, Calendar, Receipt, User } from 'lucide-react';
+import { Home, Package, ShoppingBag, Calendar, Receipt, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/customer/dashboard', label: 'Home', icon: Home },
   { path: '/customer/subscription', label: 'Subscription', icon: Package },
+  { path: '/customer/products', label: 'Products', icon: ShoppingBag },
   { path: '/customer/deliveries', label: 'Deliveries', icon: Calendar },
   { path: '/customer/billing', label: 'Billing', icon: Receipt },
   { path: '/customer/profile', label: 'Profile', icon: User },

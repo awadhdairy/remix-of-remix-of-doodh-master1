@@ -11,14 +11,26 @@ import { useCustomerAuth } from '@/hooks/useCustomerAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 
+// Dummy customer data for display
+const dummyCustomerData = {
+  name: 'Rajesh Kumar',
+  phone: '9876543210',
+  email: 'rajesh.kumar@gmail.com',
+  address: 'Flat 402, Green Valley Apartments, Sector 15, Gurgaon - 122001'
+};
+
 export default function CustomerProfile() {
   const { customerData, customerId, logout, changePin, refreshCustomerData } = useCustomerAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(customerData?.name || '');
-  const [email, setEmail] = useState(customerData?.email || '');
-  const [address, setAddress] = useState(customerData?.address || '');
+  
+  // Use dummy data if customerData is null
+  const displayData = customerData || dummyCustomerData;
+  
+  const [name, setName] = useState(displayData.name || '');
+  const [email, setEmail] = useState(displayData.email || '');
+  const [address, setAddress] = useState(displayData.address || '');
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [saving, setSaving] = useState(false);
@@ -62,14 +74,14 @@ export default function CustomerProfile() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3"><User className="h-4 w-4 text-muted-foreground" />
-            {editing ? <Input value={name} onChange={e => setName(e.target.value)} placeholder="Name" /> : <span>{customerData?.name}</span>}
+            {editing ? <Input value={name} onChange={e => setName(e.target.value)} placeholder="Name" /> : <span>{displayData.name}</span>}
           </div>
-          <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-muted-foreground" /><span>{customerData?.phone}</span></div>
+          <div className="flex items-center gap-3"><Phone className="h-4 w-4 text-muted-foreground" /><span>{displayData.phone}</span></div>
           <div className="flex items-center gap-3"><Mail className="h-4 w-4 text-muted-foreground" />
-            {editing ? <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" /> : <span>{customerData?.email || 'Not set'}</span>}
+            {editing ? <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" /> : <span>{displayData.email || 'Not set'}</span>}
           </div>
           <div className="flex items-center gap-3"><MapPin className="h-4 w-4 text-muted-foreground" />
-            {editing ? <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Address" /> : <span>{customerData?.address || 'Not set'}</span>}
+            {editing ? <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="Address" /> : <span>{displayData.address || 'Not set'}</span>}
           </div>
           {editing && <Button onClick={handleSaveProfile} disabled={saving} className="w-full">{saving ? 'Saving...' : 'Save Changes'}</Button>}
         </CardContent>

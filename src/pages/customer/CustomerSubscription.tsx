@@ -21,68 +21,44 @@ interface SubscriptionProduct {
   is_active: boolean;
 }
 
+// Dummy subscription data
+const dummyProducts: SubscriptionProduct[] = [
+  { id: '1', product_id: 'p1', product_name: 'Full Cream Milk', quantity: 2, custom_price: null, base_price: 60, is_active: true },
+  { id: '2', product_id: 'p2', product_name: 'Buffalo Milk', quantity: 1, custom_price: 65, base_price: 70, is_active: true },
+  { id: '3', product_id: 'p3', product_name: 'Fresh Curd', quantity: 0.5, custom_price: null, base_price: 55, is_active: true },
+  { id: '4', product_id: 'p4', product_name: 'Paneer', quantity: 0.25, custom_price: 300, base_price: 320, is_active: false },
+];
+
 export default function CustomerSubscription() {
   const { customerId } = useCustomerAuth();
   const { toast } = useToast();
-  const [products, setProducts] = useState<SubscriptionProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [products, setProducts] = useState<SubscriptionProduct[]>(dummyProducts);
+  const [loading, setLoading] = useState(false);
   const [vacationStart, setVacationStart] = useState('');
   const [vacationEnd, setVacationEnd] = useState('');
   const [savingVacation, setSavingVacation] = useState(false);
 
-  useEffect(() => {
-    if (customerId) fetchProducts();
-  }, [customerId]);
-
-  const fetchProducts = async () => {
-    if (!customerId) return;
-    const { data } = await supabase
-      .from('customer_products')
-      .select('*, products(name, base_price)')
-      .eq('customer_id', customerId);
-    
-    if (data) {
-      setProducts(data.map((p: any) => ({
-        id: p.id,
-        product_id: p.product_id,
-        product_name: p.products?.name || 'Unknown',
-        quantity: p.quantity,
-        custom_price: p.custom_price,
-        base_price: p.products?.base_price || 0,
-        is_active: p.is_active
-      })));
-    }
-    setLoading(false);
-  };
-
   const updateQuantity = async (id: string, newQty: number) => {
     if (newQty < 0) return;
-    await supabase.from('customer_products').update({ quantity: newQty }).eq('id', id);
     setProducts(prev => prev.map(p => p.id === id ? { ...p, quantity: newQty } : p));
     toast({ title: "Quantity updated" });
   };
 
   const toggleActive = async (id: string, isActive: boolean) => {
-    await supabase.from('customer_products').update({ is_active: isActive }).eq('id', id);
     setProducts(prev => prev.map(p => p.id === id ? { ...p, is_active: isActive } : p));
     toast({ title: isActive ? "Product activated" : "Product paused" });
   };
 
   const scheduleVacation = async () => {
-    if (!customerId || !vacationStart || !vacationEnd) return;
+    if (!vacationStart || !vacationEnd) return;
     setSavingVacation(true);
-    const { error } = await supabase.from('customer_vacations').insert({
-      customer_id: customerId,
-      start_date: vacationStart,
-      end_date: vacationEnd,
-      is_active: true
-    });
-    setSavingVacation(false);
-    if (!error) {
+    // Simulate API call
+    setTimeout(() => {
+      setSavingVacation(false);
       toast({ title: "Vacation scheduled", description: `Deliveries paused from ${vacationStart} to ${vacationEnd}` });
       setVacationStart('');
       setVacationEnd('');
-    }
+    }, 500);
   };
 
   return (

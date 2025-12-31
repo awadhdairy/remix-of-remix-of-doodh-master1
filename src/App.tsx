@@ -33,6 +33,7 @@ import NotFound from "./pages/NotFound";
 import CustomerAuth from "./pages/customer/CustomerAuth";
 import CustomerDashboard from "./pages/customer/CustomerDashboard";
 import CustomerSubscription from "./pages/customer/CustomerSubscription";
+import CustomerProducts from "./pages/customer/CustomerProducts";
 import CustomerDeliveries from "./pages/customer/CustomerDeliveries";
 import CustomerBilling from "./pages/customer/CustomerBilling";
 import CustomerProfile from "./pages/customer/CustomerProfile";
@@ -79,6 +80,7 @@ const App = () => (
           <Route element={<CustomerAuthProvider><CustomerLayout /></CustomerAuthProvider>}>
             <Route path="/customer/dashboard" element={<CustomerDashboard />} />
             <Route path="/customer/subscription" element={<CustomerSubscription />} />
+            <Route path="/customer/products" element={<CustomerProducts />} />
             <Route path="/customer/deliveries" element={<CustomerDeliveries />} />
             <Route path="/customer/billing" element={<CustomerBilling />} />
             <Route path="/customer/profile" element={<CustomerProfile />} />

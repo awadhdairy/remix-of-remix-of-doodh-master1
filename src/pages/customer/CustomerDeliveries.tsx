@@ -31,72 +31,101 @@ const statusConfig = {
   partial: { color: 'bg-blue-500', icon: Package, label: 'Partial' },
 };
 
+// Dummy delivery data
+const dummyDeliveries: Delivery[] = [
+  {
+    id: '1',
+    delivery_date: new Date().toISOString().split('T')[0],
+    status: 'delivered',
+    delivery_time: new Date().toISOString(),
+    notes: null,
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+      { product_name: 'Fresh Curd', quantity: 0.5, unit_price: 55, total_amount: 27.5 },
+    ]
+  },
+  {
+    id: '2',
+    delivery_date: format(subDays(new Date(), 1), 'yyyy-MM-dd'),
+    status: 'delivered',
+    delivery_time: format(subDays(new Date(), 1), "yyyy-MM-dd'T'06:30:00"),
+    notes: null,
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+      { product_name: 'Buffalo Milk', quantity: 1, unit_price: 70, total_amount: 70 },
+    ]
+  },
+  {
+    id: '3',
+    delivery_date: format(subDays(new Date(), 2), 'yyyy-MM-dd'),
+    status: 'delivered',
+    delivery_time: format(subDays(new Date(), 2), "yyyy-MM-dd'T'06:15:00"),
+    notes: 'Left at doorstep',
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+    ]
+  },
+  {
+    id: '4',
+    delivery_date: format(subDays(new Date(), 3), 'yyyy-MM-dd'),
+    status: 'missed',
+    delivery_time: null,
+    notes: 'Customer not available',
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+      { product_name: 'Fresh Curd', quantity: 0.5, unit_price: 55, total_amount: 27.5 },
+    ]
+  },
+  {
+    id: '5',
+    delivery_date: format(subDays(new Date(), 4), 'yyyy-MM-dd'),
+    status: 'delivered',
+    delivery_time: format(subDays(new Date(), 4), "yyyy-MM-dd'T'06:45:00"),
+    notes: null,
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+      { product_name: 'Buffalo Milk', quantity: 1, unit_price: 70, total_amount: 70 },
+      { product_name: 'Fresh Curd', quantity: 0.5, unit_price: 55, total_amount: 27.5 },
+    ]
+  },
+  {
+    id: '6',
+    delivery_date: format(subDays(new Date(), 5), 'yyyy-MM-dd'),
+    status: 'partial',
+    delivery_time: format(subDays(new Date(), 5), "yyyy-MM-dd'T'07:00:00"),
+    notes: 'Only milk delivered, curd out of stock',
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+    ]
+  },
+  {
+    id: '7',
+    delivery_date: format(subDays(new Date(), 6), 'yyyy-MM-dd'),
+    status: 'delivered',
+    delivery_time: format(subDays(new Date(), 6), "yyyy-MM-dd'T'06:20:00"),
+    notes: null,
+    items: [
+      { product_name: 'Full Cream Milk', quantity: 2, unit_price: 60, total_amount: 120 },
+      { product_name: 'Fresh Curd', quantity: 1, unit_price: 55, total_amount: 55 },
+    ]
+  },
+];
+
 export default function CustomerDeliveries() {
   const { customerId } = useCustomerAuth();
-  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [deliveries, setDeliveries] = useState<Delivery[]>(dummyDeliveries);
+  const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState(7); // Days to show
 
-  useEffect(() => {
-    if (customerId) {
-      fetchDeliveries();
-    }
-  }, [customerId, dateRange]);
+  // Filter deliveries based on date range
+  const filteredDeliveries = deliveries.filter(d => {
+    const deliveryDate = new Date(d.delivery_date);
+    const startDate = subDays(new Date(), dateRange);
+    return deliveryDate >= startDate;
+  });
 
-  const fetchDeliveries = async () => {
-    if (!customerId) return;
-    setLoading(true);
-
-    try {
-      const startDate = format(subDays(new Date(), dateRange), 'yyyy-MM-dd');
-      const endDate = format(new Date(), 'yyyy-MM-dd');
-
-      const { data, error } = await supabase
-        .from('deliveries')
-        .select(`
-          id,
-          delivery_date,
-          status,
-          delivery_time,
-          notes,
-          delivery_items (
-            quantity,
-            unit_price,
-            total_amount,
-            products (name)
-          )
-        `)
-        .eq('customer_id', customerId)
-        .gte('delivery_date', startDate)
-        .lte('delivery_date', endDate)
-        .order('delivery_date', { ascending: false });
-
-      if (error) throw error;
-
-      const formattedDeliveries: Delivery[] = (data || []).map((d: any) => ({
-        id: d.id,
-        delivery_date: d.delivery_date,
-        status: d.status,
-        delivery_time: d.delivery_time,
-        notes: d.notes,
-        items: (d.delivery_items || []).map((item: any) => ({
-          product_name: item.products?.name || 'Unknown',
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total_amount: item.total_amount
-        }))
-      }));
-
-      setDeliveries(formattedDeliveries);
-    } catch (error) {
-      console.error('Error fetching deliveries:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const totalAmount = deliveries
+  const totalAmount = filteredDeliveries
     .filter(d => d.status === 'delivered' || d.status === 'partial')
     .reduce((sum, d) => sum + d.items.reduce((itemSum, item) => itemSum + item.total_amount, 0), 0);
 
@@ -130,19 +159,19 @@ export default function CustomerDeliveries() {
           <div className="grid grid-cols-3 gap-4 text-center">
             <div>
               <p className="text-2xl font-bold text-green-600">
-                {deliveries.filter(d => d.status === 'delivered').length}
+                {filteredDeliveries.filter(d => d.status === 'delivered').length}
               </p>
               <p className="text-sm text-muted-foreground">Delivered</p>
             </div>
             <div>
               <p className="text-2xl font-bold text-amber-600">
-                {deliveries.filter(d => d.status === 'pending').length}
+                {filteredDeliveries.filter(d => d.status === 'pending').length}
               </p>
               <p className="text-sm text-muted-foreground">Pending</p>
             </div>
             <div>
               <p className="text-2xl font-bold text-red-600">
-                {deliveries.filter(d => d.status === 'missed').length}
+                {filteredDeliveries.filter(d => d.status === 'missed').length}
               </p>
               <p className="text-sm text-muted-foreground">Missed</p>
             </div>
@@ -164,7 +193,7 @@ export default function CustomerDeliveries() {
               </CardContent>
             </Card>
           ))
-        ) : deliveries.length === 0 ? (
+        ) : filteredDeliveries.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center">
               <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -173,7 +202,7 @@ export default function CustomerDeliveries() {
             </CardContent>
           </Card>
         ) : (
-          deliveries.map(delivery => {
+          filteredDeliveries.map(delivery => {
             const config = statusConfig[delivery.status];
             const StatusIcon = config.icon;
             const isExpanded = expandedId === delivery.id;

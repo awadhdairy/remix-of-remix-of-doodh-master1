@@ -38,54 +38,63 @@ const statusStyles = {
   overdue: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 };
 
+// Dummy billing data
+const dummyInvoices: Invoice[] = [
+  {
+    id: '1',
+    invoice_number: 'INV-2024-001',
+    billing_period_start: '2024-12-01',
+    billing_period_end: '2024-12-31',
+    total_amount: 4500,
+    final_amount: 4500,
+    paid_amount: 2000,
+    payment_status: 'partial',
+    due_date: '2025-01-10'
+  },
+  {
+    id: '2',
+    invoice_number: 'INV-2024-002',
+    billing_period_start: '2024-11-01',
+    billing_period_end: '2024-11-30',
+    total_amount: 4200,
+    final_amount: 4200,
+    paid_amount: 4200,
+    payment_status: 'paid',
+    due_date: '2024-12-10'
+  },
+  {
+    id: '3',
+    invoice_number: 'INV-2024-003',
+    billing_period_start: '2024-10-01',
+    billing_period_end: '2024-10-31',
+    total_amount: 4800,
+    final_amount: 4800,
+    paid_amount: 4800,
+    payment_status: 'paid',
+    due_date: '2024-11-10'
+  },
+];
+
+const dummyLedger: LedgerEntry[] = [
+  { id: '1', transaction_date: '2024-12-28', transaction_type: 'DELIVERY', description: 'Daily delivery - Full Cream Milk 2L', debit_amount: 120, credit_amount: 0, running_balance: 2500 },
+  { id: '2', transaction_date: '2024-12-27', transaction_type: 'DELIVERY', description: 'Daily delivery - Full Cream Milk 2L + Curd', debit_amount: 147.5, credit_amount: 0, running_balance: 2380 },
+  { id: '3', transaction_date: '2024-12-25', transaction_type: 'PAYMENT', description: 'UPI Payment received', debit_amount: 0, credit_amount: 2000, running_balance: 2232.5 },
+  { id: '4', transaction_date: '2024-12-24', transaction_type: 'DELIVERY', description: 'Daily delivery - Full Cream Milk 2L', debit_amount: 120, credit_amount: 0, running_balance: 4232.5 },
+  { id: '5', transaction_date: '2024-12-23', transaction_type: 'DELIVERY', description: 'Daily delivery - Buffalo Milk 1L', debit_amount: 70, credit_amount: 0, running_balance: 4112.5 },
+  { id: '6', transaction_date: '2024-12-22', transaction_type: 'DELIVERY', description: 'Daily delivery - Full Cream Milk 2L + Curd', debit_amount: 147.5, credit_amount: 0, running_balance: 4042.5 },
+  { id: '7', transaction_date: '2024-12-20', transaction_type: 'PAYMENT', description: 'Cash Payment received', debit_amount: 0, credit_amount: 1500, running_balance: 3895 },
+];
+
 export default function CustomerBilling() {
   const { customerId, customerData } = useCustomerAuth();
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [invoices, setInvoices] = useState<Invoice[]>(dummyInvoices);
+  const [ledger, setLedger] = useState<LedgerEntry[]>(dummyLedger);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (customerId) {
-      fetchBillingData();
-    }
-  }, [customerId]);
-
-  const fetchBillingData = async () => {
-    if (!customerId) return;
-    setLoading(true);
-
-    try {
-      // Fetch invoices
-      const { data: invoiceData } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('customer_id', customerId)
-        .order('billing_period_end', { ascending: false })
-        .limit(12);
-
-      if (invoiceData) {
-        setInvoices(invoiceData);
-      }
-
-      // Fetch ledger entries
-      const { data: ledgerData } = await supabase
-        .from('customer_ledger')
-        .select('*')
-        .eq('customer_id', customerId)
-        .order('transaction_date', { ascending: false })
-        .limit(50);
-
-      if (ledgerData) {
-        setLedger(ledgerData);
-      }
-    } catch (error) {
-      console.error('Error fetching billing data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const outstandingBalance = (customerData?.credit_balance || 0) - (customerData?.advance_balance || 0);
+  // Use dummy balance data
+  const creditBalance = 2500;
+  const advanceBalance = 0;
+  const outstandingBalance = creditBalance - advanceBalance;
   const unpaidInvoices = invoices.filter(i => i.payment_status !== 'paid');
 
   return (
@@ -109,11 +118,11 @@ export default function CustomerBilling() {
           <div className="flex gap-6 text-sm">
             <div>
               <p className="text-muted-foreground">Total Due</p>
-              <p className="font-semibold text-destructive">₹{customerData?.credit_balance?.toFixed(2) || '0.00'}</p>
+              <p className="font-semibold text-destructive">₹{creditBalance.toFixed(2)}</p>
             </div>
             <div>
               <p className="text-muted-foreground">Advance Paid</p>
-              <p className="font-semibold text-green-600">₹{customerData?.advance_balance?.toFixed(2) || '0.00'}</p>
+              <p className="font-semibold text-green-600">₹{advanceBalance.toFixed(2)}</p>
             </div>
           </div>
           {unpaidInvoices.length > 0 && (

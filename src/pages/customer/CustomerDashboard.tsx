@@ -25,82 +25,26 @@ interface SubscriptionItem {
   is_active: boolean;
 }
 
+// Dummy data
+const dummyDeliverySummary: DeliverySummary = { pending: 0, delivered: 1, total: 1 };
+const dummySubscriptionItems: SubscriptionItem[] = [
+  { id: '1', product_name: 'Full Cream Milk', quantity: 2, custom_price: null, is_active: true },
+  { id: '2', product_name: 'Buffalo Milk', quantity: 1, custom_price: 65, is_active: true },
+  { id: '3', product_name: 'Fresh Curd', quantity: 0.5, custom_price: null, is_active: true },
+];
+
 export default function CustomerDashboard() {
   const { customerData, customerId, refreshCustomerData } = useCustomerAuth();
   const navigate = useNavigate();
-  const [deliverySummary, setDeliverySummary] = useState<DeliverySummary>({ pending: 0, delivered: 0, total: 0 });
-  const [subscriptionItems, setSubscriptionItems] = useState<SubscriptionItem[]>([]);
+  const [deliverySummary, setDeliverySummary] = useState<DeliverySummary>(dummyDeliverySummary);
+  const [subscriptionItems, setSubscriptionItems] = useState<SubscriptionItem[]>(dummySubscriptionItems);
   const [isOnVacation, setIsOnVacation] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (customerId) {
-      fetchDashboardData();
-    }
-  }, [customerId]);
-
-  const fetchDashboardData = async () => {
-    if (!customerId) return;
-    setLoading(true);
-
-    try {
-      // Fetch today's deliveries
-      const today = format(new Date(), 'yyyy-MM-dd');
-      const { data: deliveries } = await supabase
-        .from('deliveries')
-        .select('status')
-        .eq('customer_id', customerId)
-        .eq('delivery_date', today);
-
-      if (deliveries) {
-        setDeliverySummary({
-          pending: deliveries.filter(d => d.status === 'pending').length,
-          delivered: deliveries.filter(d => d.status === 'delivered').length,
-          total: deliveries.length
-        });
-      }
-
-      // Fetch subscription items
-      const { data: products } = await supabase
-        .from('customer_products')
-        .select(`
-          id,
-          quantity,
-          custom_price,
-          is_active,
-          products (name)
-        `)
-        .eq('customer_id', customerId);
-
-      if (products) {
-        setSubscriptionItems(products.map((p: any) => ({
-          id: p.id,
-          product_name: p.products?.name || 'Unknown',
-          quantity: p.quantity,
-          custom_price: p.custom_price,
-          is_active: p.is_active
-        })));
-      }
-
-      // Check vacation status
-      const { data: vacations } = await supabase
-        .from('customer_vacations')
-        .select('*')
-        .eq('customer_id', customerId)
-        .eq('is_active', true)
-        .gte('end_date', today)
-        .lte('start_date', today);
-
-      setIsOnVacation(!!vacations && vacations.length > 0);
-
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const outstandingBalance = (customerData?.credit_balance || 0) - (customerData?.advance_balance || 0);
+  // Use dummy balance data
+  const creditBalance = 2500;
+  const advanceBalance = 0;
+  const outstandingBalance = creditBalance - advanceBalance;
 
   return (
     <div className="space-y-6">
@@ -131,8 +75,8 @@ export default function CustomerDashboard() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-4 text-sm text-muted-foreground">
-            <span>Due: ₹{customerData?.credit_balance?.toFixed(2) || '0.00'}</span>
-            <span>Advance: ₹{customerData?.advance_balance?.toFixed(2) || '0.00'}</span>
+            <span>Due: ₹{creditBalance.toFixed(2)}</span>
+            <span>Advance: ₹{advanceBalance.toFixed(2)}</span>
           </div>
           <Button variant="outline" className="w-full mt-4" onClick={() => navigate('/customer/billing')}>
             <Receipt className="mr-2 h-4 w-4" />
