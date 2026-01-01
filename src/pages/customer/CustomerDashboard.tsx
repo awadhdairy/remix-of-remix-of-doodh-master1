@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
 import { 
-  Package, Calendar, Receipt, TrendingUp, 
+  Package, Calendar, Receipt, 
   Pause, Play, ChevronRight, AlertCircle 
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -25,26 +25,103 @@ interface SubscriptionItem {
   is_active: boolean;
 }
 
-// Dummy data
-const dummyDeliverySummary: DeliverySummary = { pending: 0, delivered: 1, total: 1 };
-const dummySubscriptionItems: SubscriptionItem[] = [
-  { id: '1', product_name: 'Full Cream Milk', quantity: 2, custom_price: null, is_active: true },
-  { id: '2', product_name: 'Buffalo Milk', quantity: 1, custom_price: 65, is_active: true },
-  { id: '3', product_name: 'Fresh Curd', quantity: 0.5, custom_price: null, is_active: true },
-];
-
 export default function CustomerDashboard() {
-  const { customerData, customerId, refreshCustomerData } = useCustomerAuth();
+  const { customerData, customerId } = useCustomerAuth();
   const navigate = useNavigate();
-  const [deliverySummary, setDeliverySummary] = useState<DeliverySummary>(dummyDeliverySummary);
-  const [subscriptionItems, setSubscriptionItems] = useState<SubscriptionItem[]>(dummySubscriptionItems);
+  const [deliverySummary, setDeliverySummary] = useState<DeliverySummary>({ pending: 0, delivered: 0, total: 0 });
+  const [subscriptionItems, setSubscriptionItems] = useState<SubscriptionItem[]>([]);
   const [isOnVacation, setIsOnVacation] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Use dummy balance data
-  const creditBalance = 2500;
-  const advanceBalance = 0;
+  // Get balance from customerData
+  const creditBalance = customerData?.credit_balance || 0;
+  const advanceBalance = customerData?.advance_balance || 0;
   const outstandingBalance = creditBalance - advanceBalance;
+
+  useEffect(() => {
+    if (customerId) {
+      fetchDashboardData();
+    }
+  }, [customerId]);
+
+  const fetchDashboardData = async () => {
+    if (!customerId) return;
+    
+    setLoading(true);
+    try {
+      // Fetch subscription items
+      const { data: subscriptions, error: subError } = await supabase
+        .from('customer_products')
+        .select(`
+          id,
+          quantity,
+          custom_price,
+          is_active,
+          products (name)
+        `)
+        .eq('customer_id', customerId);
+
+      if (subError) throw subError;
+
+      const formattedSubs: SubscriptionItem[] = (subscriptions || []).map(sub => ({
+        id: sub.id,
+        product_name: (sub.products as any)?.name || 'Unknown Product',
+        quantity: sub.quantity,
+        custom_price: sub.custom_price,
+        is_active: sub.is_active ?? true
+      }));
+      setSubscriptionItems(formattedSubs);
+
+      // Fetch today's deliveries
+      const today = new Date().toISOString().split('T')[0];
+      const { data: deliveries, error: delError } = await supabase
+        .from('deliveries')
+        .select('id, status')
+        .eq('customer_id', customerId)
+        .eq('delivery_date', today);
+
+      if (delError) throw delError;
+
+      const delivered = (deliveries || []).filter(d => d.status === 'delivered').length;
+      const pending = (deliveries || []).filter(d => d.status === 'pending').length;
+      setDeliverySummary({
+        delivered,
+        pending,
+        total: deliveries?.length || 0
+      });
+
+      // Check vacation status
+      const { data: vacation, error: vacError } = await supabase
+        .from('customer_vacations')
+        .select('id')
+        .eq('customer_id', customerId)
+        .eq('is_active', true)
+        .lte('start_date', today)
+        .gte('end_date', today)
+        .maybeSingle();
+
+      if (vacError) throw vacError;
+      setIsOnVacation(!!vacation);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-32 w-full" />
+        <div className="grid grid-cols-2 gap-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -128,17 +205,11 @@ export default function CustomerDashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2].map(i => (
-                <div key={i} className="h-12 bg-muted animate-pulse rounded" />
-              ))}
-            </div>
-          ) : subscriptionItems.length === 0 ? (
+          {subscriptionItems.length === 0 ? (
             <div className="text-center py-6">
               <Package className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
               <p className="text-muted-foreground">No active subscription</p>
-              <Button variant="link" onClick={() => navigate('/customer/subscription')}>
+              <Button variant="link" onClick={() => navigate('/customer/products')}>
                 Browse Products
               </Button>
             </div>
