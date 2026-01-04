@@ -23,8 +23,9 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Receipt, IndianRupee, Plus, Loader2, Eye } from "lucide-react";
+import { Receipt, IndianRupee, Loader2 } from "lucide-react";
 import { format } from "date-fns";
+import { InvoicePDFGenerator } from "@/components/billing/InvoicePDFGenerator";
 
 interface Customer {
   id: string;
@@ -283,6 +284,13 @@ export default function BillingPage() {
       render: (item: InvoiceWithCustomer) => <StatusBadge status={item.payment_status} />,
     },
     {
+      key: "download",
+      header: "Invoice",
+      render: (item: InvoiceWithCustomer) => (
+        <InvoicePDFGenerator invoice={item} />
+      ),
+    },
+    {
       key: "actions",
       header: "Actions",
       render: (item: InvoiceWithCustomer) => (
@@ -297,7 +305,7 @@ export default function BillingPage() {
           }}
           disabled={item.payment_status === "paid"}
         >
-          <IndianRupee className="h-3 w-3" /> Record Payment
+          <IndianRupee className="h-3 w-3" /> Pay
         </Button>
       ),
     },
