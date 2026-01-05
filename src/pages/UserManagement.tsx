@@ -25,7 +25,8 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { UserPlus, Users, Shield, Phone, KeyRound, User, RotateCcw } from "lucide-react";
+import { UserPlus, Users, Shield, Phone, KeyRound, User, RotateCcw, Trash2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { sanitizeError } from "@/lib/errors";
 import { Switch } from "@/components/ui/switch";
 
@@ -64,10 +65,12 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resetPinDialogOpen, setResetPinDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [newPin, setNewPin] = useState("");
   const [creating, setCreating] = useState(false);
   const [resettingPin, setResettingPin] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
 
   // Form state
@@ -236,6 +239,39 @@ export default function UserManagement() {
     setResetPinDialogOpen(true);
   };
 
+  const openDeleteDialog = (user: UserProfile) => {
+    setSelectedUser(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+
+    setDeleting(true);
+    try {
+      const response = await supabase.functions.invoke("delete-user", {
+        body: { userId: selectedUser.id },
+      });
+
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to delete user");
+      }
+
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success(response.data.message);
+      setDeleteDialogOpen(false);
+      setSelectedUser(null);
+      fetchUsers();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete user");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const columns = [
     {
       key: "full_name",
@@ -289,16 +325,28 @@ export default function UserManagement() {
       key: "actions",
       header: "Actions",
       render: (user: UserProfile) => (
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => openResetPinDialog(user)}
-          disabled={user.role === "super_admin"}
-        >
-          <RotateCcw className="h-3 w-3" />
-          Reset PIN
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => openResetPinDialog(user)}
+            disabled={user.role === "super_admin"}
+          >
+            <RotateCcw className="h-3 w-3" />
+            Reset PIN
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="gap-1"
+            onClick={() => openDeleteDialog(user)}
+            disabled={user.role === "super_admin"}
+          >
+            <Trash2 className="h-3 w-3" />
+            Delete
+          </Button>
+        </div>
       ),
     },
   ];
@@ -472,6 +520,17 @@ export default function UserManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete User Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete User Permanently"
+        description={`Are you sure you want to permanently delete "${selectedUser?.full_name}"? This action cannot be undone and will remove all associated data including their profile and login access.`}
+        confirmText={deleting ? "Deleting..." : "Delete Permanently"}
+        onConfirm={handleDeleteUser}
+        variant="destructive"
+      />
     </div>
   );
 }
