@@ -183,7 +183,7 @@ export default function BreedingPage() {
       key: "record_type" as const, 
       header: "Type", 
       render: (row: BreedingRecord) => {
-        const typeInfo = recordTypeLabels[row.record_type];
+        const typeInfo = recordTypeLabels[row.record_type] || { label: row.record_type, color: "bg-gray-500", icon: AlertCircle };
         return (
           <Badge className={`${typeInfo.color} text-white`}>
             {typeInfo.label}
