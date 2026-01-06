@@ -265,7 +265,7 @@ export default function BreedingPage() {
             <DialogTrigger asChild>
               <Button><Plus className="mr-2 h-4 w-4" /> Add Record</Button>
             </DialogTrigger>
-          <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Add Breeding Record</DialogTitle>
             </DialogHeader>
@@ -377,11 +377,20 @@ export default function BreedingPage() {
               <Button className="w-full" onClick={handleCreateRecord}>Save Record</Button>
             </div>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+        </div>
       </PageHeader>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {viewMode === "calendar" ? (
+        <BreedingCalendar 
+          breedingRecords={records} 
+          healthRecords={healthRecords} 
+          cattle={cattle} 
+        />
+      ) : (
+        <>
+          {/* Stats Cards */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Heat Detections</CardTitle>
@@ -470,8 +479,10 @@ export default function BreedingPage() {
               <DataTable data={records} columns={columns} searchable searchPlaceholder="Search records..." />
             </CardContent>
           </Card>
+          </div>
         </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }
