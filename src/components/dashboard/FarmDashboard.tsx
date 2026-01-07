@@ -210,7 +210,7 @@ export function FarmDashboard() {
                   className="flex items-center justify-between rounded-lg border p-3"
                 >
                   <div className="flex items-center gap-3">
-                    <AlertTriangle className="h-4 w-4 text-yellow-500" />
+                    <AlertTriangle className="h-4 w-4 text-warning" />
                     <div>
                       <p className="font-medium">{alert.title}</p>
                       <p className="text-xs text-muted-foreground">

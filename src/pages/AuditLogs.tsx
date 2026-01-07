@@ -29,11 +29,11 @@ interface Profile {
 }
 
 const actionColors: Record<string, string> = {
-  create: "bg-green-500",
-  update: "bg-blue-500",
-  delete: "bg-red-500",
-  login: "bg-purple-500",
-  logout: "bg-gray-500",
+  create: "bg-success",
+  update: "bg-info",
+  delete: "bg-destructive",
+  login: "bg-breeding-pregnancy",
+  logout: "bg-status-inactive",
 };
 
 const entityLabels: Record<string, string> = {

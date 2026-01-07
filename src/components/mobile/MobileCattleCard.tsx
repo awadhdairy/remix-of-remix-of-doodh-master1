@@ -27,17 +27,17 @@ interface MobileCattleCardProps {
 }
 
 const statusColors: Record<string, string> = {
-  active: "bg-green-500",
-  dry: "bg-yellow-500",
-  sold: "bg-gray-500",
-  deceased: "bg-red-500",
+  active: "bg-success",
+  dry: "bg-warning",
+  sold: "bg-status-inactive",
+  deceased: "bg-destructive",
 };
 
 const lactationColors: Record<string, string> = {
-  lactating: "bg-blue-500",
-  dry: "bg-yellow-500",
-  pregnant: "bg-purple-500",
-  calving: "bg-pink-500",
+  lactating: "bg-info",
+  dry: "bg-warning",
+  pregnant: "bg-breeding-pregnancy",
+  calving: "bg-breeding-heat",
 };
 
 export function MobileCattleCard({
@@ -81,19 +81,19 @@ export function MobileCattleCard({
         <div className="grid grid-cols-3 gap-3 mt-4">
           {lastProduction !== undefined && (
             <div className="flex items-center gap-2 text-sm">
-              <Droplets className="h-4 w-4 text-blue-500" />
+              <Droplets className="h-4 w-4 text-info" />
               <span>{lastProduction}L</span>
             </div>
           )}
           {weight && (
             <div className="flex items-center gap-2 text-sm">
-              <Weight className="h-4 w-4 text-green-500" />
+              <Weight className="h-4 w-4 text-success" />
               <span>{weight}kg</span>
             </div>
           )}
           {expectedCalving && (
             <div className="flex items-center gap-2 text-sm">
-              <Baby className="h-4 w-4 text-pink-500" />
+              <Baby className="h-4 w-4 text-breeding-heat" />
               <span>{format(new Date(expectedCalving), "dd MMM")}</span>
             </div>
           )}

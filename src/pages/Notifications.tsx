@@ -43,15 +43,15 @@ interface NotificationLog {
 }
 
 const channelColors: Record<string, string> = {
-  sms: "bg-blue-500",
-  whatsapp: "bg-green-500",
-  email: "bg-purple-500",
+  sms: "bg-info",
+  whatsapp: "bg-success",
+  email: "bg-breeding-pregnancy",
 };
 
 const statusColors: Record<string, string> = {
-  pending: "bg-yellow-500",
-  sent: "bg-green-500",
-  failed: "bg-red-500",
+  pending: "bg-warning",
+  sent: "bg-success",
+  failed: "bg-destructive",
 };
 
 const templateTypes = [
@@ -276,20 +276,20 @@ export default function NotificationsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Sent</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CheckCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{totalSent}</div>
+            <div className="text-2xl font-bold text-success">{totalSent}</div>
             <p className="text-xs text-muted-foreground">delivered</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Pending</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-500" />
+            <Clock className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{pendingCount}</div>
+            <div className="text-2xl font-bold text-warning">{pendingCount}</div>
             <p className="text-xs text-muted-foreground">in queue</p>
           </CardContent>
         </Card>

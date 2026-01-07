@@ -63,6 +63,31 @@ export default {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
         },
+        status: {
+          active: "hsl(var(--status-active))",
+          pending: "hsl(var(--status-pending))",
+          inactive: "hsl(var(--status-inactive))",
+        },
+        role: {
+          admin: "hsl(var(--role-admin))",
+          manager: "hsl(var(--role-manager))",
+          accountant: "hsl(var(--role-accountant))",
+          delivery: "hsl(var(--role-delivery))",
+          farm: "hsl(var(--role-farm))",
+          vet: "hsl(var(--role-vet))",
+          auditor: "hsl(var(--role-auditor))",
+        },
+        breeding: {
+          heat: "hsl(var(--breeding-heat))",
+          insemination: "hsl(var(--breeding-insemination))",
+          pregnancy: "hsl(var(--breeding-pregnancy))",
+          calving: "hsl(var(--breeding-calving))",
+        },
+        health: {
+          vaccination: "hsl(var(--health-vaccination))",
+          checkup: "hsl(var(--health-checkup))",
+          treatment: "hsl(var(--health-treatment))",
+        },
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
