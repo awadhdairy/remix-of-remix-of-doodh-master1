@@ -33,10 +33,10 @@ interface MobileDeliveryCardProps {
 }
 
 const statusConfig: Record<string, { color: string; icon: any; label: string }> = {
-  pending: { color: "bg-yellow-500", icon: Clock, label: "Pending" },
-  delivered: { color: "bg-green-500", icon: CheckCircle, label: "Delivered" },
-  missed: { color: "bg-red-500", icon: XCircle, label: "Missed" },
-  partial: { color: "bg-orange-500", icon: Package, label: "Partial" },
+  pending: { color: "bg-warning", icon: Clock, label: "Pending" },
+  delivered: { color: "bg-success", icon: CheckCircle, label: "Delivered" },
+  missed: { color: "bg-destructive", icon: XCircle, label: "Missed" },
+  partial: { color: "bg-role-delivery", icon: Package, label: "Partial" },
 };
 
 export function MobileDeliveryCard({

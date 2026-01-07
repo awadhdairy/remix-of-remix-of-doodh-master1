@@ -49,13 +49,13 @@ const roleOptions = [
 ];
 
 const roleColors: Record<string, string> = {
-  super_admin: "bg-red-500/10 text-red-500 border-red-500/20",
-  manager: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  accountant: "bg-green-500/10 text-green-500 border-green-500/20",
-  delivery_staff: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-  farm_worker: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-  vet_staff: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  auditor: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+  super_admin: "bg-role-admin/10 text-role-admin border-role-admin/20",
+  manager: "bg-role-manager/10 text-role-manager border-role-manager/20",
+  accountant: "bg-role-accountant/10 text-role-accountant border-role-accountant/20",
+  delivery_staff: "bg-role-delivery/10 text-role-delivery border-role-delivery/20",
+  farm_worker: "bg-role-farm/10 text-role-farm border-role-farm/20",
+  vet_staff: "bg-role-vet/10 text-role-vet border-role-vet/20",
+  auditor: "bg-role-auditor/10 text-role-auditor border-role-auditor/20",
 };
 
 export default function UserManagement() {
@@ -315,7 +315,7 @@ export default function UserManagement() {
             onCheckedChange={() => handleToggleStatus(user.id, user.is_active)}
             disabled={togglingUser === user.id || user.role === "super_admin"}
           />
-          <span className={user.is_active ? "text-green-600" : "text-muted-foreground"}>
+          <span className={user.is_active ? "text-success" : "text-muted-foreground"}>
             {user.is_active ? "Active" : "Inactive"}
           </span>
         </div>

@@ -52,9 +52,9 @@ const categories = [
 ];
 
 const statusColors: Record<string, string> = {
-  active: "bg-green-500",
-  under_maintenance: "bg-yellow-500",
-  retired: "bg-gray-500",
+  active: "bg-success",
+  under_maintenance: "bg-warning",
+  retired: "bg-status-inactive",
 };
 
 export default function EquipmentPage() {
@@ -285,7 +285,7 @@ export default function EquipmentPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Under Maintenance</CardTitle>
-            <Wrench className="h-4 w-4 text-yellow-500" />
+            <Wrench className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{underMaintenance}</div>

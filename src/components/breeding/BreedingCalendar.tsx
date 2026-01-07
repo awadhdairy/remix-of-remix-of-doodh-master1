@@ -72,15 +72,15 @@ interface BreedingCalendarProps {
 }
 
 const eventTypeConfig = {
-  heat: { label: "Heat Detection", color: "bg-pink-500", icon: Heart, priority: 1 },
-  heat_expected: { label: "Expected Heat", color: "bg-pink-300", icon: Heart, priority: 2 },
-  insemination: { label: "AI/Insemination", color: "bg-blue-500", icon: Syringe, priority: 1 },
-  pregnancy_check: { label: "Pregnancy Check", color: "bg-purple-500", icon: AlertCircle, priority: 1 },
-  expected_calving: { label: "Expected Calving", color: "bg-amber-500", icon: Baby, priority: 1 },
-  calving: { label: "Calving", color: "bg-green-500", icon: Baby, priority: 1 },
-  vaccination: { label: "Vaccination", color: "bg-cyan-500", icon: Pill, priority: 2 },
-  health_check: { label: "Health Check", color: "bg-teal-500", icon: Stethoscope, priority: 2 },
-  dry_off: { label: "Dry Off", color: "bg-orange-500", icon: Clock, priority: 2 },
+  heat: { label: "Heat Detection", color: "bg-breeding-heat", icon: Heart, priority: 1 },
+  heat_expected: { label: "Expected Heat", color: "bg-breeding-heat/60", icon: Heart, priority: 2 },
+  insemination: { label: "AI/Insemination", color: "bg-breeding-insemination", icon: Syringe, priority: 1 },
+  pregnancy_check: { label: "Pregnancy Check", color: "bg-breeding-pregnancy", icon: AlertCircle, priority: 1 },
+  expected_calving: { label: "Expected Calving", color: "bg-warning", icon: Baby, priority: 1 },
+  calving: { label: "Calving", color: "bg-breeding-calving", icon: Baby, priority: 1 },
+  vaccination: { label: "Vaccination", color: "bg-health-vaccination", icon: Pill, priority: 2 },
+  health_check: { label: "Health Check", color: "bg-health-checkup", icon: Stethoscope, priority: 2 },
+  dry_off: { label: "Dry Off", color: "bg-role-delivery", icon: Clock, priority: 2 },
 };
 
 export function BreedingCalendar({ cattle, breedingRecords, healthRecords }: BreedingCalendarProps) {
@@ -360,21 +360,21 @@ export function BreedingCalendar({ cattle, breedingRecords, healthRecords }: Bre
             <p className="text-xs text-muted-foreground">Total Events</p>
           </CardContent>
         </Card>
-        <Card className="bg-pink-500/10">
+        <Card className="bg-breeding-heat/10">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-pink-500">{monthStats.heat}</p>
+            <p className="text-2xl font-bold text-breeding-heat">{monthStats.heat}</p>
             <p className="text-xs text-muted-foreground">Heat Events</p>
           </CardContent>
         </Card>
-        <Card className="bg-amber-500/10">
+        <Card className="bg-warning/10">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-amber-500">{monthStats.calvings}</p>
+            <p className="text-2xl font-bold text-warning">{monthStats.calvings}</p>
             <p className="text-xs text-muted-foreground">Calvings</p>
           </CardContent>
         </Card>
-        <Card className="bg-teal-500/10">
+        <Card className="bg-health-checkup/10">
           <CardContent className="p-4 text-center">
-            <p className="text-2xl font-bold text-teal-500">{monthStats.health}</p>
+            <p className="text-2xl font-bold text-health-checkup">{monthStats.health}</p>
             <p className="text-xs text-muted-foreground">Health Tasks</p>
           </CardContent>
         </Card>

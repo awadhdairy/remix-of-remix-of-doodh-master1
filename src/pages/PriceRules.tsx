@@ -317,7 +317,7 @@ export default function PriceRulesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">SNF-Based Rules</CardTitle>
-            <Droplets className="h-4 w-4 text-blue-500" />
+            <Droplets className="h-4 w-4 text-info" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{snfBasedRules}</div>

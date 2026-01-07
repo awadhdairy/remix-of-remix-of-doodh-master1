@@ -19,13 +19,13 @@ const roleLabels: Record<string, string> = {
 };
 
 const roleColors: Record<string, string> = {
-  super_admin: "bg-primary text-primary-foreground",
-  manager: "bg-blue-500 text-white",
-  accountant: "bg-green-500 text-white",
-  delivery_staff: "bg-orange-500 text-white",
-  farm_worker: "bg-amber-600 text-white",
-  vet_staff: "bg-purple-500 text-white",
-  auditor: "bg-slate-500 text-white",
+  super_admin: "bg-role-admin text-white",
+  manager: "bg-role-manager text-white",
+  accountant: "bg-role-accountant text-white",
+  delivery_staff: "bg-role-delivery text-white",
+  farm_worker: "bg-role-farm text-white",
+  vet_staff: "bg-role-vet text-white",
+  auditor: "bg-role-auditor text-white",
 };
 
 export default function Dashboard() {

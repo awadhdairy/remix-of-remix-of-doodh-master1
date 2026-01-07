@@ -25,10 +25,10 @@ interface Delivery {
 }
 
 const statusConfig = {
-  pending: { color: 'bg-amber-500', icon: Clock, label: 'Pending' },
-  delivered: { color: 'bg-green-500', icon: Check, label: 'Delivered' },
-  missed: { color: 'bg-red-500', icon: X, label: 'Missed' },
-  partial: { color: 'bg-blue-500', icon: Package, label: 'Partial' },
+  pending: { color: 'bg-warning', icon: Clock, label: 'Pending' },
+  delivered: { color: 'bg-success', icon: Check, label: 'Delivered' },
+  missed: { color: 'bg-destructive', icon: X, label: 'Missed' },
+  partial: { color: 'bg-info', icon: Package, label: 'Partial' },
 };
 
 // Dummy delivery data

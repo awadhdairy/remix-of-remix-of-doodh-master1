@@ -42,10 +42,10 @@ interface BreedingRecord {
 }
 
 const recordTypeLabels: Record<string, { label: string; color: string; icon: any }> = {
-  heat_detection: { label: "Heat Detection", color: "bg-pink-500", icon: Heart },
-  artificial_insemination: { label: "Artificial Insemination", color: "bg-blue-500", icon: Syringe },
-  pregnancy_check: { label: "Pregnancy Check", color: "bg-purple-500", icon: AlertCircle },
-  calving: { label: "Calving", color: "bg-green-500", icon: Baby },
+  heat_detection: { label: "Heat Detection", color: "bg-breeding-heat", icon: Heart },
+  artificial_insemination: { label: "Artificial Insemination", color: "bg-breeding-insemination", icon: Syringe },
+  pregnancy_check: { label: "Pregnancy Check", color: "bg-breeding-pregnancy", icon: AlertCircle },
+  calving: { label: "Calving", color: "bg-breeding-calving", icon: Baby },
 };
 
 interface HealthRecord {
@@ -216,13 +216,13 @@ export default function BreedingPage() {
       render: (row: BreedingRecord) => {
         if (row.record_type === "pregnancy_check") {
           return row.pregnancy_confirmed ? (
-            <Badge className="bg-green-500">Confirmed</Badge>
+            <Badge className="bg-success">Confirmed</Badge>
           ) : (
             <Badge variant="destructive">Not Pregnant</Badge>
           );
         }
         if (row.record_type === "calving" && row.actual_calving_date) {
-          return <Badge className="bg-green-500">Completed</Badge>;
+          return <Badge className="bg-success">Completed</Badge>;
         }
         return "-";
       }
@@ -394,7 +394,7 @@ export default function BreedingPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Heat Detections</CardTitle>
-            <Heart className="h-4 w-4 text-pink-500" />
+            <Heart className="h-4 w-4 text-breeding-heat" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{heatRecords}</div>
@@ -404,7 +404,7 @@ export default function BreedingPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">AI Records</CardTitle>
-            <Syringe className="h-4 w-4 text-blue-500" />
+            <Syringe className="h-4 w-4 text-breeding-insemination" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{aiRecords}</div>
@@ -414,7 +414,7 @@ export default function BreedingPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Confirmed Pregnant</CardTitle>
-            <AlertCircle className="h-4 w-4 text-purple-500" />
+            <AlertCircle className="h-4 w-4 text-breeding-pregnancy" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{pregnantCount}</div>
@@ -424,7 +424,7 @@ export default function BreedingPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Calvings This Month</CardTitle>
-            <Baby className="h-4 w-4 text-green-500" />
+            <Baby className="h-4 w-4 text-breeding-calving" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{calvingsThisMonth}</div>
