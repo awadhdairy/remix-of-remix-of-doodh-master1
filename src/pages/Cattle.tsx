@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { MilkHistoryDialog } from "@/components/production/MilkHistoryDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,8 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Beef, Edit, Trash2, Eye, Loader2 } from "lucide-react";
-import { format } from "date-fns";
+import { Beef, Edit, Trash2, Loader2, Droplets } from "lucide-react";
 
 interface Cattle {
   id: string;
@@ -63,6 +63,11 @@ export default function CattlePage() {
   const [formData, setFormData] = useState(emptyFormData);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  // Milk history dialog state
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyCattleId, setHistoryCattleId] = useState<string>("");
+  const [historyCattleName, setHistoryCattleName] = useState<string>("");
 
   useEffect(() => {
     fetchCattle();
@@ -179,6 +184,20 @@ export default function CattlePage() {
     }
   };
 
+  const handleOpenMilkHistory = (cattle: Cattle) => {
+    setHistoryCattleId(cattle.id);
+    setHistoryCattleName(`${cattle.tag_number}${cattle.name ? ` (${cattle.name})` : ""}`);
+    setHistoryDialogOpen(true);
+  };
+
+  // Check if cattle has milk production history (is or was lactating)
+  const canShowMilkHistory = (cattle: Cattle) => {
+    return cattle.lactation_status === "lactating" || 
+           cattle.lactation_status === "dry" || 
+           cattle.lactation_status === "pregnant" ||
+           cattle.lactation_status === "calving";
+  };
+
   const columns = [
     {
       key: "tag_number",
@@ -223,6 +242,19 @@ export default function CattlePage() {
       header: "Actions",
       render: (item: Cattle) => (
         <div className="flex items-center gap-1">
+          {canShowMilkHistory(item) && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenMilkHistory(item);
+              }}
+              title="View Milk History"
+            >
+              <Droplets className="h-4 w-4 text-info" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -476,6 +508,15 @@ export default function CattlePage() {
         confirmText="Delete"
         onConfirm={handleDelete}
         variant="destructive"
+      />
+
+      {/* Milk History Dialog */}
+      <MilkHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        mode="cattle"
+        cattleId={historyCattleId}
+        cattleName={historyCattleName}
       />
     </div>
   );

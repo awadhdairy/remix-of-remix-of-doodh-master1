@@ -3,12 +3,10 @@ import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
-import { StatusBadge } from "@/components/common/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -16,16 +14,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Droplets, Sun, Moon, TrendingUp, Loader2, Calendar } from "lucide-react";
+import { MilkHistoryDialog } from "@/components/production/MilkHistoryDialog";
+import { Droplets, Sun, Moon, Loader2, History } from "lucide-react";
 import { format } from "date-fns";
 
 interface Cattle {
@@ -61,6 +53,13 @@ export default function ProductionPage() {
   const [session, setSession] = useState<"morning" | "evening">("morning");
   const [entries, setEntries] = useState<Record<string, { quantity: string; fat: string; snf: string; notes: string }>>({});
   const { toast } = useToast();
+
+  // History dialog state
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [historyMode, setHistoryMode] = useState<"cattle" | "daily">("daily");
+  const [selectedCattleId, setSelectedCattleId] = useState<string>("");
+  const [selectedCattleName, setSelectedCattleName] = useState<string>("");
+  const [sessionFilter, setSessionFilter] = useState<"morning" | "evening" | "total">("total");
 
   useEffect(() => {
     fetchData();
@@ -179,6 +178,21 @@ export default function ProductionPage() {
     }
   };
 
+  // Open cattle history dialog
+  const handleOpenCattleHistory = (cattleId: string, cattleName: string) => {
+    setHistoryMode("cattle");
+    setSelectedCattleId(cattleId);
+    setSelectedCattleName(cattleName);
+    setHistoryDialogOpen(true);
+  };
+
+  // Open daily totals history dialog
+  const handleOpenDailyHistory = (filter: "morning" | "evening" | "total") => {
+    setHistoryMode("daily");
+    setSessionFilter(filter);
+    setHistoryDialogOpen(true);
+  };
+
   const todayTotal = productions
     .filter((p) => p.production_date === format(new Date(), "yyyy-MM-dd"))
     .reduce((sum, p) => sum + Number(p.quantity_liters), 0);
@@ -219,9 +233,16 @@ export default function ProductionPage() {
       key: "cattle",
       header: "Cattle",
       render: (item: ProductionWithCattle) => (
-        <span className="font-medium text-primary">
+        <button
+          onClick={() => handleOpenCattleHistory(
+            item.cattle?.id,
+            `${item.cattle?.tag_number}${item.cattle?.name ? ` (${item.cattle.name})` : ""}`
+          )}
+          className="font-medium text-primary hover:underline flex items-center gap-1 cursor-pointer"
+        >
           {item.cattle?.tag_number} {item.cattle?.name ? `(${item.cattle.name})` : ""}
-        </span>
+          <History className="h-3 w-3 opacity-50" />
+        </button>
       ),
     },
     {
@@ -255,14 +276,18 @@ export default function ProductionPage() {
         }}
       />
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Now Clickable */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="bg-gradient-to-br from-info/10 to-info/5 border-info/20">
+        <Card 
+          className="bg-gradient-to-br from-info/10 to-info/5 border-info/20 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => handleOpenDailyHistory("total")}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Today's Total</p>
                 <p className="text-3xl font-bold text-info">{todayTotal} L</p>
+                <p className="text-xs text-muted-foreground mt-1">Click to view history</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-info/20">
                 <Droplets className="h-6 w-6 text-info" />
@@ -270,12 +295,16 @@ export default function ProductionPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20">
+        <Card 
+          className="bg-gradient-to-br from-warning/10 to-warning/5 border-warning/20 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => handleOpenDailyHistory("morning")}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Morning Session</p>
                 <p className="text-3xl font-bold text-warning">{morningTotal} L</p>
+                <p className="text-xs text-muted-foreground mt-1">Click to view history</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/20">
                 <Sun className="h-6 w-6 text-warning" />
@@ -283,12 +312,16 @@ export default function ProductionPage() {
             </div>
           </CardContent>
         </Card>
-        <Card className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
+        <Card 
+          className="bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => handleOpenDailyHistory("evening")}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Evening Session</p>
                 <p className="text-3xl font-bold text-primary">{eveningTotal} L</p>
+                <p className="text-xs text-muted-foreground mt-1">Click to view history</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/20">
                 <Moon className="h-6 w-6 text-primary" />
@@ -356,9 +389,19 @@ export default function ProductionPage() {
                 </div>
                 {cattle.map((c) => (
                   <div key={c.id} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg hover:bg-muted/50">
-                    <div className="col-span-3">
-                      <span className="font-medium">{c.tag_number}</span>
-                      {c.name && <span className="text-muted-foreground ml-1">({c.name})</span>}
+                    <div className="col-span-3 flex items-center gap-2">
+                      <div>
+                        <span className="font-medium">{c.tag_number}</span>
+                        {c.name && <span className="text-muted-foreground ml-1">({c.name})</span>}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() => handleOpenCattleHistory(c.id, `${c.tag_number}${c.name ? ` (${c.name})` : ""}`)}
+                      >
+                        <History className="h-3 w-3" />
+                      </Button>
                     </div>
                     <div className="col-span-2">
                       <Input
@@ -442,6 +485,16 @@ export default function ProductionPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Milk History Dialog */}
+      <MilkHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+        mode={historyMode}
+        cattleId={selectedCattleId}
+        cattleName={selectedCattleName}
+        sessionFilter={sessionFilter}
+      />
     </div>
   );
 }
