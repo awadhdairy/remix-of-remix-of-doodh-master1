@@ -326,35 +326,67 @@ export default function CustomersPage() {
       <CustomerAccountApprovals />
 
       {/* Stats Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold">{customers.length}</div>
-            <p className="text-sm text-muted-foreground">Total Customers</p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 stagger-animation">
+        <Card className="group overflow-hidden hover-lift">
+          <CardContent className="pt-6 relative">
+            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-primary/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold">{customers.length}</div>
+                <p className="text-sm text-muted-foreground font-medium">Total Customers</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-colored">
+                <Users className="h-6 w-6 text-primary-foreground" />
+              </div>
+            </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-success">
-              {customers.filter((c) => c.is_active).length}
+        <Card className="group overflow-hidden hover-lift">
+          <CardContent className="pt-6 relative">
+            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-success/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-success">
+                  {customers.filter((c) => c.is_active).length}
+                </div>
+                <p className="text-sm text-muted-foreground font-medium">Active</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-success to-success/70 flex items-center justify-center shadow-md">
+                <Users className="h-6 w-6 text-success-foreground" />
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">Active</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-destructive">
-              ₹{totalDue.toLocaleString()}
+        <Card className="group overflow-hidden hover-lift">
+          <CardContent className="pt-6 relative">
+            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-destructive/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-destructive">
+                  ₹{totalDue.toLocaleString()}
+                </div>
+                <p className="text-sm text-muted-foreground font-medium">Total Due</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-destructive to-destructive/70 flex items-center justify-center shadow-md">
+                <span className="text-destructive-foreground font-bold">₹</span>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">Total Due</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-info">
-              ₹{totalAdvance.toLocaleString()}
+        <Card className="group overflow-hidden hover-lift">
+          <CardContent className="pt-6 relative">
+            <div className="absolute -right-4 -top-4 h-20 w-20 rounded-full bg-gradient-to-br from-info/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-3xl font-bold text-info">
+                  ₹{totalAdvance.toLocaleString()}
+                </div>
+                <p className="text-sm text-muted-foreground font-medium">Total Advance</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-info to-info/70 flex items-center justify-center shadow-md">
+                <span className="text-info-foreground font-bold">₹</span>
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">Total Advance</p>
           </CardContent>
         </Card>
       </div>

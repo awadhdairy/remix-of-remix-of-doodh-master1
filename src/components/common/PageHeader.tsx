@@ -27,23 +27,24 @@ export function PageHeader({
 
   return (
     <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between", className)}>
-      <div className="flex items-center gap-3 animate-fade-in">
+      <div className="flex items-center gap-4 animate-slide-up">
         {Icon && (
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-            <Icon className="h-5 w-5 text-primary" />
+          <div className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-accent shadow-colored transition-transform duration-300 hover:scale-105">
+            <Icon className="h-6 w-6 text-primary-foreground" />
+            <div className="absolute inset-0 rounded-xl bg-gradient-to-t from-transparent to-white/20" />
           </div>
         )}
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">{title}</h1>
           {description && (
-            <p className="text-sm text-muted-foreground">{description}</p>
+            <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
           )}
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 animate-fade-in" style={{ animationDelay: '100ms' }}>
         {children}
         {action && (
-          <Button onClick={action.onClick} className="gap-2">
+          <Button onClick={action.onClick} className="gap-2 shadow-colored">
             <ActionIcon className="h-4 w-4" />
             {action.label}
           </Button>

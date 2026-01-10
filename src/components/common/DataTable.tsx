@@ -64,8 +64,8 @@ export function DataTable<T extends { id: string }>({
   return (
     <div className={cn("space-y-4", className)}>
       {searchable && (
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <div className="relative max-w-sm animate-slide-up">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={searchPlaceholder}
             value={search}
@@ -73,15 +73,15 @@ export function DataTable<T extends { id: string }>({
               setSearch(e.target.value);
               setCurrentPage(1);
             }}
-            className="pl-10"
+            className="pl-11"
           />
         </div>
       )}
 
-      <div className="rounded-lg border bg-card shadow-soft overflow-hidden">
+      <div className="rounded-xl border bg-card shadow-soft overflow-hidden animate-fade-in" style={{ animationDelay: '100ms' }}>
         <Table>
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
+            <TableRow className="hover:bg-transparent border-b-2">
               {columns.map((column) => (
                 <TableHead key={column.key} className={cn("font-semibold", column.className)}>
                   {column.header}
@@ -89,20 +89,28 @@ export function DataTable<T extends { id: string }>({
               ))}
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="stagger-animation">
             {loading ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center">
-                  <div className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="text-muted-foreground">Loading...</span>
+                <TableCell colSpan={columns.length} className="h-40 text-center">
+                  <div className="flex flex-col items-center justify-center gap-3">
+                    <div className="relative h-10 w-10">
+                      <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+                      <div className="absolute inset-0 rounded-full border-2 border-t-primary animate-spin" />
+                    </div>
+                    <span className="text-muted-foreground font-medium">Loading data...</span>
                   </div>
                 </TableCell>
               </TableRow>
             ) : paginatedData.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-32 text-center text-muted-foreground">
-                  {emptyMessage}
+                <TableCell colSpan={columns.length} className="h-40 text-center">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center">
+                      <Search className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <span className="text-muted-foreground font-medium">{emptyMessage}</span>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
@@ -111,13 +119,13 @@ export function DataTable<T extends { id: string }>({
                   key={item.id}
                   onClick={() => onRowClick?.(item)}
                   className={cn(
-                    "animate-fade-in",
+                    "animate-slide-up group",
                     onRowClick && "cursor-pointer"
                   )}
-                  style={{ animationDelay: `${index * 30}ms` }}
+                  style={{ animationDelay: `${index * 40}ms` }}
                 >
                   {columns.map((column) => (
-                    <TableCell key={column.key} className={column.className}>
+                    <TableCell key={column.key} className={cn("transition-colors", column.className)}>
                       {column.render
                         ? column.render(item)
                         : (item as Record<string, unknown>)[column.key]?.toString() || "-"}
@@ -131,11 +139,11 @@ export function DataTable<T extends { id: string }>({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between animate-fade-in" style={{ animationDelay: '200ms' }}>
           <p className="text-sm text-muted-foreground">
-            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-            {Math.min(currentPage * itemsPerPage, filteredData.length)} of{" "}
-            {filteredData.length} entries
+            Showing <span className="font-medium text-foreground">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
+            <span className="font-medium text-foreground">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> of{" "}
+            <span className="font-medium text-foreground">{filteredData.length}</span> entries
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -143,18 +151,44 @@ export function DataTable<T extends { id: string }>({
               size="sm"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
+              className="gap-1"
             >
               <ChevronLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Previous</span>
             </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {currentPage} of {totalPages}
-            </span>
+            <div className="flex items-center gap-1 px-2">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "ghost"}
+                    size="sm"
+                    className={cn("w-9 h-9 p-0", currentPage === pageNum && "shadow-sm")}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
+              className="gap-1"
             >
+              <span className="hidden sm:inline">Next</span>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
