@@ -4,7 +4,6 @@ import { StatCard } from "./StatCard";
 import { RecentActivityCard } from "./RecentActivityCard";
 import { QuickActionsCard } from "./QuickActionsCard";
 import { ProductionChart } from "./ProductionChart";
-import { AutomationPanel } from "./AutomationPanel";
 import { ProductionInsights } from "./ProductionInsights";
 import { useBreedingAlerts } from "@/hooks/useBreedingAlerts";
 import { BreedingAlertsPanel } from "@/components/breeding/BreedingAlertsPanel";
@@ -200,10 +199,7 @@ export function AdminDashboard() {
         <RecentActivityCard />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <AutomationPanel />
-        <ProductionInsights />
-      </div>
+      <ProductionInsights />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <BreedingAlertsPanel
