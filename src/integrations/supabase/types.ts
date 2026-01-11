@@ -1809,6 +1809,7 @@ export type Database = {
       }
     }
     Functions: {
+      auto_create_daily_attendance: { Args: never; Returns: undefined }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["user_role"][]
