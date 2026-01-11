@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ThemeToggle } from "@/components/common/ThemeToggle";
 
 interface NavItem {
   title: string;
@@ -207,6 +208,9 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
 
       {/* Footer */}
       <div className="border-t border-sidebar-border p-3">
+        {/* Theme Toggle */}
+        <ThemeToggle collapsed={collapsed} />
+
         {canAccessSettings && (
           <Link
             to="/settings"
