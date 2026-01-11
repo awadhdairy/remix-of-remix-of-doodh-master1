@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAutoAttendance } from "@/hooks/useAutoAttendance";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,9 @@ const roleLabels: Record<string, string> = {
 
 export default function EmployeesPage() {
   const { toast } = useToast();
+  
+  // Auto-create today's attendance for all active employees (present by default)
+  useAutoAttendance();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [payroll, setPayroll] = useState<PayrollRecord[]>([]);
@@ -124,22 +128,55 @@ export default function EmployeesPage() {
       return;
     }
 
-    const { error } = await supabase.from("attendance").insert({
-      employee_id: selectedEmployee,
-      attendance_date: attendanceDate,
-      check_in: checkIn || null,
-      check_out: checkOut || null,
-      status: attendanceStatus,
-    });
+    // Use upsert to update existing record or create new one
+    // This allows changing status from default "present" to absent/half_day etc.
+    const { error } = await supabase.from("attendance").upsert(
+      {
+        employee_id: selectedEmployee,
+        attendance_date: attendanceDate,
+        check_in: checkIn || null,
+        check_out: checkOut || null,
+        status: attendanceStatus,
+      },
+      { 
+        onConflict: 'employee_id,attendance_date',
+        ignoreDuplicates: false 
+      }
+    );
 
     if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Attendance marked successfully" });
-      setAttendanceDialogOpen(false);
-      resetAttendanceForm();
-      fetchData();
+      // If upsert fails due to no unique constraint, try delete + insert
+      if (error.code === '42P10') {
+        const { error: deleteError } = await supabase
+          .from("attendance")
+          .delete()
+          .eq("employee_id", selectedEmployee)
+          .eq("attendance_date", attendanceDate);
+        
+        if (!deleteError) {
+          const { error: insertError } = await supabase.from("attendance").insert({
+            employee_id: selectedEmployee,
+            attendance_date: attendanceDate,
+            check_in: checkIn || null,
+            check_out: checkOut || null,
+            status: attendanceStatus,
+          });
+          
+          if (insertError) {
+            toast({ title: "Error", description: insertError.message, variant: "destructive" });
+            return;
+          }
+        }
+      } else {
+        toast({ title: "Error", description: error.message, variant: "destructive" });
+        return;
+      }
     }
+    
+    toast({ title: "Success", description: "Attendance updated successfully" });
+    setAttendanceDialogOpen(false);
+    resetAttendanceForm();
+    fetchData();
   };
 
   const handleCreatePayroll = async () => {
