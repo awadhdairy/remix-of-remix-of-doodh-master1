@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 import { 
   Plus, 
   Droplets, 
@@ -50,35 +51,74 @@ const quickActions = [
   },
 ];
 
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.05,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, scale: 0.9 },
+  visible: { 
+    opacity: 1, 
+    scale: 1,
+  },
+};
+
 export function QuickActionsCard() {
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-lg font-semibold">
-          <Zap className="h-5 w-5 text-warning" />
-          Quick Actions
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-          {quickActions.map((action, index) => (
-            <Link key={action.title} to={action.href}>
-              <Button
-                variant="ghost"
-                className={cn(
-                  "h-auto w-full flex-col gap-2 p-4 transition-all duration-200",
-                  action.bgColor,
-                  "animate-scale-in"
-                )}
-                style={{ animationDelay: `${index * 50}ms` }}
-              >
-                <action.icon className={cn("h-6 w-6", action.color)} />
-                <span className="text-xs font-medium text-foreground">{action.title}</span>
-              </Button>
-            </Link>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg font-semibold">
+            <motion.div
+              animate={{ rotate: [0, 15, -15, 0] }}
+              transition={{ duration: 0.5, delay: 0.5 }}
+            >
+              <Zap className="h-5 w-5 text-warning" />
+            </motion.div>
+            Quick Actions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <motion.div 
+            className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5"
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+          >
+            {quickActions.map((action) => (
+              <motion.div key={action.title} variants={itemVariants}>
+                <Link to={action.href}>
+                  <motion.div
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                  >
+                    <Button
+                      variant="ghost"
+                      className={cn(
+                        "h-auto w-full flex-col gap-2 p-4 transition-colors duration-200",
+                        action.bgColor
+                      )}
+                    >
+                      <action.icon className={cn("h-6 w-6", action.color)} />
+                      <span className="text-xs font-medium text-foreground">{action.title}</span>
+                    </Button>
+                  </motion.div>
+                </Link>
+              </motion.div>
+            ))}
+          </motion.div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

@@ -1,4 +1,4 @@
-import { Calendar, Loader2, Shield } from "lucide-react";
+import { Calendar, Shield } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { AdminDashboard } from "@/components/dashboard/AdminDashboard";
 import { DeliveryDashboard } from "@/components/dashboard/DeliveryDashboard";
@@ -7,6 +7,8 @@ import { AccountantDashboard } from "@/components/dashboard/AccountantDashboard"
 import { VetDashboard } from "@/components/dashboard/VetDashboard";
 import { AuditorDashboard } from "@/components/dashboard/AuditorDashboard";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/common/LoadingSkeleton";
+import { motion } from "framer-motion";
 
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
@@ -28,6 +30,23 @@ const roleColors: Record<string, string> = {
   auditor: "bg-role-auditor text-white",
 };
 
+function DashboardHeaderSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <Skeleton className="h-8 w-48" />
+          <div className="flex items-center gap-2 mt-2">
+            <Skeleton className="h-4 w-4" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </div>
+        <Skeleton className="h-8 w-24 rounded-full" />
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { role, loading, userName } = useUserRole();
 
@@ -40,8 +59,13 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6">
+        <DashboardHeaderSkeleton />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-32 rounded-xl" />
+          ))}
+        </div>
       </div>
     );
   }
@@ -69,25 +93,46 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-2 animate-fade-in">
+      <motion.div 
+        className="flex flex-col gap-2"
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-foreground md:text-3xl">
+            <motion.h1 
+              className="text-2xl font-bold text-foreground md:text-3xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.1 }}
+            >
               {userName ? `Welcome, ${userName}` : "Dashboard"}
-            </h1>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+            </motion.h1>
+            <motion.div 
+              className="flex items-center gap-2 text-sm text-muted-foreground mt-1"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+            >
               <Calendar className="h-4 w-4" />
               <span>{today}</span>
-            </div>
+            </motion.div>
           </div>
           {role && (
-            <Badge className={`${roleColors[role] || "bg-muted"} flex items-center gap-1.5 px-3 py-1.5`}>
-              <Shield className="h-3.5 w-3.5" />
-              {roleLabels[role] || role}
-            </Badge>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 400 }}
+            >
+              <Badge className={`${roleColors[role] || "bg-muted"} flex items-center gap-1.5 px-3 py-1.5`}>
+                <Shield className="h-3.5 w-3.5" />
+                {roleLabels[role] || role}
+              </Badge>
+            </motion.div>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Role-specific Dashboard Content */}
       {renderDashboard()}
