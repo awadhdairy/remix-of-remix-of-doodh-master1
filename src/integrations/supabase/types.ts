@@ -168,6 +168,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "bottle_transactions_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       bottles: {
@@ -435,6 +442,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "customer_accounts_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: true
+            referencedRelation: "customers_delivery_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       customer_auth_attempts: {
@@ -507,6 +521,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "customer_bottles_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       customer_ledger: {
@@ -557,6 +578,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "customer_ledger_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       customer_products: {
@@ -593,6 +621,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_products_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
             referencedColumns: ["id"]
           },
           {
@@ -641,6 +676,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_vacations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
             referencedColumns: ["id"]
           },
         ]
@@ -789,6 +831,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "deliveries_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
             referencedColumns: ["id"]
           },
         ]
@@ -1171,6 +1220,13 @@ export type Database = {
             referencedRelation: "customers"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       maintenance_records: {
@@ -1402,6 +1458,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payments_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
             referencedColumns: ["id"]
           },
           {
@@ -1653,6 +1716,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "route_stops_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers_delivery_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "route_stops_route_id_fkey"
             columns: ["route_id"]
             isOneToOne: false
@@ -1741,6 +1811,41 @@ export type Database = {
       }
     }
     Views: {
+      customers_delivery_view: {
+        Row: {
+          address: string | null
+          area: string | null
+          id: string | null
+          is_active: boolean | null
+          name: string | null
+          route_id: string | null
+        }
+        Insert: {
+          address?: string | null
+          area?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          route_id?: string | null
+        }
+        Update: {
+          address?: string | null
+          area?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          name?: string | null
+          route_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_customer_route"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dairy_settings_public: {
         Row: {
           currency: string | null
