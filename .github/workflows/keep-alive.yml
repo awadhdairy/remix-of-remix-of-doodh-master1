@@ -1,0 +1,21 @@
+name: Keep Alive Ping
+
+on:
+  schedule:
+    # Run every alternate day at 3 AM UTC
+    - cron: '0 3 */2 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        run: |
+          # Simple read-only query to keep the database active
+          # Using the public anon key - this is safe as it only reads public data
+          curl -s -X GET \
+            "https://eqedibnoatuxczjwkbbx.supabase.co/rest/v1/dairy_settings_public?select=dairy_name&limit=1" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZWRpYm5vYXR1eGN6andrYmJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwNjY2ODksImV4cCI6MjA4MjY0MjY4OX0.2E9PVhVL_4WAWIaAo4JCVnrYLR1XKBHlETqbYuy0XRo" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZWRpYm5vYXR1eGN6andrYmJ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcwNjY2ODksImV4cCI6MjA4MjY0MjY4OX0.2E9PVhVL_4WAWIaAo4JCVnrYLR1XKBHlETqbYuy0XRo"
+          echo "Keep-alive ping completed at $(date -u)"
