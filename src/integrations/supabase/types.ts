@@ -1935,7 +1935,6 @@ export type Database = {
         Returns: boolean
       }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
-      keep_alive_ping: { Args: never; Returns: undefined }
       register_customer_account: {
         Args: { _phone: string; _pin: string }
         Returns: Json
