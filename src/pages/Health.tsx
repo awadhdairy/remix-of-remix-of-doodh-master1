@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -68,6 +69,7 @@ const recordTypeColors: Record<string, string> = {
 };
 
 export default function HealthPage() {
+  const { logHealthExpense } = useExpenseAutomation();
   const [records, setRecords] = useState<HealthRecordWithCattle[]>([]);
   const [cattle, setCattle] = useState<Cattle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,7 +113,7 @@ export default function HealthPage() {
     }
 
     setSaving(true);
-    const { error } = await supabase.from("cattle_health").insert({
+    const { data, error } = await supabase.from("cattle_health").insert({
       cattle_id: formData.cattle_id,
       record_date: formData.record_date,
       record_type: formData.record_type,
@@ -120,14 +122,27 @@ export default function HealthPage() {
       vet_name: formData.vet_name || null,
       cost: formData.cost ? parseFloat(formData.cost) : null,
       next_due_date: formData.next_due_date || null,
-    });
+    }).select().single();
 
     setSaving(false);
 
     if (error) {
       toast({ title: "Error saving record", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Health record added" });
+      // Auto-create expense entry for health record cost
+      if (formData.cost && parseFloat(formData.cost) > 0 && data) {
+        const selectedCattle = cattle.find(c => c.id === formData.cattle_id);
+        const cattleTag = selectedCattle ? selectedCattle.tag_number : "Unknown";
+        await logHealthExpense(
+          cattleTag,
+          formData.record_type,
+          formData.title,
+          parseFloat(formData.cost),
+          formData.record_date,
+          data.id
+        );
+      }
+      toast({ title: "Health record added & expense recorded" });
       setDialogOpen(false);
       setFormData({
         cattle_id: "",
