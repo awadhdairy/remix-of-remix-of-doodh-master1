@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ const statusColors: Record<string, string> = {
 
 export default function EquipmentPage() {
   const { toast } = useToast();
+  const { logEquipmentPurchase, logMaintenanceExpense } = useExpenseAutomation();
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,7 +114,7 @@ export default function EquipmentPage() {
       return;
     }
 
-    const { error } = await supabase.from("equipment").insert({
+    const { data, error } = await supabase.from("equipment").insert({
       name,
       category,
       model: model || null,
@@ -123,12 +125,21 @@ export default function EquipmentPage() {
       location: location || null,
       status,
       notes: notes || null,
-    });
+    }).select().single();
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Equipment added" });
+      // Auto-create expense entry for equipment purchase
+      if (purchaseCost && parseFloat(purchaseCost) > 0 && data) {
+        await logEquipmentPurchase(
+          name,
+          parseFloat(purchaseCost),
+          purchaseDate || format(new Date(), "yyyy-MM-dd"),
+          data.id
+        );
+      }
+      toast({ title: "Success", description: "Equipment added & expense recorded" });
       setEquipmentDialogOpen(false);
       resetEquipmentForm();
       fetchData();
@@ -141,7 +152,7 @@ export default function EquipmentPage() {
       return;
     }
 
-    const { error } = await supabase.from("maintenance_records").insert({
+    const { data, error } = await supabase.from("maintenance_records").insert({
       equipment_id: selectedEquipment,
       maintenance_type: maintenanceType,
       maintenance_date: maintenanceDate,
@@ -149,12 +160,23 @@ export default function EquipmentPage() {
       cost: cost ? parseFloat(cost) : 0,
       performed_by: performedBy || null,
       next_maintenance_date: nextMaintenanceDate || null,
-    });
+    }).select().single();
 
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Maintenance record added" });
+      // Auto-create expense entry for maintenance cost
+      if (cost && parseFloat(cost) > 0 && data) {
+        const equipmentName = equipment.find(e => e.id === selectedEquipment)?.name || "Unknown Equipment";
+        await logMaintenanceExpense(
+          equipmentName,
+          maintenanceType,
+          parseFloat(cost),
+          maintenanceDate,
+          data.id
+        );
+      }
+      toast({ title: "Success", description: "Maintenance record added & expense recorded" });
       setMaintenanceDialogOpen(false);
       resetMaintenanceForm();
       fetchData();

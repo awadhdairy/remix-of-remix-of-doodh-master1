@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ const categoryColors: Record<string, string> = {
 };
 
 export default function InventoryPage() {
+  const { logFeedPurchase } = useExpenseAutomation();
   const [items, setItems] = useState<FeedItem[]>([]);
   const [consumption, setConsumption] = useState<FeedConsumption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -150,12 +152,26 @@ export default function InventoryPage() {
       });
     }
 
+    // Auto-create expense entry when adding stock (purchase)
+    if (stockChange.type === "add" && selectedItem.cost_per_unit && selectedItem.cost_per_unit > 0) {
+      await logFeedPurchase(
+        selectedItem.name,
+        qty,
+        selectedItem.cost_per_unit,
+        selectedItem.unit,
+        format(new Date(), "yyyy-MM-dd")
+      );
+    }
+
     setSaving(false);
 
     if (error) {
       toast({ title: "Error updating stock", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Stock updated" });
+      const message = stockChange.type === "add" && selectedItem.cost_per_unit 
+        ? "Stock updated & expense recorded" 
+        : "Stock updated";
+      toast({ title: message });
       setStockDialogOpen(false);
       setStockChange({ type: "add", quantity: "", notes: "" });
       setSelectedItem(null);

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoAttendance } from "@/hooks/useAutoAttendance";
+import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { Button } from "@/components/ui/button";
@@ -208,7 +209,20 @@ export default function EmployeesPage() {
     }
   };
 
+  const { logSalaryExpense } = useExpenseAutomation();
+
+  const getEmployeeName = (empId: string) => {
+    return employees.find(e => e.id === empId)?.name || "Unknown";
+  };
+
   const handleMarkPaid = async (id: string) => {
+    // Get payroll record details first
+    const payrollRecord = payroll.find(p => p.id === id);
+    if (!payrollRecord) {
+      toast({ title: "Error", description: "Payroll record not found", variant: "destructive" });
+      return;
+    }
+
     const { error } = await supabase.from("payroll_records").update({
       payment_status: "paid",
       payment_date: format(new Date(), "yyyy-MM-dd"),
@@ -217,7 +231,17 @@ export default function EmployeesPage() {
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Payment marked as paid" });
+      // Auto-create expense entry for salary payment
+      const employeeName = getEmployeeName(payrollRecord.employee_id);
+      await logSalaryExpense(
+        employeeName,
+        payrollRecord.net_salary,
+        payrollRecord.pay_period_start,
+        payrollRecord.pay_period_end,
+        id
+      );
+
+      toast({ title: "Success", description: "Payment marked as paid & expense recorded" });
       fetchData();
     }
   };
@@ -238,10 +262,6 @@ export default function EmployeesPage() {
     setOvertimeHours("0");
     setBonus("0");
     setDeductions("0");
-  };
-
-  const getEmployeeName = (empId: string) => {
-    return employees.find(e => e.id === empId)?.name || "Unknown";
   };
 
   const attendanceColumns = [
