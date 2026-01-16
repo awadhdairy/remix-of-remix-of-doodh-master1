@@ -75,11 +75,11 @@ async function fetchAlerts(): Promise<Alert[]> {
     }
   }
 
-  // Check for overdue invoices
+  // Check for overdue invoices (past due date and not fully paid)
   const { data: overdueInvoices } = await supabase
     .from("invoices")
     .select("id")
-    .eq("payment_status", "pending")
+    .neq("payment_status", "paid")
     .lt("due_date", format(today, "yyyy-MM-dd"));
 
   if (overdueInvoices && overdueInvoices.length > 0) {

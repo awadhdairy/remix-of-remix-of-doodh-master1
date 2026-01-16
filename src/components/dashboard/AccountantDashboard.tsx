@@ -70,10 +70,11 @@ export function AccountantDashboard() {
           id,
           invoice_number,
           final_amount,
+          paid_amount,
           due_date,
           customers (name)
         `)
-        .eq("payment_status", "overdue")
+        .neq("payment_status", "paid")
         .lt("due_date", todayStr)
         .order("due_date")
         .limit(5),
@@ -89,13 +90,16 @@ export function AccountantDashboard() {
     const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
     const pendingPayments = invoices
       .filter(i => i.payment_status !== "paid")
-      .reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount)), 0);
+      .reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0);
+
+    // Count overdue as invoices past due date that aren't fully paid
+    const overdueCount = overdue.length;
 
     setStats({
       monthlyRevenue,
       monthlyExpenses,
       pendingPayments,
-      overdueInvoices: invoices.filter(i => i.payment_status === "overdue").length,
+      overdueInvoices: overdueCount,
       totalPaid,
       netProfit: monthlyRevenue - monthlyExpenses,
     });
@@ -105,7 +109,7 @@ export function AccountantDashboard() {
         id: inv.id,
         invoice_number: inv.invoice_number,
         customer_name: (inv.customers as any)?.name || "Unknown",
-        final_amount: inv.final_amount,
+        final_amount: Number(inv.final_amount) - Number(inv.paid_amount || 0), // Show remaining balance
         due_date: inv.due_date || "",
       }))
     );

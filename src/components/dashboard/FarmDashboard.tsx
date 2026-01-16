@@ -14,7 +14,7 @@ import {
   AlertTriangle,
   Plus
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { Link } from "react-router-dom";
 
 interface FarmStats {
@@ -26,6 +26,7 @@ interface FarmStats {
   eveningProduction: number;
   lowStockItems: number;
   upcomingHealthTasks: number;
+  lastProductionDate: string | null;
 }
 
 interface HealthAlert {
@@ -50,7 +51,7 @@ export function FarmDashboard() {
     nextWeek.setDate(nextWeek.getDate() + 7);
     const nextWeekStr = format(nextWeek, "yyyy-MM-dd");
 
-    const [cattleRes, productionRes, feedRes, healthRes] = await Promise.all([
+    const [cattleRes, productionRes, lastProdRes, feedRes, healthRes] = await Promise.all([
       supabase
         .from("cattle")
         .select("status, lactation_status"),
@@ -58,6 +59,11 @@ export function FarmDashboard() {
         .from("milk_production")
         .select("session, quantity_liters")
         .eq("production_date", todayStr),
+      supabase
+        .from("milk_production")
+        .select("production_date")
+        .order("production_date", { ascending: false })
+        .limit(1),
       supabase
         .from("feed_inventory")
         .select("current_stock, min_stock_level"),
@@ -76,6 +82,7 @@ export function FarmDashboard() {
 
     const cattle = cattleRes.data || [];
     const production = productionRes.data || [];
+    const lastProd = lastProdRes.data || [];
     const feed = feedRes.data || [];
     const health = healthRes.data || [];
 
@@ -91,6 +98,11 @@ export function FarmDashboard() {
       f => (f.current_stock || 0) <= (f.min_stock_level || 0)
     ).length;
 
+    // Get last production date if no production today
+    const lastProductionDate = production.length === 0 && lastProd.length > 0
+      ? lastProd[0].production_date
+      : null;
+
     setStats({
       totalCattle: cattle.filter(c => c.status === "active").length,
       lactatingCattle: cattle.filter(c => c.lactation_status === "lactating").length,
@@ -100,6 +112,7 @@ export function FarmDashboard() {
       eveningProduction,
       lowStockItems,
       upcomingHealthTasks: health.length,
+      lastProductionDate,
     });
 
     setHealthAlerts(
@@ -155,7 +168,11 @@ export function FarmDashboard() {
         <StatCard
           title="Today's Production"
           value={`${stats?.todayProduction || 0} L`}
-          subtitle={`Morning: ${stats?.morningProduction || 0}L | Evening: ${stats?.eveningProduction || 0}L`}
+          subtitle={
+            stats?.todayProduction === 0 && stats?.lastProductionDate
+              ? `No data yet • Last: ${format(new Date(stats.lastProductionDate), "MMM d")}`
+              : `Morning: ${stats?.morningProduction || 0}L | Evening: ${stats?.eveningProduction || 0}L`
+          }
           icon={Droplets}
           variant="info"
           delay={0}

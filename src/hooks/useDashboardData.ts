@@ -13,6 +13,7 @@ interface DashboardStats {
   activeCustomers: number;
   monthlyRevenue: number;
   pendingAmount: number;
+  lastProductionDate: string | null;
 }
 
 interface Cattle {
@@ -46,38 +47,60 @@ async function fetchDashboardData() {
   const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
+  // Fetch all data in parallel
+  const productionPromise = supabase
+    .from("milk_production")
+    .select("session, quantity_liters, production_date")
+    .eq("production_date", todayStr);
+
+  const lastProductionPromise = supabase
+    .from("milk_production")
+    .select("production_date")
+    .order("production_date", { ascending: false })
+    .limit(1);
+
+  const cattlePromise = supabase
+    .from("cattle")
+    .select("id, tag_number, name, status, lactation_status");
+
+  const customersPromise = supabase
+    .from("customers")
+    .select("is_active");
+
+  const invoicesPromise = supabase
+    .from("invoices")
+    .select("final_amount, paid_amount")
+    .gte("created_at", monthStart)
+    .lte("created_at", monthEnd);
+
+  const breedingPromise = supabase
+    .from("breeding_records")
+    .select("id, cattle_id, record_type, record_date, expected_calving_date, heat_cycle_day, pregnancy_confirmed");
+
+  const healthPromise = supabase
+    .from("cattle_health")
+    .select("id, cattle_id, record_type, title, next_due_date");
+
   const [
     productionRes,
+    lastProductionRes,
     cattleRes,
     customersRes,
     invoicesRes,
     breedingRes,
     healthRes,
   ] = await Promise.all([
-    supabase
-      .from("milk_production")
-      .select("session, quantity_liters")
-      .eq("production_date", todayStr),
-    supabase
-      .from("cattle")
-      .select("id, tag_number, name, status, lactation_status"),
-    supabase
-      .from("customers")
-      .select("is_active"),
-    supabase
-      .from("invoices")
-      .select("final_amount, paid_amount")
-      .gte("created_at", monthStart)
-      .lte("created_at", monthEnd),
-    supabase
-      .from("breeding_records")
-      .select("id, cattle_id, record_type, record_date, expected_calving_date, heat_cycle_day, pregnancy_confirmed"),
-    supabase
-      .from("cattle_health")
-      .select("id, cattle_id, record_type, title, next_due_date"),
+    productionPromise,
+    lastProductionPromise,
+    cattlePromise,
+    customersPromise,
+    invoicesPromise,
+    breedingPromise,
+    healthPromise,
   ]);
 
   const production = productionRes.data || [];
+  const lastProduction = lastProductionRes.data || [];
   const cattleData = cattleRes.data || [];
   const customers = customersRes.data || [];
   const invoices = invoicesRes.data || [];
@@ -94,6 +117,11 @@ async function fetchDashboardData() {
 
   const activeCattle = cattleData.filter(c => c.status === "active");
   
+  // Get last production date if no production today
+  const lastProductionDate = production.length === 0 && lastProduction.length > 0
+    ? lastProduction[0].production_date
+    : null;
+  
   const stats: DashboardStats = {
     todayProduction: morningProduction + eveningProduction,
     morningProduction,
@@ -105,6 +133,7 @@ async function fetchDashboardData() {
     activeCustomers: customers.filter(c => c.is_active).length,
     monthlyRevenue: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
     pendingAmount: invoices.reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount)), 0),
+    lastProductionDate,
   };
 
   return {
@@ -119,8 +148,8 @@ export function useDashboardData() {
   return useQuery({
     queryKey: ["dashboard-data"],
     queryFn: fetchDashboardData,
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 }

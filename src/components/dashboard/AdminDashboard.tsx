@@ -9,6 +9,7 @@ import { useBreedingAlerts } from "@/hooks/useBreedingAlerts";
 import { BreedingAlertsPanel } from "@/components/breeding/BreedingAlertsPanel";
 import { DashboardSkeleton } from "@/components/common/LoadingSkeleton";
 import { motion } from "framer-motion";
+import { format } from "date-fns";
 import { 
   Droplets, 
   Beef, 
@@ -45,7 +46,11 @@ export function AdminDashboard() {
         <StatCard
           title="Today's Production"
           value={`${stats?.todayProduction || 0} L`}
-          subtitle={`Morning: ${stats?.morningProduction || 0}L | Evening: ${stats?.eveningProduction || 0}L`}
+          subtitle={
+            stats?.todayProduction === 0 && stats?.lastProductionDate
+              ? `No data yet • Last: ${format(new Date(stats.lastProductionDate), "MMM d")}`
+              : `Morning: ${stats?.morningProduction || 0}L | Evening: ${stats?.eveningProduction || 0}L`
+          }
           icon={Droplets}
           variant="info"
           index={0}
