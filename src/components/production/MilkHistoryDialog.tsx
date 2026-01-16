@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -31,35 +31,39 @@ interface MilkHistoryDialogProps {
   sessionFilter?: "morning" | "evening" | "total";
 }
 
-function TrendIndicator({ value, small = false }: { value: number | null; small?: boolean }) {
-  if (value === null) return <span className="text-muted-foreground">-</span>;
+const TrendIndicator = React.forwardRef<
+  HTMLSpanElement,
+  { value: number | null; small?: boolean }
+>(({ value, small = false }, ref) => {
+  if (value === null) return <span ref={ref} className="text-muted-foreground">-</span>;
   
   const iconSize = small ? "h-3 w-3" : "h-4 w-4";
   const textSize = small ? "text-xs" : "text-sm";
   
   if (value > 0) {
     return (
-      <span className={cn("flex items-center gap-0.5 text-success", textSize)}>
+      <span ref={ref} className={cn("flex items-center gap-0.5 text-success", textSize)}>
         <TrendingUp className={iconSize} />
         +{value.toFixed(1)}L
       </span>
     );
   } else if (value < 0) {
     return (
-      <span className={cn("flex items-center gap-0.5 text-destructive", textSize)}>
+      <span ref={ref} className={cn("flex items-center gap-0.5 text-destructive", textSize)}>
         <TrendingDown className={iconSize} />
         {value.toFixed(1)}L
       </span>
     );
   } else {
     return (
-      <span className={cn("flex items-center gap-0.5 text-muted-foreground", textSize)}>
+      <span ref={ref} className={cn("flex items-center gap-0.5 text-muted-foreground", textSize)}>
         <Minus className={iconSize} />
         0L
       </span>
     );
   }
-}
+});
+TrendIndicator.displayName = "TrendIndicator";
 
 function CattleHistoryRow({ record }: { record: MilkHistoryRecord }) {
   return (
