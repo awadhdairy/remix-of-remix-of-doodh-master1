@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { getProductName, getProductPrice } from '@/lib/supabase-helpers';
 
 interface SubscriptionProduct {
   id: string;
@@ -58,13 +59,13 @@ export default function CustomerSubscription() {
 
       if (error) throw error;
 
-      const formattedProducts: SubscriptionProduct[] = (data || []).map((item: any) => ({
+      const formattedProducts: SubscriptionProduct[] = (data || []).map((item) => ({
         id: item.id,
         product_id: item.product_id,
-        product_name: item.products?.name || 'Unknown Product',
+        product_name: getProductName(item.products),
         quantity: item.quantity,
         custom_price: item.custom_price,
-        base_price: item.products?.base_price || 0,
+        base_price: getProductPrice(item.products),
         is_active: item.is_active ?? true,
       }));
 

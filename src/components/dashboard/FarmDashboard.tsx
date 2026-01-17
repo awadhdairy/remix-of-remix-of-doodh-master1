@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCattleTag } from "@/lib/supabase-helpers";
 import { StatCard } from "./StatCard";
 import { ProductionChart } from "./ProductionChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,7 +119,7 @@ export function FarmDashboard() {
     setHealthAlerts(
       health.slice(0, 5).map(h => ({
         id: h.id,
-        cattle_tag: (h.cattle as any)?.tag_number || "Unknown",
+        cattle_tag: getCattleTag(h.cattle),
         title: h.title,
         next_due_date: h.next_due_date || "",
       }))

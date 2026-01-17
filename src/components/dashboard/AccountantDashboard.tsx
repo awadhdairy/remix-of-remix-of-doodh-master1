@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCustomerName } from "@/lib/supabase-helpers";
 import { StatCard } from "./StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -108,7 +109,7 @@ export function AccountantDashboard() {
       overdue.map(inv => ({
         id: inv.id,
         invoice_number: inv.invoice_number,
-        customer_name: (inv.customers as any)?.name || "Unknown",
+        customer_name: getCustomerName(inv.customers),
         final_amount: Number(inv.final_amount) - Number(inv.paid_amount || 0), // Show remaining balance
         due_date: inv.due_date || "",
       }))

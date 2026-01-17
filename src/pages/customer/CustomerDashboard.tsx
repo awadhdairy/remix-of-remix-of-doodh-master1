@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { getProductName } from '@/lib/supabase-helpers';
 
 interface DeliverySummary {
   pending: number;
@@ -65,7 +66,7 @@ export default function CustomerDashboard() {
 
       const formattedSubs: SubscriptionItem[] = (subscriptions || []).map(sub => ({
         id: sub.id,
-        product_name: (sub.products as any)?.name || 'Unknown Product',
+        product_name: getProductName(sub.products),
         quantity: sub.quantity,
         custom_price: sub.custom_price,
         is_active: sub.is_active ?? true

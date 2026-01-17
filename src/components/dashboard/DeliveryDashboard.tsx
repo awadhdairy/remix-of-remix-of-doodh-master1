@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCustomerName, getCustomerArea } from "@/lib/supabase-helpers";
 import { StatCard } from "./StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -83,10 +84,10 @@ export function DeliveryDashboard() {
     setTodayDeliveries(
       deliveries.slice(0, 5).map(d => ({
         id: d.id,
-        customer_name: (d.customers as any)?.name || "Unknown",
+        customer_name: getCustomerName(d.customers),
         status: d.status || "pending",
         delivery_time: d.delivery_time,
-        area: (d.customers as any)?.area,
+        area: getCustomerArea(d.customers),
       }))
     );
 

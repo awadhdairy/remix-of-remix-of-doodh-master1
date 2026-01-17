@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getCattleTag } from "@/lib/supabase-helpers";
 import { StatCard } from "./StatCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -87,7 +88,7 @@ export function VetDashboard() {
     setHealthTasks(
       upcoming.map(h => ({
         id: h.id,
-        cattle_tag: (h.cattle as any)?.tag_number || "Unknown",
+        cattle_tag: getCattleTag(h.cattle),
         title: h.title,
         record_type: h.record_type,
         next_due_date: h.next_due_date || "",
