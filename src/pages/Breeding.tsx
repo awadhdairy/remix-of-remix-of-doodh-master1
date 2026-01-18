@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -11,35 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Heart, Baby, Syringe, Calendar, Loader2, AlertCircle, CalendarDays, List } from "lucide-react";
-import { format, addDays, differenceInDays } from "date-fns";
+import { Plus, Heart, Baby, Syringe, Calendar, AlertCircle, CalendarDays, List, Loader2 } from "lucide-react";
+import { format, differenceInDays } from "date-fns";
 import { BreedingCalendar } from "@/components/breeding/BreedingCalendar";
-
-interface Cattle {
-  id: string;
-  tag_number: string;
-  name: string | null;
-  cattle_type: string;
-  lactation_status: string | null;
-}
-
-interface BreedingRecord {
-  id: string;
-  cattle_id: string;
-  record_type: string;
-  record_date: string;
-  heat_cycle_day: number | null;
-  insemination_bull: string | null;
-  insemination_technician: string | null;
-  pregnancy_confirmed: boolean | null;
-  expected_calving_date: string | null;
-  actual_calving_date: string | null;
-  calf_details: unknown;
-  notes: string | null;
-  created_at: string;
-  cattle?: Cattle;
-}
-
+import { BreedingPageSkeleton } from "@/components/breeding/BreedingSkeleton";
+import { useBreedingData, useCreateBreedingRecord, type BreedingRecord } from "@/hooks/useBreedingData";
 import type { LucideIcon } from "lucide-react";
 
 const recordTypeLabels: Record<string, { label: string; color: string; icon: LucideIcon }> = {
@@ -49,21 +24,11 @@ const recordTypeLabels: Record<string, { label: string; color: string; icon: Luc
   calving: { label: "Calving", color: "bg-breeding-calving", icon: Baby },
 };
 
-interface HealthRecord {
-  id: string;
-  cattle_id: string;
-  record_type: string;
-  title: string;
-  record_date: string;
-  next_due_date: string | null;
-}
-
 export default function BreedingPage() {
   const { toast } = useToast();
-  const [cattle, setCattle] = useState<Cattle[]>([]);
-  const [records, setRecords] = useState<BreedingRecord[]>([]);
-  const [healthRecords, setHealthRecords] = useState<HealthRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, isLoading, error } = useBreedingData();
+  const createRecord = useCreateBreedingRecord();
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   
@@ -81,69 +46,28 @@ export default function BreedingPage() {
   const [calfWeight, setCalfWeight] = useState("");
   const [notes, setNotes] = useState("");
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [cattleRes, recordsRes, healthRes] = await Promise.all([
-        supabase.from("cattle").select("id, tag_number, name, cattle_type, lactation_status").eq("cattle_type", "cow").eq("status", "active"),
-        supabase.from("breeding_records").select("*").order("record_date", { ascending: false }),
-        supabase.from("cattle_health").select("id, cattle_id, record_type, title, record_date, next_due_date").order("record_date", { ascending: false }),
-      ]);
-
-      if (cattleRes.data) setCattle(cattleRes.data);
-      if (recordsRes.data) setRecords(recordsRes.data);
-      if (healthRes.data) setHealthRecords(healthRes.data);
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateRecord = async () => {
     if (!selectedCattle || !recordType || !recordDate) {
       toast({ title: "Error", description: "Please fill required fields", variant: "destructive" });
       return;
     }
 
-    const record: any = {
+    await createRecord.mutateAsync({
       cattle_id: selectedCattle,
       record_type: recordType,
       record_date: recordDate,
+      heat_cycle_day: heatCycleDay ? parseInt(heatCycleDay) : null,
+      insemination_bull: inseminationBull || null,
+      insemination_technician: inseminationTech || null,
+      pregnancy_confirmed: pregnancyConfirmed === "yes" ? true : pregnancyConfirmed === "no" ? false : null,
+      expected_calving_date: expectedCalving || null,
+      actual_calving_date: actualCalving || null,
+      calf_details: recordType === "calving" ? { gender: calfGender, weight: calfWeight ? parseFloat(calfWeight) : null } : null,
       notes: notes || null,
-    };
+    });
 
-    if (recordType === "heat_detection") {
-      record.heat_cycle_day = heatCycleDay ? parseInt(heatCycleDay) : null;
-    } else if (recordType === "artificial_insemination") {
-      record.insemination_bull = inseminationBull || null;
-      record.insemination_technician = inseminationTech || null;
-      // Calculate expected calving (283 days from insemination)
-      record.expected_calving_date = format(addDays(new Date(recordDate), 283), "yyyy-MM-dd");
-    } else if (recordType === "pregnancy_check") {
-      record.pregnancy_confirmed = pregnancyConfirmed === "yes";
-      if (expectedCalving) record.expected_calving_date = expectedCalving;
-    } else if (recordType === "calving") {
-      record.actual_calving_date = actualCalving || recordDate;
-      record.calf_details = {
-        gender: calfGender,
-        weight: calfWeight ? parseFloat(calfWeight) : null,
-      };
-    }
-
-    const { error } = await supabase.from("breeding_records").insert(record);
-
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Breeding record added" });
-      setDialogOpen(false);
-      resetForm();
-      fetchData();
-    }
+    setDialogOpen(false);
+    resetForm();
   };
 
   const resetForm = () => {
@@ -160,6 +84,23 @@ export default function BreedingPage() {
     setCalfWeight("");
     setNotes("");
   };
+
+  if (isLoading) {
+    return <BreedingPageSkeleton viewMode={viewMode} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-lg font-semibold mb-2">Failed to load breeding data</h2>
+        <p className="text-muted-foreground mb-4">Please try refreshing the page</p>
+        <Button onClick={() => window.location.reload()}>Refresh Page</Button>
+      </div>
+    );
+  }
+
+  const { cattle, records, healthRecords } = data!;
 
   const getCattleTag = (cattleId: string) => {
     const c = cattle.find(c => c.id === cattleId);
@@ -230,14 +171,6 @@ export default function BreedingPage() {
     },
     { key: "notes" as const, header: "Notes", render: (row: BreedingRecord) => row.notes || "-" },
   ];
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -375,7 +308,10 @@ export default function BreedingPage() {
                 <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Additional notes..." />
               </div>
 
-              <Button className="w-full" onClick={handleCreateRecord}>Save Record</Button>
+              <Button className="w-full" onClick={handleCreateRecord} disabled={createRecord.isPending}>
+                {createRecord.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Record
+              </Button>
             </div>
           </DialogContent>
           </Dialog>
@@ -434,54 +370,47 @@ export default function BreedingPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Upcoming Calvings */}
+          {/* Upcoming Calvings */}
+          {upcomingCalvings.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-4 w-4" />
-              Upcoming Calvings
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Calendar className="h-5 w-5" /> Upcoming Calvings
             </CardTitle>
+            <CardDescription>Expected calving dates in the coming weeks</CardDescription>
           </CardHeader>
           <CardContent>
-            {upcomingCalvings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No upcoming calvings</p>
-            ) : (
-              <div className="space-y-3">
-                {upcomingCalvings.map(record => {
-                  const daysLeft = differenceInDays(new Date(record.expected_calving_date!), new Date());
-                  return (
-                    <div key={record.id} className="flex items-center justify-between rounded-lg border p-3">
-                      <div>
-                        <p className="font-medium">{getCattleTag(record.cattle_id)}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(record.expected_calving_date!), "dd MMM yyyy")}
-                        </p>
-                      </div>
-                      <Badge variant={daysLeft <= 7 ? "destructive" : daysLeft <= 30 ? "secondary" : "outline"}>
-                        {daysLeft > 0 ? `${daysLeft} days` : "Due!"}
-                      </Badge>
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {upcomingCalvings.map(record => {
+                const daysLeft = differenceInDays(new Date(record.expected_calving_date!), new Date());
+                return (
+                  <div key={record.id} className="flex items-center gap-3 p-3 rounded-lg border bg-card">
+                    <div className="h-10 w-10 rounded-lg bg-warning/20 flex items-center justify-center">
+                      <Baby className="h-5 w-5 text-warning" />
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{getCattleTag(record.cattle_id)}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {format(new Date(record.expected_calving_date!), "dd MMM yyyy")}
+                      </p>
+                    </div>
+                    <Badge variant={daysLeft <= 7 ? "destructive" : daysLeft <= 14 ? "default" : "secondary"}>
+                      {daysLeft} days
+                    </Badge>
+                  </div>
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
+          )}
 
-        {/* All Records */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>All Breeding Records</CardTitle>
-              <CardDescription>Complete breeding history</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <DataTable data={records} columns={columns} searchable searchPlaceholder="Search records..." />
-            </CardContent>
-          </Card>
-          </div>
-        </div>
+          {/* Records Table */}
+          <DataTable
+            data={records}
+            columns={columns}
+            searchPlaceholder="Search breeding records..."
+          />
         </>
       )}
     </div>
