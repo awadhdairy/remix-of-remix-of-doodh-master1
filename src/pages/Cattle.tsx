@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useCattleData, Cattle, CattleFormData } from "@/hooks/useCattleData";
+import { CattlePageSkeleton } from "@/components/common/PageSkeletons";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -25,23 +26,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { useToast } from "@/hooks/use-toast";
 import { Beef, Edit, Trash2, Loader2, Droplets } from "lucide-react";
 
-interface Cattle {
-  id: string;
-  tag_number: string;
-  name: string | null;
-  breed: string;
-  cattle_type: string;
-  date_of_birth: string | null;
-  status: string;
-  lactation_status: string;
-  weight: number | null;
-  created_at: string;
-}
-
-const emptyFormData = {
+const emptyFormData: CattleFormData = {
   tag_number: "",
   name: "",
   breed: "",
@@ -55,14 +42,11 @@ const emptyFormData = {
 
 export default function CattlePage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [cattle, setCattle] = useState<Cattle[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { cattle, isLoading, createCattle, updateCattle, deleteCattle, isCreating, isUpdating } = useCattleData();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedCattle, setSelectedCattle] = useState<Cattle | null>(null);
-  const [formData, setFormData] = useState(emptyFormData);
-  const [saving, setSaving] = useState(false);
-  const { toast } = useToast();
+  const [formData, setFormData] = useState<CattleFormData>(emptyFormData);
 
   // Milk history dialog state
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -70,31 +54,15 @@ export default function CattlePage() {
   const [historyCattleName, setHistoryCattleName] = useState<string>("");
 
   useEffect(() => {
-    fetchCattle();
     if (searchParams.get("action") === "add") {
       setDialogOpen(true);
       setSearchParams({});
     }
-  }, [searchParams]);
+  }, [searchParams, setSearchParams]);
 
-  const fetchCattle = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("cattle")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      toast({
-        title: "Error fetching cattle",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      setCattle(data || []);
-    }
-    setLoading(false);
-  };
+  if (isLoading) {
+    return <CattlePageSkeleton />;
+  }
 
   const handleOpenDialog = (cattle?: Cattle) => {
     if (cattle) {
@@ -117,72 +85,32 @@ export default function CattlePage() {
     setDialogOpen(true);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!formData.tag_number || !formData.breed) {
-      toast({
-        title: "Validation Error",
-        description: "Tag number and breed are required",
-        variant: "destructive",
-      });
       return;
     }
 
-    setSaving(true);
-    const payload = {
-      tag_number: formData.tag_number,
-      name: formData.name || null,
-      breed: formData.breed,
-      cattle_type: formData.cattle_type,
-      date_of_birth: formData.date_of_birth || null,
-      weight: formData.weight ? parseFloat(formData.weight) : null,
-      status: formData.status as "active" | "sold" | "deceased" | "dry",
-      lactation_status: formData.lactation_status as "lactating" | "dry" | "pregnant" | "calving",
-      notes: formData.notes || null,
-    };
-
-    const { error } = selectedCattle
-      ? await supabase.from("cattle").update(payload).eq("id", selectedCattle.id)
-      : await supabase.from("cattle").insert(payload);
-
-    setSaving(false);
-
-    if (error) {
-      toast({
-        title: "Error saving cattle",
-        description: error.message,
-        variant: "destructive",
+    if (selectedCattle) {
+      updateCattle({ id: selectedCattle.id, formData }, {
+        onSuccess: () => setDialogOpen(false),
       });
     } else {
-      toast({
-        title: selectedCattle ? "Cattle updated" : "Cattle added",
-        description: `${formData.tag_number} has been saved successfully`,
+      createCattle(formData, {
+        onSuccess: () => setDialogOpen(false),
       });
-      setDialogOpen(false);
-      fetchCattle();
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!selectedCattle) return;
-
-    const { error } = await supabase.from("cattle").delete().eq("id", selectedCattle.id);
-
-    if (error) {
-      toast({
-        title: "Error deleting cattle",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Cattle deleted",
-        description: `${selectedCattle.tag_number} has been removed`,
-      });
-      setDeleteDialogOpen(false);
-      setSelectedCattle(null);
-      fetchCattle();
-    }
+    deleteCattle(selectedCattle.id, {
+      onSuccess: () => {
+        setDeleteDialogOpen(false);
+        setSelectedCattle(null);
+      },
+    });
   };
+
 
   const handleOpenMilkHistory = (cattle: Cattle) => {
     setHistoryCattleId(cattle.id);
@@ -330,7 +258,7 @@ export default function CattlePage() {
       <DataTable
         data={cattle}
         columns={columns}
-        loading={loading}
+        loading={isLoading}
         searchPlaceholder="Search by tag, name, breed..."
         emptyMessage="No cattle found. Add your first cattle to get started."
       />
@@ -491,8 +419,8 @@ export default function CattlePage() {
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button onClick={handleSave} disabled={isCreating || isUpdating}>
+              {(isCreating || isUpdating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {selectedCattle ? "Update" : "Add"} Cattle
             </Button>
           </div>
