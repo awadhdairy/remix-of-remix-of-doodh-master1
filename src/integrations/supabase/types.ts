@@ -275,6 +275,7 @@ export type Database = {
           cattle_type: string
           created_at: string | null
           created_by: string | null
+          dam_id: string | null
           date_of_birth: string | null
           expected_calving_date: string | null
           id: string
@@ -288,6 +289,7 @@ export type Database = {
           notes: string | null
           purchase_cost: number | null
           purchase_date: string | null
+          sire_id: string | null
           status: Database["public"]["Enums"]["cattle_status"] | null
           tag_number: string
           updated_at: string | null
@@ -298,6 +300,7 @@ export type Database = {
           cattle_type?: string
           created_at?: string | null
           created_by?: string | null
+          dam_id?: string | null
           date_of_birth?: string | null
           expected_calving_date?: string | null
           id?: string
@@ -311,6 +314,7 @@ export type Database = {
           notes?: string | null
           purchase_cost?: number | null
           purchase_date?: string | null
+          sire_id?: string | null
           status?: Database["public"]["Enums"]["cattle_status"] | null
           tag_number: string
           updated_at?: string | null
@@ -321,6 +325,7 @@ export type Database = {
           cattle_type?: string
           created_at?: string | null
           created_by?: string | null
+          dam_id?: string | null
           date_of_birth?: string | null
           expected_calving_date?: string | null
           id?: string
@@ -334,12 +339,28 @@ export type Database = {
           notes?: string | null
           purchase_cost?: number | null
           purchase_date?: string | null
+          sire_id?: string | null
           status?: Database["public"]["Enums"]["cattle_status"] | null
           tag_number?: string
           updated_at?: string | null
           weight?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cattle_dam_id_fkey"
+            columns: ["dam_id"]
+            isOneToOne: false
+            referencedRelation: "cattle"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cattle_sire_id_fkey"
+            columns: ["sire_id"]
+            isOneToOne: false
+            referencedRelation: "cattle"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cattle_health: {
         Row: {

@@ -7,6 +7,7 @@ import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { MilkHistoryDialog } from "@/components/production/MilkHistoryDialog";
+import { CattlePedigreeDialog } from "@/components/cattle/CattlePedigreeDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Beef, Edit, Trash2, Loader2, Droplets } from "lucide-react";
+import { Beef, Edit, Trash2, Loader2, Droplets, GitBranch } from "lucide-react";
 
 const emptyFormData: CattleFormData = {
   tag_number: "",
@@ -38,6 +39,8 @@ const emptyFormData: CattleFormData = {
   status: "active",
   lactation_status: "dry",
   notes: "",
+  sire_id: "",
+  dam_id: "",
 };
 
 export default function CattlePage() {
@@ -52,6 +55,11 @@ export default function CattlePage() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [historyCattleId, setHistoryCattleId] = useState<string>("");
   const [historyCattleName, setHistoryCattleName] = useState<string>("");
+
+  // Pedigree dialog state
+  const [pedigreeDialogOpen, setPedigreeDialogOpen] = useState(false);
+  const [pedigreeCattleId, setPedigreeCattleId] = useState<string>("");
+  const [pedigreeCattleName, setPedigreeCattleName] = useState<string>("");
 
   useEffect(() => {
     if (searchParams.get("action") === "add") {
@@ -77,12 +85,20 @@ export default function CattlePage() {
         status: cattle.status,
         lactation_status: cattle.lactation_status,
         notes: "",
+        sire_id: cattle.sire_id || "",
+        dam_id: cattle.dam_id || "",
       });
     } else {
       setSelectedCattle(null);
       setFormData(emptyFormData);
     }
     setDialogOpen(true);
+  };
+
+  const handleOpenPedigree = (cattle: Cattle) => {
+    setPedigreeCattleId(cattle.id);
+    setPedigreeCattleName(`${cattle.tag_number}${cattle.name ? ` (${cattle.name})` : ""}`);
+    setPedigreeDialogOpen(true);
   };
 
   const handleSave = () => {
@@ -170,6 +186,17 @@ export default function CattlePage() {
       header: "Actions",
       render: (item: Cattle) => (
         <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleOpenPedigree(item);
+            }}
+            title="View Pedigree"
+          >
+            <GitBranch className="h-4 w-4 text-primary" />
+          </Button>
           {canShowMilkHistory(item) && (
             <Button
               variant="ghost"
@@ -401,6 +428,62 @@ export default function CattlePage() {
               </div>
             </div>
 
+            {/* Pedigree Section */}
+            <div className="border-t pt-4 mt-2">
+              <Label className="text-sm font-medium flex items-center gap-2 mb-3">
+                <GitBranch className="h-4 w-4" />
+                Pedigree (Parents)
+              </Label>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="sire_id">Sire (Father)</Label>
+                  <Select
+                    value={formData.sire_id}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, sire_id: v === "none" ? "" : v })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sire..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No sire recorded</SelectItem>
+                      {cattle
+                        .filter((c) => c.id !== selectedCattle?.id)
+                        .map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.tag_number} {c.name ? `(${c.name})` : ""}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dam_id">Dam (Mother)</Label>
+                  <Select
+                    value={formData.dam_id}
+                    onValueChange={(v) =>
+                      setFormData({ ...formData, dam_id: v === "none" ? "" : v })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select dam..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No dam recorded</SelectItem>
+                      {cattle
+                        .filter((c) => c.id !== selectedCattle?.id && c.cattle_type === "cow")
+                        .map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.tag_number} {c.name ? `(${c.name})` : ""}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
               <Textarea
@@ -445,6 +528,14 @@ export default function CattlePage() {
         mode="cattle"
         cattleId={historyCattleId}
         cattleName={historyCattleName}
+      />
+
+      {/* Pedigree Dialog */}
+      <CattlePedigreeDialog
+        open={pedigreeDialogOpen}
+        onOpenChange={setPedigreeDialogOpen}
+        cattleId={pedigreeCattleId}
+        cattleName={pedigreeCattleName}
       />
     </div>
   );

@@ -13,6 +13,8 @@ export interface Cattle {
   lactation_status: string;
   weight: number | null;
   created_at: string;
+  sire_id: string | null;
+  dam_id: string | null;
 }
 
 export interface CattleFormData {
@@ -25,6 +27,8 @@ export interface CattleFormData {
   status: string;
   lactation_status: string;
   notes: string;
+  sire_id: string;
+  dam_id: string;
 }
 
 async function fetchCattle(): Promise<Cattle[]> {
@@ -48,6 +52,8 @@ async function createCattle(formData: CattleFormData) {
     status: formData.status as "active" | "sold" | "deceased" | "dry",
     lactation_status: formData.lactation_status as "lactating" | "dry" | "pregnant" | "calving",
     notes: formData.notes || null,
+    sire_id: formData.sire_id || null,
+    dam_id: formData.dam_id || null,
   };
 
   const { error } = await supabase.from("cattle").insert(payload);
@@ -65,6 +71,8 @@ async function updateCattle(id: string, formData: CattleFormData) {
     status: formData.status as "active" | "sold" | "deceased" | "dry",
     lactation_status: formData.lactation_status as "lactating" | "dry" | "pregnant" | "calving",
     notes: formData.notes || null,
+    sire_id: formData.sire_id || null,
+    dam_id: formData.dam_id || null,
   };
 
   const { error } = await supabase.from("cattle").update(payload).eq("id", id);
