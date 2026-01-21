@@ -95,8 +95,9 @@ export function useEquipmentData() {
       if (error) throw error;
 
       // Auto-create expense entry
+      let expenseCreated = false;
       if (formData.purchase_cost && parseFloat(formData.purchase_cost) > 0 && data) {
-        await logEquipmentPurchase(
+        expenseCreated = await logEquipmentPurchase(
           formData.name,
           parseFloat(formData.purchase_cost),
           formData.purchase_date || format(new Date(), "yyyy-MM-dd"),
@@ -104,11 +105,13 @@ export function useEquipmentData() {
         );
       }
 
-      return data;
+      return { data, expenseCreated };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["equipment"] });
-      toast({ title: "Equipment added & expense recorded" });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      const message = result?.expenseCreated ? "Equipment added & expense recorded" : "Equipment added";
+      toast({ title: message });
     },
     onError: (error: Error) => {
       toast({ title: "Error adding equipment", description: error.message, variant: "destructive" });
@@ -142,10 +145,11 @@ export function useEquipmentData() {
       if (error) throw error;
 
       // Auto-create expense entry
+      let expenseCreated = false;
       if (formData.cost && parseFloat(formData.cost) > 0 && data) {
         const equipment = equipmentQuery.data?.equipment.find((e) => e.id === formData.equipment_id);
         const equipmentName = equipment?.name || "Unknown Equipment";
-        await logMaintenanceExpense(
+        expenseCreated = await logMaintenanceExpense(
           equipmentName,
           formData.maintenance_type,
           parseFloat(formData.cost),
@@ -154,11 +158,13 @@ export function useEquipmentData() {
         );
       }
 
-      return data;
+      return { data, expenseCreated };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["equipment"] });
-      toast({ title: "Maintenance record added & expense recorded" });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      const message = result?.expenseCreated ? "Maintenance record added & expense recorded" : "Maintenance record added";
+      toast({ title: message });
     },
     onError: (error: Error) => {
       toast({ title: "Error adding maintenance", description: error.message, variant: "destructive" });

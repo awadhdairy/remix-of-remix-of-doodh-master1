@@ -18,12 +18,13 @@ interface ExpenseEntry {
 export function useExpenseAutomation() {
   /**
    * Check if an expense already exists for a reference
+   * Uses LIKE pattern matching since notes may contain additional info after the reference
    */
   const checkExpenseExists = async (referenceId: string, referenceType: string): Promise<boolean> => {
     const { data } = await supabase
       .from("expenses")
       .select("id")
-      .eq("notes", `[AUTO] ${referenceType}:${referenceId}`)
+      .like("notes", `[AUTO] ${referenceType}:${referenceId}%`)
       .limit(1);
     
     return (data && data.length > 0);

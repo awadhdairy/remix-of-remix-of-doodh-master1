@@ -148,8 +148,9 @@ export function useInventoryData() {
       }
 
       // Auto-create expense entry when adding stock (purchase)
+      let expenseCreated = false;
       if (type === "add" && item.cost_per_unit && item.cost_per_unit > 0) {
-        await logFeedPurchase(
+        expenseCreated = await logFeedPurchase(
           item.name,
           quantity,
           item.cost_per_unit,
@@ -157,11 +158,15 @@ export function useInventoryData() {
           format(new Date(), "yyyy-MM-dd")
         );
       }
+      return { expenseCreated };
     },
-    onSuccess: (_, { type, item }) => {
+    onSuccess: (result, { type, item }) => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
       const message =
-        type === "add" && item.cost_per_unit ? "Stock updated & expense recorded" : "Stock updated";
+        type === "add" && item.cost_per_unit && result?.expenseCreated 
+          ? "Stock updated & expense recorded" 
+          : "Stock updated";
       toast({ title: message });
     },
     onError: (error: Error) => {

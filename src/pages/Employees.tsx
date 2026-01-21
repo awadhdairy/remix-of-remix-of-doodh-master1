@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoAttendance } from "@/hooks/useAutoAttendance";
@@ -74,7 +75,7 @@ const roleLabels: Record<string, string> = {
 
 export default function EmployeesPage() {
   const { toast } = useToast();
-  
+  const queryClient = useQueryClient();
   // Auto-create today's attendance for all active employees (present by default)
   useAutoAttendance();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -236,7 +237,7 @@ export default function EmployeesPage() {
     } else {
       // Auto-create expense entry for salary payment
       const employeeName = getEmployeeName(payrollRecord.employee_id);
-      await logSalaryExpense(
+      const expenseCreated = await logSalaryExpense(
         employeeName,
         payrollRecord.net_salary,
         payrollRecord.pay_period_start,
@@ -244,7 +245,13 @@ export default function EmployeesPage() {
         id
       );
 
-      toast({ title: "Success", description: "Payment marked as paid & expense recorded" });
+      // Invalidate expenses query to refresh expense data
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      
+      const message = expenseCreated 
+        ? "Payment marked as paid & expense recorded" 
+        : "Payment marked as paid (expense already exists)";
+      toast({ title: "Success", description: message });
       fetchData();
     }
   };

@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
-import { format } from "date-fns";
 
 interface Cattle {
   id: string;
@@ -94,10 +93,11 @@ export function useHealthData() {
       if (error) throw error;
 
       // Auto-create expense entry
+      let expenseCreated = false;
       if (formData.cost && parseFloat(formData.cost) > 0 && data) {
         const selectedCattle = cattleList.find((c) => c.id === formData.cattle_id);
         const cattleTag = selectedCattle ? selectedCattle.tag_number : "Unknown";
-        await logHealthExpense(
+        expenseCreated = await logHealthExpense(
           cattleTag,
           formData.record_type,
           formData.title,
@@ -107,11 +107,13 @@ export function useHealthData() {
         );
       }
 
-      return data;
+      return { data, expenseCreated };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["health-records"] });
-      toast({ title: "Health record added & expense recorded" });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      const message = result?.expenseCreated ? "Health record added & expense recorded" : "Health record added";
+      toast({ title: message });
     },
     onError: (error: Error) => {
       toast({ title: "Error saving record", description: error.message, variant: "destructive" });
