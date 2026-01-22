@@ -5,6 +5,7 @@ import { RecentActivityCard } from "./RecentActivityCard";
 import { QuickActionsCard } from "./QuickActionsCard";
 import { ProductionChart } from "./ProductionChart";
 import { ProductionInsights } from "./ProductionInsights";
+import { ExpenseAutomationCard } from "./ExpenseAutomationCard";
 import { useBreedingAlerts } from "@/hooks/useBreedingAlerts";
 import { BreedingAlertsPanel } from "@/components/breeding/BreedingAlertsPanel";
 import { DashboardSkeleton } from "@/components/common/LoadingSkeleton";
@@ -114,6 +115,7 @@ export function AdminDashboard() {
           showViewAll={true}
           onViewAll={() => navigate("/breeding")}
         />
+        <ExpenseAutomationCard />
       </motion.div>
     </motion.div>
   );
