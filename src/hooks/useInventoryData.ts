@@ -150,36 +150,47 @@ export function useInventoryData() {
       // Auto-create expense entry when adding stock (purchase)
       let expenseCreated = false;
       let expenseAmount = 0;
-      if (type === "add") {
-        if (item.cost_per_unit && item.cost_per_unit > 0) {
-          expenseAmount = quantity * item.cost_per_unit;
+      const hasCost = !!(item.cost_per_unit && item.cost_per_unit > 0);
+      
+      if (type === "add" && hasCost) {
+        expenseAmount = quantity * item.cost_per_unit!;
+        try {
+          console.log(`[Expense Automation] Creating feed expense: ${item.name}, qty: ${quantity}, cost: ${item.cost_per_unit}`);
           expenseCreated = await logFeedPurchase(
             item.name,
             quantity,
-            item.cost_per_unit,
+            item.cost_per_unit!,
             item.unit,
             format(new Date(), "yyyy-MM-dd")
           );
+          console.log(`[Expense Automation] Result: ${expenseCreated ? 'Created' : 'Skipped (duplicate)'}`);
+        } catch (expenseError) {
+          console.error("[Expense Automation] Failed to create expense:", expenseError);
+          expenseCreated = false;
         }
       }
-      return { expenseCreated, expenseAmount, hasCost: !!(item.cost_per_unit && item.cost_per_unit > 0) };
+      
+      return { expenseCreated, expenseAmount, hasCost, type };
     },
-    onSuccess: (result, { type, item }) => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
       
-      if (type === "add") {
-        if (result?.expenseCreated) {
+      if (result.type === "add") {
+        if (result.expenseCreated) {
           toast({ 
             title: "Stock added & expense recorded", 
             description: `₹${result.expenseAmount.toLocaleString()} added to expenses` 
           });
-        } else if (result?.hasCost) {
-          toast({ title: "Stock updated", description: "Expense already exists for this item" });
+        } else if (result.hasCost) {
+          toast({ 
+            title: "Stock added", 
+            description: "Expense may already exist for similar purchase" 
+          });
         } else {
           toast({ 
-            title: "Stock updated", 
-            description: "No expense recorded (set unit cost to enable auto-expense)" 
+            title: "Stock added", 
+            description: "Set unit cost to enable auto-expense tracking" 
           });
         }
       } else {

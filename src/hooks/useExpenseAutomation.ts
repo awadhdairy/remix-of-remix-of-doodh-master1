@@ -164,8 +164,11 @@ export function useExpenseAutomation() {
     const totalCost = quantity * unitCost;
     if (totalCost <= 0) return false;
 
-    // Generate a unique reference for this purchase
-    const reference = `feed_${itemName}_${Date.now()}`;
+    // Generate a unique reference for this purchase using timestamp for uniqueness
+    const timestamp = Date.now();
+    const reference = `feed_${itemName.replace(/\s+/g, '_')}_${timestamp}`;
+
+    console.log(`[logFeedPurchase] Creating expense: ${itemName}, total: ₹${totalCost}, ref: ${reference}`);
 
     return await createExpense({
       category: "feed",
