@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { PageHeader } from "@/components/common/PageHeader";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { DataBackupExport } from "@/components/reports/DataBackupExport";
+import { DailyDataTable } from "@/components/reports/DailyDataTable";
+import { useUserRole } from "@/hooks/useUserRole";
 import { 
   BarChart3, 
   Droplets, 
@@ -12,7 +14,7 @@ import {
   Beef, 
   TrendingUp, 
   TrendingDown,
-  Download,
+  Database,
   Loader2
 } from "lucide-react";
 import { 
@@ -34,12 +36,15 @@ import { format, subDays, startOfMonth, eachDayOfInterval } from "date-fns";
 const COLORS = ['hsl(152, 45%, 28%)', 'hsl(158, 50%, 45%)', 'hsl(38, 92%, 50%)', 'hsl(199, 89%, 48%)', 'hsl(0, 72%, 51%)'];
 
 export default function ReportsPage() {
+  const { role } = useUserRole();
   const [loading, setLoading] = useState(true);
   const [productionData, setProductionData] = useState<any[]>([]);
   const [revenueData, setRevenueData] = useState<any[]>([]);
   const [expenseData, setExpenseData] = useState<any[]>([]);
   const [cattleStats, setCattleStats] = useState<any>({});
   const [customerStats, setCustomerStats] = useState<any>({});
+
+  const canAccessBackup = role === "super_admin" || role === "manager";
 
   useEffect(() => {
     fetchReportData();
@@ -153,11 +158,7 @@ export default function ReportsPage() {
         title="Reports & Analytics"
         description="Comprehensive insights into your dairy operations"
         icon={BarChart3}
-      >
-        <Button variant="outline" className="gap-2">
-          <Download className="h-4 w-4" /> Export
-        </Button>
-      </PageHeader>
+      />
 
       {/* Key Metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -211,13 +212,24 @@ export default function ReportsPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="production" className="space-y-6">
-        <TabsList>
+      <Tabs defaultValue="daily" className="space-y-6">
+        <TabsList className="flex-wrap h-auto">
+          <TabsTrigger value="daily">Daily Data</TabsTrigger>
           <TabsTrigger value="production">Production</TabsTrigger>
           <TabsTrigger value="financial">Financial</TabsTrigger>
           <TabsTrigger value="cattle">Cattle</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
+          {canAccessBackup && (
+            <TabsTrigger value="backup" className="gap-1">
+              <Database className="h-4 w-4" />
+              Backup
+            </TabsTrigger>
+          )}
         </TabsList>
+
+        <TabsContent value="daily">
+          <DailyDataTable />
+        </TabsContent>
 
         <TabsContent value="production">
           <Card>
@@ -405,6 +417,12 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {canAccessBackup && (
+          <TabsContent value="backup">
+            <DataBackupExport />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
