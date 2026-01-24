@@ -1,14 +1,14 @@
-# Doodh Wallah - Complete Dairy Farm Management System
+# Awadh Dairy - Complete Dairy Farm Management System
 
 ## Comprehensive Recreation Prompt
 
-This document contains a complete specification to recreate the **Doodh Wallah** dairy management system from scratch. It covers every feature, database schema, component, automation, and design detail.
+This document contains a complete specification to recreate the **Awadh Dairy** management system from scratch. It covers every feature, database schema, component, automation, and design detail.
 
 ---
 
 ## 1. PROJECT OVERVIEW
 
-**Name:** Doodh Wallah (Hindi for "Milk Seller")
+**Name:** Awadh Dairy
 **Purpose:** Complete dairy farm management solution for independent dairy owners to manage daily operations, cattle, finance, customers, deliveries, and growth.
 **Inspiration:** milkwala.store / meridairy.in
 

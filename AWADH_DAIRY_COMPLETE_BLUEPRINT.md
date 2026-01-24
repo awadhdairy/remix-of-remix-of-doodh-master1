@@ -1,7 +1,7 @@
-# 🥛 DOODH WALLAH - COMPLETE SYSTEM BLUEPRINT
+# 🥛 AWADH DAIRY - COMPLETE SYSTEM BLUEPRINT
 ## Comprehensive AI-Ready Recreation Prompt
 
-> **Purpose**: This document is a 100% complete, self-explanatory blueprint enabling any AI to recreate the entire Doodh Wallah dairy management system from scratch. It covers every feature, component, interaction, database schema, edge function, hook, utility, and design token.
+> **Purpose**: This document is a 100% complete, self-explanatory blueprint enabling any AI to recreate the entire Awadh Dairy management system from scratch. It covers every feature, component, interaction, database schema, edge function, hook, utility, and design token.
 
 ---
 
@@ -33,7 +33,7 @@
 ## 1. PROJECT OVERVIEW
 
 ### 1.1 Description
-**Doodh Wallah** is a comprehensive dairy management system designed for independent dairy owners in India. It manages:
+**Awadh Dairy** is a comprehensive dairy management system designed for independent dairy owners in India. It manages:
 - Cattle inventory and health
 - Milk production tracking (morning/evening sessions)
 - Customer subscriptions and deliveries

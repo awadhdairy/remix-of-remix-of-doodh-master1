@@ -1,6 +1,6 @@
-# Doodh Wallah - Free Deployment Guide (Vercel + Supabase)
+# Awadh Dairy - Free Deployment Guide (Vercel + Supabase)
 
-This guide will help you deploy Doodh Wallah completely free on Vercel (frontend) and Supabase (backend).
+This guide will help you deploy Awadh Dairy completely free on Vercel (frontend) and Supabase (backend).
 
 ## Prerequisites
 
@@ -17,7 +17,7 @@ This guide will help you deploy Doodh Wallah completely free on Vercel (frontend
 1. Go to https://supabase.com and sign up/login
 2. Click "New Project"
 3. Fill in:
-   - **Project name**: `doodh-wallah`
+   - **Project name**: `awadh-dairy`
    - **Database password**: Create a strong password (save it!)
    - **Region**: Choose closest to your users
 4. Wait for project to be created (2-3 minutes)
@@ -77,7 +77,7 @@ This guide will help you deploy Doodh Wallah completely free on Vercel (frontend
    git add .
    git commit -m "Initial commit"
    git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/doodh-wallah.git
+   git remote add origin https://github.com/YOUR_USERNAME/awadh-dairy.git
    git push -u origin main
    ```
 
@@ -85,7 +85,7 @@ This guide will help you deploy Doodh Wallah completely free on Vercel (frontend
 
 1. Go to https://vercel.com and login with GitHub
 2. Click "Add New Project"
-3. Import your `doodh-wallah` repository
+3. Import your `awadh-dairy` repository
 4. Configure:
    - **Framework Preset**: Vite
    - **Build Command**: `npm run build` (default)
