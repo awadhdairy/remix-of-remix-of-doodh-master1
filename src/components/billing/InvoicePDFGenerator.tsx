@@ -378,6 +378,9 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
       yPos += 55;
 
       // === ITEMS TABLE ===
+      // Note: jsPDF's default fonts don't support ₹ symbol properly, using "Rs." for compatibility
+      const currencySymbol = "Rs.";
+      
       interface GroupedItem {
         product_name: string;
         unit: string;
@@ -409,10 +412,9 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
         tableData = Object.values(groupedItems).map((item, index) => [
           String(index + 1),
           item.product_name,
-          item.quantity.toFixed(2),
-          item.unit,
-          `₹${item.unit_price.toFixed(2)}`,
-          `₹${item.total_amount.toFixed(2)}`,
+          `${item.quantity.toFixed(2)} ${item.unit}`,
+          `${currencySymbol} ${item.unit_price.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          `${currencySymbol} ${item.total_amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
         ]);
       } else if (invoice.notes) {
         // Parse from notes
@@ -425,52 +427,53 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
             return [
               String(index + 1),
               product.trim(),
-              parseFloat(qty).toFixed(2),
-              unit,
-              `₹${parseFloat(rate).toFixed(2)}`,
-              `₹${amount.toFixed(2)}`,
+              `${parseFloat(qty).toFixed(2)} ${unit}`,
+              `${currencySymbol} ${parseFloat(rate).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              `${currencySymbol} ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
             ];
           }
-          return [String(index + 1), line.trim(), "-", "-", "-", "-"];
+          return [String(index + 1), line.trim(), "-", "-", "-"];
         });
       }
 
       if (tableData.length > 0) {
         autoTable(doc, {
           startY: yPos,
-          head: [["#", "Product Description", "Qty", "Unit", "Rate (₹)", "Amount (₹)"]],
+          head: [["#", "Product Description", "Quantity", "Unit Rate", "Amount"]],
           body: tableData,
           margin: { left: margin, right: margin },
           headStyles: {
             fillColor: primaryColor,
             textColor: [255, 255, 255],
             fontStyle: "bold",
-            fontSize: 9,
-            cellPadding: 4,
+            fontSize: 10,
+            cellPadding: 5,
             halign: "center",
+            valign: "middle",
           },
           bodyStyles: {
             textColor: darkText,
-            fontSize: 9,
-            cellPadding: 4,
+            fontSize: 10,
+            cellPadding: 5,
+            valign: "middle",
           },
           alternateRowStyles: {
-            fillColor: [252, 252, 252],
+            fillColor: [250, 250, 250],
           },
           columnStyles: {
-            0: { cellWidth: 12, halign: "center" },
+            0: { cellWidth: 15, halign: "center" },
             1: { cellWidth: "auto", halign: "left" },
-            2: { cellWidth: 20, halign: "right" },
-            3: { cellWidth: 18, halign: "center" },
-            4: { cellWidth: 28, halign: "right" },
-            5: { cellWidth: 32, halign: "right", fontStyle: "bold" },
+            2: { cellWidth: 35, halign: "center" },
+            3: { cellWidth: 35, halign: "right" },
+            4: { cellWidth: 40, halign: "right", fontStyle: "bold" },
           },
           styles: {
             lineColor: borderColor,
-            lineWidth: 0.2,
+            lineWidth: 0.3,
+            overflow: "linebreak",
           },
           tableLineColor: borderColor,
-          tableLineWidth: 0.2,
+          tableLineWidth: 0.3,
         });
 
         yPos = (doc as any).lastAutoTable.finalY + 10;
@@ -497,60 +500,88 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
 
       doc.setFontSize(9);
 
+      // Format currency with Indian locale (reusing currencySymbol from table section)
+      const formatCurrency = (amount: number) => {
+        return `${currencySymbol} ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      };
+
       // Subtotal
       doc.setTextColor(...grayText);
       doc.setFont("helvetica", "normal");
       doc.text("Subtotal:", sumLabelX, sumY);
       doc.setTextColor(...darkText);
-      doc.text(`₹${Number(invoice.total_amount).toFixed(2)}`, sumValueX, sumY, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.text(formatCurrency(Number(invoice.total_amount)), sumValueX, sumY, { align: "right" });
 
       // Tax
       sumY += 8;
       doc.setTextColor(...grayText);
+      doc.setFont("helvetica", "normal");
       doc.text("Tax:", sumLabelX, sumY);
       doc.setTextColor(...darkText);
-      doc.text(`₹${Number(invoice.tax_amount || 0).toFixed(2)}`, sumValueX, sumY, { align: "right" });
+      doc.setFont("helvetica", "bold");
+      doc.text(formatCurrency(Number(invoice.tax_amount || 0)), sumValueX, sumY, { align: "right" });
 
       // Discount (if any)
       if (Number(invoice.discount_amount) > 0) {
         sumY += 8;
         doc.setTextColor(34, 139, 34);
+        doc.setFont("helvetica", "normal");
         doc.text("Discount:", sumLabelX, sumY);
-        doc.text(`-₹${Number(invoice.discount_amount).toFixed(2)}`, sumValueX, sumY, { align: "right" });
+        doc.setFont("helvetica", "bold");
+        doc.text(`- ${formatCurrency(Number(invoice.discount_amount))}`, sumValueX, sumY, { align: "right" });
       }
 
       // Divider
-      sumY += 6;
+      sumY += 8;
       doc.setDrawColor(...goldColor);
-      doc.setLineWidth(0.8);
+      doc.setLineWidth(1);
       doc.line(sumLabelX, sumY, sumValueX, sumY);
 
-      // Grand Total
-      sumY += 8;
+      // Grand Total Box - Centered
+      sumY += 10;
+      const grandTotalBoxWidth = summaryWidth - 8;
+      const grandTotalBoxX = sumLabelX - 4;
+      
       doc.setFillColor(...primaryColor);
-      doc.roundedRect(sumLabelX - 4, sumY - 4, summaryWidth - 8, 14, 2, 2, "F");
+      doc.roundedRect(grandTotalBoxX, sumY - 6, grandTotalBoxWidth, 18, 3, 3, "F");
       
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
-      doc.text("GRAND TOTAL", sumLabelX + 2, sumY + 4);
-      doc.setFontSize(12);
-      doc.text(`₹${Number(invoice.final_amount).toFixed(2)}`, sumValueX - 4, sumY + 4, { align: "right" });
+      
+      const grandTotalLabel = "GRAND TOTAL";
+      const grandTotalValue = formatCurrency(Number(invoice.final_amount));
+      const boxCenterX = grandTotalBoxX + grandTotalBoxWidth / 2;
+      
+      // Center the grand total label and value
+      doc.text(grandTotalLabel, boxCenterX, sumY + 1, { align: "center" });
+      doc.setFontSize(13);
+      doc.text(grandTotalValue, boxCenterX, sumY + 9, { align: "center" });
 
-      // Amount in words - Below summary, left aligned
-      const wordsY = yPos + summaryHeight + 8;
+      // Amount in words - Full width, centered below summary
+      const wordsY = yPos + summaryHeight + 18;
+      
+      // Words box spanning full width
+      const amountWords = numberToIndianWords(Number(invoice.final_amount));
+      
+      doc.setFillColor(252, 252, 245);
+      doc.setDrawColor(...goldColor);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(margin, wordsY - 6, pageWidth - margin * 2, 22, 2, 2, "FD");
+      
       doc.setTextColor(...accentColor);
       doc.setFontSize(9);
       doc.setFont("helvetica", "bold");
-      doc.text("Amount in Words:", margin, wordsY);
+      doc.text("Amount in Words:", margin + 8, wordsY + 2);
       
       doc.setTextColor(...darkText);
-      doc.setFont("helvetica", "italic");
-      const amountWords = numberToIndianWords(Number(invoice.final_amount));
-      const wordsLines = doc.splitTextToSize(amountWords, pageWidth - margin * 2);
-      doc.text(wordsLines, margin, wordsY + 5);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bolditalic");
+      const wordsLines = doc.splitTextToSize(amountWords, pageWidth - margin * 2 - 16);
+      doc.text(wordsLines, margin + 8, wordsY + 10);
 
-      yPos = wordsY + 5 + wordsLines.length * 4 + 8;
+      yPos = wordsY + 22 + 8;
 
       // === PAYMENT RECEIVED SECTION (if applicable) ===
       if (Number(invoice.paid_amount) > 0) {
@@ -558,23 +589,28 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
         
         doc.setFillColor(230, 245, 230);
         doc.setDrawColor(34, 139, 34);
-        doc.setLineWidth(0.3);
-        doc.roundedRect(margin, yPos, pageWidth - margin * 2, 18, 2, 2, "FD");
+        doc.setLineWidth(0.5);
+        doc.roundedRect(margin, yPos, pageWidth - margin * 2, 20, 3, 3, "FD");
+        
+        const paymentBoxCenter = pageWidth / 2;
         
         doc.setTextColor(34, 139, 34);
         doc.setFontSize(10);
         doc.setFont("helvetica", "bold");
-        doc.text(`✓ Payment Received: ₹${Number(invoice.paid_amount).toFixed(2)}`, margin + 10, yPos + 11);
+        
+        const paidText = `Payment Received: ${formatCurrency(Number(invoice.paid_amount))}`;
+        doc.text(paidText, margin + 12, yPos + 12);
         
         if (balance > 0) {
           doc.setTextColor(200, 50, 50);
-          doc.text(`Balance Due: ₹${balance.toFixed(2)}`, pageWidth - margin - 10, yPos + 11, { align: "right" });
+          const balanceText = `Balance Due: ${formatCurrency(balance)}`;
+          doc.text(balanceText, pageWidth - margin - 12, yPos + 12, { align: "right" });
         } else {
           doc.setTextColor(34, 139, 34);
-          doc.text("FULLY PAID", pageWidth - margin - 10, yPos + 11, { align: "right" });
+          doc.text("FULLY PAID", pageWidth - margin - 12, yPos + 12, { align: "right" });
         }
         
-        yPos += 25;
+        yPos += 28;
       }
 
       // === TERMS AND BANK DETAILS ===
