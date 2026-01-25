@@ -251,7 +251,7 @@ export function MobileNavbar() {
               </div>
               
               <ScrollArea className="flex-1 min-h-0">
-                <div className="px-4 py-3">
+                <div className="px-3 py-2">
                   <AnimatePresence>
                     {visibleMenuItems.map((item, index) => {
                       const isActive = location.pathname === item.href;
@@ -260,17 +260,17 @@ export function MobileNavbar() {
                           key={item.href}
                           initial={{ opacity: 0, x: 20 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: index * 0.03 }}
+                          transition={{ delay: index * 0.02 }}
                           onClick={() => handleMenuItemClick(item.href)}
                           className={cn(
-                            "w-full flex items-center gap-4 px-4 py-3.5 rounded-xl mb-1 transition-all touch-active",
+                            "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5 transition-all touch-active",
                             isActive
                               ? "bg-primary text-primary-foreground shadow-md"
                               : "text-foreground hover:bg-muted active:bg-muted/80"
                           )}
                         >
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          <span className="font-medium text-[15px]">{item.title}</span>
+                          <item.icon className="h-[18px] w-[18px] shrink-0" />
+                          <span className="font-medium text-[14px]">{item.title}</span>
                         </motion.button>
                       );
                     })}
@@ -279,18 +279,18 @@ export function MobileNavbar() {
               </ScrollArea>
 
               {/* Footer Section */}
-              <div className="border-t border-border/50 bg-background p-4 space-y-2 shrink-0">
+              <div className="border-t border-border/50 bg-background p-3 space-y-1.5 shrink-0">
                 {/* Dark Mode Toggle */}
                 <button
                   onClick={toggleTheme}
-                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-border/80 transition-all touch-active hover:bg-muted active:bg-muted/80"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-border/80 transition-all touch-active hover:bg-muted active:bg-muted/80"
                 >
                   {theme === "dark" ? (
-                    <Sun className="h-5 w-5" />
+                    <Sun className="h-[18px] w-[18px]" />
                   ) : (
-                    <Moon className="h-5 w-5" />
+                    <Moon className="h-[18px] w-[18px]" />
                   )}
-                  <span className="font-medium text-[15px]">
+                  <span className="font-medium text-[14px]">
                     {theme === "dark" ? "Light Mode" : "Dark Mode"}
                   </span>
                 </button>
@@ -300,24 +300,24 @@ export function MobileNavbar() {
                   <button
                     onClick={() => handleMenuItemClick("/settings")}
                     className={cn(
-                      "w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all touch-active",
+                      "w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all touch-active",
                       location.pathname === "/settings"
                         ? "bg-muted"
                         : "hover:bg-muted active:bg-muted/80"
                     )}
                   >
-                    <Settings className="h-5 w-5" />
-                    <span className="font-medium text-[15px]">Settings</span>
+                    <Settings className="h-[18px] w-[18px]" />
+                    <span className="font-medium text-[14px]">Settings</span>
                   </button>
                 )}
 
                 {/* Logout */}
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-4 px-4 py-3 rounded-xl transition-all touch-active text-destructive hover:bg-destructive/10 active:bg-destructive/20"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all touch-active text-destructive hover:bg-destructive/10 active:bg-destructive/20"
                 >
-                  <LogOut className="h-5 w-5" />
-                  <span className="font-medium text-[15px]">Logout</span>
+                  <LogOut className="h-[18px] w-[18px]" />
+                  <span className="font-medium text-[14px]">Logout</span>
                 </button>
 
                 <Separator className="my-2" />
