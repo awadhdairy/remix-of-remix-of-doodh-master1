@@ -66,13 +66,13 @@ export default function UserManagement() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [resetPinDialogOpen, setResetPinDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [cleanupDialogOpen, setCleanupDialogOpen] = useState(false);
+  
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [newPin, setNewPin] = useState("");
   const [creating, setCreating] = useState(false);
   const [resettingPin, setResettingPin] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [cleaningUp, setCleaningUp] = useState(false);
+  
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
 
   // Form state
@@ -275,33 +275,6 @@ export default function UserManagement() {
     }
   };
 
-  const handleCleanupOrphaned = async () => {
-    setCleaningUp(true);
-    try {
-      // Dynamically find orphaned users by comparing auth users with profiles
-      const response = await supabase.functions.invoke("delete-user", {
-        body: { 
-          action: "find-and-cleanup-orphaned"
-        },
-      });
-
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to cleanup");
-      }
-
-      if (response.data?.error) {
-        throw new Error(response.data.error);
-      }
-
-      toast.success(response.data.message || "Cleanup completed");
-      setCleanupDialogOpen(false);
-      fetchUsers(); // Refresh the list
-    } catch (error: any) {
-      toast.error(error.message || "Failed to cleanup orphaned users");
-    } finally {
-      setCleaningUp(false);
-    }
-  };
 
   const columns = [
     {
@@ -395,14 +368,6 @@ export default function UserManagement() {
       />
 
       <div className="flex justify-end gap-2">
-        <Button 
-          variant="outline" 
-          className="gap-2"
-          onClick={() => setCleanupDialogOpen(true)}
-        >
-          <Trash2 className="h-4 w-4" />
-          Cleanup Orphaned Users
-        </Button>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button className="gap-2">
@@ -571,16 +536,6 @@ export default function UserManagement() {
         variant="destructive"
       />
 
-      {/* Cleanup Orphaned Users Dialog */}
-      <ConfirmDialog
-        open={cleanupDialogOpen}
-        onOpenChange={setCleanupDialogOpen}
-        title="Cleanup Orphaned Users"
-        description="This will scan for and delete any orphaned authentication records that have no associated profiles. These may be blocking phone numbers from being reused. This action cannot be undone."
-        confirmText={cleaningUp ? "Scanning & Cleaning..." : "Scan & Cleanup"}
-        onConfirm={handleCleanupOrphaned}
-        variant="destructive"
-      />
     </div>
   );
 }
