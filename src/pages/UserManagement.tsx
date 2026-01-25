@@ -96,8 +96,9 @@ export default function UserManagement() {
 
   const fetchUsers = async () => {
     try {
+      // Use profiles_safe view to exclude pin_hash column
       const { data, error } = await supabase
-        .from("profiles")
+        .from("profiles_safe")
         .select("id, full_name, phone, role, is_active, created_at")
         .order("created_at", { ascending: false });
 

@@ -40,9 +40,9 @@ export function useUserRole(): UserRoleData {
           return;
         }
 
-        // Fetch user name from profiles
+        // Fetch user name from profiles_safe view (excludes pin_hash)
         const { data: profileData } = await supabase
-          .from("profiles")
+          .from("profiles_safe")
           .select("full_name")
           .eq("id", user.id)
           .maybeSingle();

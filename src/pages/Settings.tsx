@@ -56,12 +56,12 @@ export default function SettingsPage() {
       setDairySettings(settingsData);
     }
 
-    // Fetch user profile
+    // Fetch user profile using safe view (excludes pin_hash)
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
+        .from("profiles_safe")
+        .select("id, full_name, phone, role, is_active, avatar_url, created_at, updated_at")
         .eq("id", user.id)
         .maybeSingle();
 

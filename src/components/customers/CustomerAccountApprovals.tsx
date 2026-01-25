@@ -31,8 +31,9 @@ export function CustomerAccountApprovals() {
 
   const fetchPendingAccounts = async () => {
     setLoading(true);
+    // Use customer_accounts_safe view to exclude pin_hash column
     const { data, error } = await supabase
-      .from("customer_accounts")
+      .from("customer_accounts_safe")
       .select(`
         id,
         phone,

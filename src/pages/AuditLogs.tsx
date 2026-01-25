@@ -68,7 +68,7 @@ export default function AuditLogsPage() {
     try {
       const [logsRes, profilesRes] = await Promise.all([
         supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(500),
-        supabase.from("profiles").select("id, full_name"),
+        supabase.from("profiles_safe").select("id, full_name"),
       ]);
 
       if (logsRes.data) setLogs(logsRes.data);
