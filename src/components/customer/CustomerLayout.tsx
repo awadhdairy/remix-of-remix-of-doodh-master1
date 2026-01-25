@@ -1,13 +1,14 @@
 import { useEffect } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
 import { CustomerNavbar } from './CustomerNavbar';
 import { cn } from '@/lib/utils';
+import { useCapacitor } from '@/hooks/useCapacitor';
 
 export function CustomerLayout() {
   const { user, loading, customerData } = useCustomerAuth();
   const navigate = useNavigate();
-  const location = useLocation();
+  const { isNative, keyboardVisible } = useCapacitor();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -17,7 +18,7 @@ export function CustomerLayout() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background safe-area-top">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">Loading...</p>
@@ -31,14 +32,22 @@ export function CustomerLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <header className="sticky top-0 z-40 bg-primary text-primary-foreground shadow-md">
-        <div className="container py-4">
+    <div className={cn(
+      "min-h-screen bg-background",
+      !keyboardVisible && "pb-20", // Only add bottom padding when keyboard is hidden
+      isNative && "safe-area-top"
+    )}>
+      {/* Mobile Header with safe area */}
+      <header className={cn(
+        "sticky top-0 z-40 bg-primary text-primary-foreground shadow-md",
+        isNative && "pt-[env(safe-area-inset-top)]"
+      )}>
+        <div className="container py-3 px-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-bold">Awadh Dairy</h1>
+              <h1 className="text-lg font-bold">Awadh Dairy</h1>
               {customerData && (
-                <p className="text-sm text-primary-foreground/80">
+                <p className="text-xs text-primary-foreground/80">
                   Hello, {customerData.name}
                 </p>
               )}
@@ -47,11 +56,12 @@ export function CustomerLayout() {
         </div>
       </header>
       
-      <main className="container py-4">
+      <main className="container py-4 px-3">
         <Outlet />
       </main>
       
-      <CustomerNavbar />
+      {/* Bottom Navigation - hidden when keyboard is open */}
+      {!keyboardVisible && <CustomerNavbar />}
     </div>
   );
 }

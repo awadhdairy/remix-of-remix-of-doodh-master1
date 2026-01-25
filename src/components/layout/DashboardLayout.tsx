@@ -5,6 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { User, Session } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileNavbar } from "@/components/mobile/MobileNavbar";
+import { QuickActionFab } from "@/components/mobile/QuickActionFab";
+import { useCapacitor } from "@/hooks/useCapacitor";
 
 export function DashboardLayout() {
   const [user, setUser] = useState<User | null>(null);
@@ -12,6 +16,8 @@ export function DashboardLayout() {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+  const { isNative, keyboardVisible } = useCapacitor();
 
   useEffect(() => {
     // Set up auth state listener FIRST
@@ -60,7 +66,7 @@ export function DashboardLayout() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background safe-area-top">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
           <p className="text-sm text-muted-foreground">Loading...</p>
@@ -74,16 +80,33 @@ export function DashboardLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <AppSidebar onLogout={handleLogout} />
+    <div className={cn(
+      "min-h-screen bg-background",
+      isNative && "safe-area-top"
+    )}>
+      {/* Desktop Sidebar - hidden on mobile */}
+      {!isMobile && <AppSidebar onLogout={handleLogout} />}
+      
       <main className={cn(
         "min-h-screen transition-all duration-300",
-        "ml-[260px]" // Adjust based on sidebar width
+        !isMobile && "ml-[260px]", // Sidebar width on desktop
+        isMobile && "pb-20" // Bottom nav padding on mobile
       )}>
-        <div className="container py-6">
+        <div className={cn(
+          "container py-4 md:py-6",
+          isMobile && "px-3" // Tighter padding on mobile
+        )}>
           <Outlet />
         </div>
       </main>
+
+      {/* Mobile Navigation */}
+      {isMobile && !keyboardVisible && (
+        <>
+          <MobileNavbar />
+          <QuickActionFab />
+        </>
+      )}
     </div>
   );
 }

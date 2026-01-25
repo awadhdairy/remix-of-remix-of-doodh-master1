@@ -543,3 +543,302 @@
 .stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
 .stagger-animation > *:nth-child(9) { animation-delay: 400ms; }
 .stagger-animation > *:nth-child(10) { animation-delay: 450ms; }
+
+/* ========================================
+   CAPACITOR & MOBILE OPTIMIZATIONS
+   ======================================== */
+
+/* Safe Area Insets for iOS notch and Android gesture navigation */
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --keyboard-height: 0px;
+}
+
+/* Safe area utility classes */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-area-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-area-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-area-inset {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+/* Mobile-specific body adjustments */
+html {
+  /* Prevent overscroll bounce on iOS */
+  overscroll-behavior: none;
+  /* Prevent text size adjustment on orientation change */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* Prevent pull-to-refresh on Android Chrome */
+  overscroll-behavior-y: contain;
+  /* Improve touch responsiveness */
+  touch-action: manipulation;
+  /* Safe area awareness */
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Keyboard handling */
+body.keyboard-open {
+  /* Adjust bottom padding when keyboard is open */
+  padding-bottom: var(--keyboard-height, 0px);
+}
+
+body.keyboard-open .fixed-bottom-nav,
+body.keyboard-open .bottom-nav {
+  /* Hide bottom navigation when keyboard is open */
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Mobile bottom navigation with safe area */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 50;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* Fixed header with safe area */
+.mobile-header {
+  position: sticky;
+  top: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  z-index: 40;
+}
+
+/* Touch-friendly button sizes */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  .btn,
+  input[type="submit"],
+  input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Larger tap targets for links in navigation */
+  nav a,
+  nav button {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+}
+
+/* Prevent text selection on interactive elements */
+.no-select {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+/* Hardware-accelerated scrolling for smooth performance */
+.smooth-scroll {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
+/* Pull to refresh prevention */
+.prevent-pull-refresh {
+  overscroll-behavior: none;
+}
+
+/* Mobile-specific cards with larger touch targets */
+@media (max-width: 768px) {
+  .card {
+    @apply touch-manipulation;
+  }
+
+  /* Larger click areas for mobile */
+  .mobile-touch-target {
+    position: relative;
+  }
+
+  .mobile-touch-target::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  /* Full-width buttons on mobile */
+  .mobile-full-width {
+    width: 100%;
+  }
+
+  /* Improved spacing for mobile */
+  .mobile-spacing {
+    padding: 1rem;
+  }
+
+  /* Hide desktop sidebar on mobile */
+  .desktop-sidebar {
+    display: none;
+  }
+
+  /* Main content without sidebar margin on mobile */
+  .main-content {
+    margin-left: 0 !important;
+  }
+}
+
+/* Active state for touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .touch-active:active {
+    @apply bg-muted/80 scale-[0.98];
+    transition: transform 0.1s ease, background-color 0.1s ease;
+  }
+
+  /* Remove hover effects on touch devices */
+  .hover-lift:hover {
+    transform: none;
+    box-shadow: var(--shadow-md);
+  }
+}
+
+/* iOS-specific fixes */
+@supports (-webkit-touch-callout: none) {
+  /* Fix for iOS 100vh issue */
+  .full-height-ios {
+    height: -webkit-fill-available;
+    min-height: -webkit-fill-available;
+  }
+
+  /* Fix input zoom on iOS */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Android-specific fixes */
+@supports not (-webkit-touch-callout: none) {
+  /* Android gesture navigation safe area */
+  .android-nav-safe {
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 16px);
+  }
+}
+
+/* Capacitor fullscreen mode */
+.capacitor-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh; /* Dynamic viewport height */
+}
+
+/* Loading state for native apps */
+.native-loading {
+  @apply fixed inset-0 flex items-center justify-center bg-primary;
+  z-index: 9999;
+}
+
+.native-loading-spinner {
+  @apply h-12 w-12 animate-spin rounded-full border-4 border-primary-foreground border-t-transparent;
+}
+
+/* Optimized animations for mobile (reduce motion for better performance) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --border: 150 30% 40%;
+  }
+
+  .dark {
+    --border: 152 20% 50%;
+  }
+}
+
+/* Bottom sheet styles for mobile */
+.mobile-sheet {
+  @apply rounded-t-2xl bg-background;
+  max-height: calc(100vh - env(safe-area-inset-top, 0px) - 50px);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 50px);
+}
+
+/* Mobile-optimized dialog */
+@media (max-width: 640px) {
+  [role="dialog"] {
+    @apply fixed inset-x-0 bottom-0 top-auto max-w-full rounded-t-2xl rounded-b-none;
+    max-height: 90vh;
+    max-height: 90dvh;
+  }
+}
+
+/* Swipe gesture indicator */
+.swipe-indicator {
+  @apply mx-auto mt-2 h-1 w-10 rounded-full bg-muted-foreground/30;
+}
+
+/* Hide scrollbar on mobile for cleaner look */
+@media (max-width: 768px) {
+  .hide-scrollbar-mobile {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .hide-scrollbar-mobile::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Floating action button positioning */
+.fab {
+  position: fixed;
+  right: 1rem;
+  bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+  z-index: 45;
+}
+
+/* Status bar overlay for immersive mode */
+.status-bar-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top, 0px);
+  background: hsl(var(--primary));
+  z-index: 9999;
+}
