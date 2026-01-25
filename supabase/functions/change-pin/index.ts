@@ -84,36 +84,28 @@ serve(async (req) => {
       )
     }
 
-    // Update the PIN hash and auth password
-    const { error: updatePinError } = await supabaseAdmin.rpc('update_user_profile_with_pin', {
+    // Update the PIN hash using the fixed update_pin_only function
+    const { error: updatePinError } = await supabaseAdmin.rpc('update_pin_only', {
       _user_id: user.id,
-      _full_name: null, // Will be handled by the function
-      _phone: profile.phone,
-      _role: null, // Keep existing role
       _pin: newPin
     })
 
-    // Also update the auth password
+    if (updatePinError) {
+      console.error('Error updating PIN hash:', updatePinError)
+      return new Response(
+        JSON.stringify({ error: 'Failed to update PIN' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Also update the auth password for consistency
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
       password: newPin
     })
 
     if (authError) {
-      console.error('Error updating auth password:', authError)
-    }
-
-    // Direct update for PIN hash only
-    const { error: directUpdateError } = await supabaseAdmin.rpc('update_pin_only', {
-      _user_id: user.id,
-      _pin: newPin
-    })
-
-    if (directUpdateError) {
-      console.error('Error updating PIN:', directUpdateError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to update PIN' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      console.error('Error updating auth password (non-critical):', authError)
+      // Don't fail the request - PIN hash is the primary auth method
     }
 
     console.log(`PIN updated for user ${user.id}`)

@@ -139,26 +139,44 @@ serve(async (req) => {
     const userId = authData.user.id
     console.log('Created user with ID:', userId)
 
-    // Update the profile with correct role and set PIN hash via raw SQL
-    const { error: profileError } = await supabaseAdmin.rpc('update_user_profile_with_pin', {
+    // Wait a moment for the trigger to create the profile
+    await new Promise(resolve => setTimeout(resolve, 500))
+
+    // Update the profile with correct details (trigger creates base profile)
+    const { error: profileUpdateError } = await supabaseAdmin
+      .from('profiles')
+      .update({
+        full_name: fullName,
+        phone: phone,
+        role: role
+      })
+      .eq('id', userId)
+
+    if (profileUpdateError) {
+      console.error('Error updating profile basics:', profileUpdateError)
+    }
+
+    // Set PIN hash using the fixed update_pin_only function
+    const { error: pinError } = await supabaseAdmin.rpc('update_pin_only', {
       _user_id: userId,
-      _full_name: fullName,
-      _phone: phone,
-      _role: role,
       _pin: pin
     })
 
-    if (profileError) {
-      console.error('Error updating profile with PIN:', profileError)
-      // Fallback: update without PIN hash
-      await supabaseAdmin
-        .from('profiles')
-        .update({
-          full_name: fullName,
-          phone: phone,
-          role: role
-        })
-        .eq('id', userId)
+    if (pinError) {
+      console.error('Error setting PIN hash:', pinError)
+      // This is critical - try alternative method
+      const { error: altPinError } = await supabaseAdmin.rpc('update_user_profile_with_pin', {
+        _user_id: userId,
+        _full_name: fullName,
+        _phone: phone,
+        _role: role,
+        _pin: pin
+      })
+      if (altPinError) {
+        console.error('Alternative PIN set also failed:', altPinError)
+      }
+    } else {
+      console.log('PIN hash set successfully for user:', userId)
     }
 
     // Update the user_roles table

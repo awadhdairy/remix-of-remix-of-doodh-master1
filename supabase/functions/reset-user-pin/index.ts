@@ -85,30 +85,36 @@ serve(async (req) => {
       )
     }
 
-    // Update the PIN hash
+    // Update the PIN hash using the fixed function
+    console.log(`Attempting to reset PIN for user ${userId}`)
     const { error: updatePinError } = await supabaseAdmin.rpc('update_pin_only', {
       _user_id: userId,
       _pin: newPin
     })
 
     if (updatePinError) {
-      console.error('Error updating PIN:', updatePinError)
+      console.error('Error updating PIN hash:', updatePinError)
       return new Response(
-        JSON.stringify({ error: 'Failed to reset PIN' }),
+        JSON.stringify({ error: 'Failed to reset PIN: ' + updatePinError.message }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Also update the auth password
+    console.log(`PIN hash updated successfully for user ${userId}`)
+
+    // Also update the auth password for consistency
     const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
       password: newPin
     })
 
     if (authError) {
-      console.error('Error updating auth password:', authError)
+      console.error('Error updating auth password (non-critical):', authError)
+      // Don't fail - PIN hash is the primary auth method
+    } else {
+      console.log(`Auth password updated successfully for user ${userId}`)
     }
 
-    console.log(`PIN reset for user ${targetProfile.full_name} (${userId}) by admin ${requestingUser.id}`)
+    console.log(`PIN reset completed for user ${targetProfile.full_name} (${userId}) by admin ${requestingUser.id}`)
 
     return new Response(
       JSON.stringify({ 
