@@ -10,12 +10,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import {
   Select,
   SelectContent,
@@ -153,9 +153,10 @@ export default function HealthPage() {
 
       <DataTable data={filteredRecords} columns={columns} loading={isLoading} searchPlaceholder="Search by cattle, title..." emptyMessage="No health records found" />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Add Health Record</DialogTitle><DialogDescription>Record vaccination, treatment, or health checkup</DialogDescription></DialogHeader>
+      <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <ResponsiveDialogContent className="max-w-2xl">
+          <ResponsiveDialogHeader><ResponsiveDialogTitle>Add Health Record</ResponsiveDialogTitle><ResponsiveDialogDescription>Record vaccination, treatment, or health checkup</ResponsiveDialogDescription></ResponsiveDialogHeader>
+          <div className="grid gap-4 py-4 overflow-y-auto max-h-[60vh] sm:max-h-none">
           <div className="grid gap-4 py-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2"><Label>Cattle *</Label><Select value={formData.cattle_id} onValueChange={(v) => setFormData({ ...formData, cattle_id: v })}><SelectTrigger><SelectValue placeholder="Select cattle" /></SelectTrigger><SelectContent>{cattle.map((c) => (<SelectItem key={c.id} value={c.id}>{c.tag_number} {c.name && `(${c.name})`}</SelectItem>))}</SelectContent></Select></div>
@@ -172,12 +173,13 @@ export default function HealthPage() {
               <div className="space-y-2"><Label>Next Due Date</Label><Input type="date" value={formData.next_due_date} onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })} /></div>
             </div>
           </div>
-          <div className="flex justify-end gap-2">
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleSave} disabled={isCreating}>{isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Record</Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </div>
   );
 }

@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { MilkHistoryDialog } from "@/components/production/MilkHistoryDialog";
@@ -345,16 +345,16 @@ export default function ProductionPage() {
       />
 
       {/* Production Entry Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Record Milk Production</DialogTitle>
-            <DialogDescription>
+      <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <ResponsiveDialogContent className="max-w-4xl">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Record Milk Production</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               Enter milk production for each cattle
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-4 overflow-y-auto max-h-[60vh] sm:max-h-[70vh]">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label>Date</Label>
@@ -385,16 +385,18 @@ export default function ProductionPage() {
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="grid grid-cols-12 gap-2 px-2 text-sm font-medium text-muted-foreground">
+                {/* Desktop: Grid layout */}
+                <div className="hidden sm:grid grid-cols-12 gap-2 px-2 text-sm font-medium text-muted-foreground">
                   <div className="col-span-3">Cattle</div>
                   <div className="col-span-2">Quantity (L)</div>
                   <div className="col-span-2">Fat %</div>
                   <div className="col-span-2">SNF %</div>
                   <div className="col-span-3">Notes</div>
                 </div>
+                {/* Mobile: Card layout, Desktop: Grid layout */}
                 {cattle.map((c) => (
-                  <div key={c.id} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg hover:bg-muted/50">
-                    <div className="col-span-3 flex items-center gap-2">
+                  <div key={c.id} className="sm:grid sm:grid-cols-12 gap-2 items-center p-2 rounded-lg hover:bg-muted/50 space-y-2 sm:space-y-0 border sm:border-0 mb-2 sm:mb-0">
+                    <div className="sm:col-span-3 flex items-center justify-between sm:justify-start gap-2">
                       <div>
                         <span className="font-medium">{c.tag_number}</span>
                         {c.name && <span className="text-muted-foreground ml-1">({c.name})</span>}
@@ -408,7 +410,8 @@ export default function ProductionPage() {
                         <History className="h-3 w-3" />
                       </Button>
                     </div>
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
+                      <Label className="sm:hidden text-xs text-muted-foreground">Quantity (L)</Label>
                       <Input
                         type="number"
                         step="0.1"
@@ -422,35 +425,40 @@ export default function ProductionPage() {
                         }
                       />
                     </div>
-                    <div className="col-span-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="0.0"
-                        value={entries[c.id]?.fat || ""}
-                        onChange={(e) =>
-                          setEntries({
-                            ...entries,
-                            [c.id]: { ...entries[c.id], fat: e.target.value },
-                          })
-                        }
-                      />
+                    <div className="grid grid-cols-2 gap-2 sm:contents">
+                      <div className="sm:col-span-2">
+                        <Label className="sm:hidden text-xs text-muted-foreground">Fat %</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="0.0"
+                          value={entries[c.id]?.fat || ""}
+                          onChange={(e) =>
+                            setEntries({
+                              ...entries,
+                              [c.id]: { ...entries[c.id], fat: e.target.value },
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label className="sm:hidden text-xs text-muted-foreground">SNF %</Label>
+                        <Input
+                          type="number"
+                          step="0.1"
+                          placeholder="0.0"
+                          value={entries[c.id]?.snf || ""}
+                          onChange={(e) =>
+                            setEntries({
+                              ...entries,
+                              [c.id]: { ...entries[c.id], snf: e.target.value },
+                            })
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="col-span-2">
-                      <Input
-                        type="number"
-                        step="0.1"
-                        placeholder="0.0"
-                        value={entries[c.id]?.snf || ""}
-                        onChange={(e) =>
-                          setEntries({
-                            ...entries,
-                            [c.id]: { ...entries[c.id], snf: e.target.value },
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="col-span-3">
+                    <div className="sm:col-span-3">
+                      <Label className="sm:hidden text-xs text-muted-foreground">Notes</Label>
                       <Input
                         placeholder="Notes"
                         value={entries[c.id]?.notes || ""}
@@ -468,7 +476,7 @@ export default function ProductionPage() {
             )}
           </div>
 
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-4 border-t">
             <p className="text-sm text-muted-foreground">
               Total:{" "}
               <span className="font-semibold text-foreground">
@@ -478,18 +486,18 @@ export default function ProductionPage() {
                 L
               </span>
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button variant="outline" onClick={() => setDialogOpen(false)} className="flex-1 sm:flex-none">
                 Cancel
               </Button>
-              <Button onClick={handleSave} disabled={saving || cattle.length === 0}>
+              <Button onClick={handleSave} disabled={saving || cattle.length === 0} className="flex-1 sm:flex-none">
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Production
               </Button>
             </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       {/* Milk History Dialog */}
       <MilkHistoryDialog

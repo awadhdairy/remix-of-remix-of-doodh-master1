@@ -87,6 +87,7 @@ export function DataTable<T extends { id: string }>({
       )}
 
       <div className="rounded-xl border bg-card shadow-soft overflow-hidden animate-fade-in" style={{ animationDelay: '100ms' }}>
+        <div className={cn(isMobile && "overflow-x-auto -webkit-overflow-scrolling-touch")}>
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent border-b-2">
@@ -149,14 +150,21 @@ export function DataTable<T extends { id: string }>({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-between animate-fade-in" style={{ animationDelay: '200ms' }}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in" style={{ animationDelay: '200ms' }}>
           <p className="text-sm text-muted-foreground">
-            Showing <span className="font-medium text-foreground">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
-            <span className="font-medium text-foreground">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> of{" "}
-            <span className="font-medium text-foreground">{filteredData.length}</span> entries
+            {isMobile ? (
+              <span>{(currentPage - 1) * itemsPerPage + 1}-{Math.min(currentPage * itemsPerPage, filteredData.length)} of {filteredData.length}</span>
+            ) : (
+              <>
+                Showing <span className="font-medium text-foreground">{(currentPage - 1) * itemsPerPage + 1}</span> to{" "}
+                <span className="font-medium text-foreground">{Math.min(currentPage * itemsPerPage, filteredData.length)}</span> of{" "}
+                <span className="font-medium text-foreground">{filteredData.length}</span> entries
+              </>
+            )}
           </p>
           <div className="flex items-center gap-2">
             <Button

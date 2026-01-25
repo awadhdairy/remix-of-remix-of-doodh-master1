@@ -833,6 +833,46 @@ body.keyboard-open .bottom-nav {
   }
 }
 
+/* ========================================
+   MOBILE RESPONSIVENESS UTILITIES
+   ======================================== */
+
+/* Scrollable TabsList for mobile - prevents overflow */
+@media (max-width: 768px) {
+  .tabs-scroll {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
+  }
+
+  .tabs-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Mobile-friendly table scroll wrapper */
+  .mobile-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .mobile-table-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Responsive form grids on mobile */
+  .mobile-form-stack {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Chart height reduction for mobile */
+  .mobile-chart-height {
+    height: 200px !important;
+  }
+}
+
 /* Floating action button positioning */
 .fab {
   position: fixed;

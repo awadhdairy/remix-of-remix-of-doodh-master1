@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogDescription, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Wheat, Loader2, AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
@@ -79,9 +79,9 @@ export default function InventoryPage() {
 
       <DataTable data={items} columns={columns} loading={isLoading} searchPlaceholder="Search items..." emptyMessage="No inventory items. Add your first item." />
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>{selectedItem ? "Edit Item" : "Add Inventory Item"}</DialogTitle><DialogDescription>Manage feed and supply items</DialogDescription></DialogHeader>
+      <ResponsiveDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <ResponsiveDialogContent className="max-w-md">
+          <ResponsiveDialogHeader><ResponsiveDialogTitle>{selectedItem ? "Edit Item" : "Add Inventory Item"}</ResponsiveDialogTitle><ResponsiveDialogDescription>Manage feed and supply items</ResponsiveDialogDescription></ResponsiveDialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2"><Label>Item Name *</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="e.g., Green Grass" /></div>
             <div className="grid gap-4 grid-cols-2">
@@ -97,20 +97,20 @@ export default function InventoryPage() {
               <div className="space-y-2"><Label>Supplier</Label><Input value={formData.supplier} onChange={(e) => setFormData({ ...formData, supplier: e.target.value })} placeholder="Supplier name" /></div>
             </div>
           </div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={isCreating || isUpdating}>{(isCreating || isUpdating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {selectedItem ? "Update" : "Add"} Item</Button></div>
-        </DialogContent>
-      </Dialog>
+          <div className="flex justify-end gap-2 pt-4 border-t"><Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button><Button onClick={handleSaveItem} disabled={isCreating || isUpdating}>{(isCreating || isUpdating) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} {selectedItem ? "Update" : "Add"} Item</Button></div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
-      <Dialog open={stockDialogOpen} onOpenChange={setStockDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle>Update Stock</DialogTitle><DialogDescription>{selectedItem?.name} - Current: {selectedItem?.current_stock} {selectedItem?.unit}</DialogDescription></DialogHeader>
+      <ResponsiveDialog open={stockDialogOpen} onOpenChange={setStockDialogOpen}>
+        <ResponsiveDialogContent className="max-w-sm">
+          <ResponsiveDialogHeader><ResponsiveDialogTitle>Update Stock</ResponsiveDialogTitle><ResponsiveDialogDescription>{selectedItem?.name} - Current: {selectedItem?.current_stock} {selectedItem?.unit}</ResponsiveDialogDescription></ResponsiveDialogHeader>
           <div className="grid gap-4 py-4">
             <div className="space-y-2"><Label>Action</Label><Tabs value={stockChange.type} onValueChange={(v) => setStockChange({ ...stockChange, type: v })}><TabsList className="grid w-full grid-cols-2"><TabsTrigger value="add" className="gap-1"><ArrowUp className="h-4 w-4" /> Add Stock</TabsTrigger><TabsTrigger value="consume" className="gap-1"><ArrowDown className="h-4 w-4" /> Consume</TabsTrigger></TabsList></Tabs></div>
             <div className="space-y-2"><Label>Quantity ({selectedItem?.unit})</Label><Input type="number" value={stockChange.quantity} onChange={(e) => setStockChange({ ...stockChange, quantity: e.target.value })} placeholder="0" /></div>
           </div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setStockDialogOpen(false)}>Cancel</Button><Button onClick={handleStockUpdate} disabled={isUpdatingStock}>{isUpdatingStock && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Update</Button></div>
-        </DialogContent>
-      </Dialog>
+          <div className="flex justify-end gap-2 pt-4 border-t"><Button variant="outline" onClick={() => setStockDialogOpen(false)}>Cancel</Button><Button onClick={handleStockUpdate} disabled={isUpdatingStock}>{isUpdatingStock && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Update</Button></div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </div>
   );
 }

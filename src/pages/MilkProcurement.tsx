@@ -10,12 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import {
   Select,
   SelectContent,
@@ -770,16 +770,16 @@ export default function MilkProcurementPage() {
       </Tabs>
 
       {/* Vendor Dialog */}
-      <Dialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>{selectedVendor ? "Edit Vendor" : "Add New Vendor"}</DialogTitle>
-            <DialogDescription>
+      <ResponsiveDialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
+        <ResponsiveDialogContent className="sm:max-w-[425px]">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>{selectedVendor ? "Edit Vendor" : "Add New Vendor"}</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {selectedVendor
                 ? "Update the vendor details below"
                 : "Enter the details for the new milk vendor"}
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="space-y-2">
@@ -835,7 +835,7 @@ export default function MilkProcurementPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setVendorDialogOpen(false)}>
               Cancel
             </Button>
@@ -844,24 +844,24 @@ export default function MilkProcurementPage() {
               {selectedVendor ? "Update" : "Add Vendor"}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       {/* Procurement Dialog */}
-      <Dialog open={procurementDialogOpen} onOpenChange={setProcurementDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>
+      <ResponsiveDialog open={procurementDialogOpen} onOpenChange={setProcurementDialogOpen}>
+        <ResponsiveDialogContent className="sm:max-w-[500px]">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>
               {selectedProcurement ? "Edit Procurement" : "Record Milk Procurement"}
-            </DialogTitle>
-            <DialogDescription>
+            </ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {selectedProcurement
                 ? "Update the procurement record"
                 : "Enter details of milk procured from vendor"}
-            </DialogDescription>
-          </DialogHeader>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
 
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-4 py-4 overflow-y-auto max-h-[60vh] sm:max-h-none">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="proc-vendor">Vendor *</Label>
@@ -1022,7 +1022,7 @@ export default function MilkProcurementPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setProcurementDialogOpen(false)}>
               Cancel
             </Button>
@@ -1031,8 +1031,8 @@ export default function MilkProcurementPage() {
               {selectedProcurement ? "Update" : "Save Record"}
             </Button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       {/* Delete Confirmation */}
       <ConfirmDialog

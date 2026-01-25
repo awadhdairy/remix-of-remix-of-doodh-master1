@@ -12,7 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Calendar, DollarSign, Clock, Users, CheckCircle, XCircle, Loader2, Eye } from "lucide-react";
@@ -450,57 +455,55 @@ export default function EmployeesPage() {
 
         <TabsContent value="attendance" className="space-y-4">
           <div className="flex justify-end">
-            <Dialog open={attendanceDialogOpen} onOpenChange={setAttendanceDialogOpen}>
-              <DialogTrigger asChild>
-                <Button><Plus className="mr-2 h-4 w-4" /> Mark Attendance</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Mark Attendance</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Employee</Label>
-                    <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
-                      <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
-                      <SelectContent>
-                        {employees.filter(e => e.is_active).map(emp => (
-                          <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date</Label>
-                    <Input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Check In</Label>
-                      <Input type="time" value={checkIn} onChange={e => setCheckIn(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Check Out</Label>
-                      <Input type="time" value={checkOut} onChange={e => setCheckOut(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Status</Label>
-                    <Select value={attendanceStatus} onValueChange={setAttendanceStatus}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="present">Present</SelectItem>
-                        <SelectItem value="absent">Absent</SelectItem>
-                        <SelectItem value="half_day">Half Day</SelectItem>
-                        <SelectItem value="leave">Leave</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button className="w-full" onClick={handleMarkAttendance}>Save Attendance</Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => setAttendanceDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Mark Attendance</Button>
           </div>
+          <ResponsiveDialog open={attendanceDialogOpen} onOpenChange={setAttendanceDialogOpen}>
+            <ResponsiveDialogContent>
+              <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle>Mark Attendance</ResponsiveDialogTitle>
+              </ResponsiveDialogHeader>
+              <div className="space-y-4 py-4 overflow-y-auto max-h-[60vh] sm:max-h-none">
+                <div className="space-y-2">
+                  <Label>Employee</Label>
+                  <Select value={selectedEmployee} onValueChange={setSelectedEmployee}>
+                    <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+                    <SelectContent>
+                      {employees.filter(e => e.is_active).map(emp => (
+                        <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <Input type="date" value={attendanceDate} onChange={e => setAttendanceDate(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Check In</Label>
+                    <Input type="time" value={checkIn} onChange={e => setCheckIn(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Check Out</Label>
+                    <Input type="time" value={checkOut} onChange={e => setCheckOut(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select value={attendanceStatus} onValueChange={setAttendanceStatus}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="present">Present</SelectItem>
+                      <SelectItem value="absent">Absent</SelectItem>
+                      <SelectItem value="half_day">Half Day</SelectItem>
+                      <SelectItem value="leave">Leave</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="w-full" onClick={handleMarkAttendance}>Save Attendance</Button>
+              </div>
+            </ResponsiveDialogContent>
+          </ResponsiveDialog>
           <Card>
             <CardHeader>
               <CardTitle>Attendance Records</CardTitle>
@@ -514,69 +517,67 @@ export default function EmployeesPage() {
 
         <TabsContent value="payroll" className="space-y-4">
           <div className="flex justify-end">
-            <Dialog open={payrollDialogOpen} onOpenChange={setPayrollDialogOpen}>
-              <DialogTrigger asChild>
-                <Button><Plus className="mr-2 h-4 w-4" /> Create Payroll</Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create Payroll Record</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Employee</Label>
-                    <Select value={selectedEmployee} onValueChange={(val) => {
-                      setSelectedEmployee(val);
-                      const emp = employees.find(e => e.id === val);
-                      if (emp?.salary) setBaseSalary(emp.salary.toString());
-                    }}>
-                      <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
-                      <SelectContent>
-                        {employees.filter(e => e.is_active).map(emp => (
-                          <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Period Start</Label>
-                      <Input type="date" value={payPeriodStart} onChange={e => setPayPeriodStart(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Period End</Label>
-                      <Input type="date" value={payPeriodEnd} onChange={e => setPayPeriodEnd(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Base Salary (₹)</Label>
-                    <Input type="number" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} />
-                  </div>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Overtime Hrs</Label>
-                      <Input type="number" value={overtimeHours} onChange={e => setOvertimeHours(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Bonus (₹)</Label>
-                      <Input type="number" value={bonus} onChange={e => setBonus(e.target.value)} />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Deductions (₹)</Label>
-                      <Input type="number" value={deductions} onChange={e => setDeductions(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-muted p-3">
-                    <p className="text-sm text-muted-foreground">Net Salary</p>
-                    <p className="text-xl font-bold">
-                      ₹{(parseFloat(baseSalary || "0") + parseFloat(bonus || "0") - parseFloat(deductions || "0")).toLocaleString()}
-                    </p>
-                  </div>
-                  <Button className="w-full" onClick={handleCreatePayroll}>Create Payroll Record</Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => setPayrollDialogOpen(true)}><Plus className="mr-2 h-4 w-4" /> Create Payroll</Button>
           </div>
+          <ResponsiveDialog open={payrollDialogOpen} onOpenChange={setPayrollDialogOpen}>
+            <ResponsiveDialogContent>
+              <ResponsiveDialogHeader>
+                <ResponsiveDialogTitle>Create Payroll Record</ResponsiveDialogTitle>
+              </ResponsiveDialogHeader>
+              <div className="space-y-4 py-4 overflow-y-auto max-h-[60vh] sm:max-h-none">
+                <div className="space-y-2">
+                  <Label>Employee</Label>
+                  <Select value={selectedEmployee} onValueChange={(val) => {
+                    setSelectedEmployee(val);
+                    const emp = employees.find(e => e.id === val);
+                    if (emp?.salary) setBaseSalary(emp.salary.toString());
+                  }}>
+                    <SelectTrigger><SelectValue placeholder="Select employee" /></SelectTrigger>
+                    <SelectContent>
+                      {employees.filter(e => e.is_active).map(emp => (
+                        <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Period Start</Label>
+                    <Input type="date" value={payPeriodStart} onChange={e => setPayPeriodStart(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Period End</Label>
+                    <Input type="date" value={payPeriodEnd} onChange={e => setPayPeriodEnd(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Base Salary (₹)</Label>
+                  <Input type="number" value={baseSalary} onChange={e => setBaseSalary(e.target.value)} />
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Overtime Hrs</Label>
+                    <Input type="number" value={overtimeHours} onChange={e => setOvertimeHours(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Bonus (₹)</Label>
+                    <Input type="number" value={bonus} onChange={e => setBonus(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Deductions (₹)</Label>
+                    <Input type="number" value={deductions} onChange={e => setDeductions(e.target.value)} />
+                  </div>
+                </div>
+                <div className="rounded-lg bg-muted p-3">
+                  <p className="text-sm text-muted-foreground">Net Salary</p>
+                  <p className="text-xl font-bold">
+                    ₹{(parseFloat(baseSalary || "0") + parseFloat(bonus || "0") - parseFloat(deductions || "0")).toLocaleString()}
+                  </p>
+                </div>
+                <Button className="w-full" onClick={handleCreatePayroll}>Create Payroll Record</Button>
+              </div>
+            </ResponsiveDialogContent>
+          </ResponsiveDialog>
           <Card>
             <CardHeader>
               <CardTitle>Payroll Records</CardTitle>
