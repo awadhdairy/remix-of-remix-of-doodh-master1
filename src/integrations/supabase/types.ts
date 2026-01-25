@@ -1411,6 +1411,7 @@ export type Database = {
           address: string | null
           area: string | null
           created_at: string | null
+          current_balance: number | null
           id: string
           is_active: boolean | null
           name: string
@@ -1422,6 +1423,7 @@ export type Database = {
           address?: string | null
           area?: string | null
           created_at?: string | null
+          current_balance?: number | null
           id?: string
           is_active?: boolean | null
           name: string
@@ -1433,6 +1435,7 @@ export type Database = {
           address?: string | null
           area?: string | null
           created_at?: string | null
+          current_balance?: number | null
           id?: string
           is_active?: boolean | null
           name?: string
@@ -1928,6 +1931,50 @@ export type Database = {
         }
         Relationships: []
       }
+      vendor_payments: {
+        Row: {
+          amount: number
+          created_at: string | null
+          id: string
+          notes: string | null
+          payment_date: string
+          payment_mode: string
+          recorded_by: string | null
+          reference_number: string | null
+          vendor_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_mode?: string
+          recorded_by?: string | null
+          reference_number?: string | null
+          vendor_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          payment_date?: string
+          payment_mode?: string
+          recorded_by?: string | null
+          reference_number?: string | null
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_payments_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "milk_vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       customers_delivery_view: {
@@ -2054,6 +2101,10 @@ export type Database = {
         Returns: boolean
       }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      recalculate_vendor_balance: {
+        Args: { p_vendor_id: string }
+        Returns: number
+      }
       register_customer_account: {
         Args: { _phone: string; _pin: string }
         Returns: Json
