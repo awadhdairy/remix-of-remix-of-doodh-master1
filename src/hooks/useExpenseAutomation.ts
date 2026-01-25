@@ -262,6 +262,31 @@ export function useExpenseAutomation() {
     });
   };
 
+  /**
+   * Log milk procurement expense when payment is marked as paid
+   */
+  const logMilkProcurementExpense = async (
+    vendorName: string,
+    quantity: number,
+    rate: number,
+    totalAmount: number,
+    procurementDate: string,
+    procurementId: string,
+    session: string
+  ): Promise<boolean> => {
+    if (totalAmount <= 0) return false;
+
+    return await createExpense({
+      category: "feed",
+      title: `Milk Procurement - ${vendorName}`,
+      amount: totalAmount,
+      expense_date: procurementDate,
+      notes: `${quantity}L @ ₹${rate}/L (${session === "morning" ? "AM" : "PM"})`,
+      reference_type: "milk_procurement",
+      reference_id: procurementId,
+    });
+  };
+
   return {
     createExpense,
     logSalaryExpense,
@@ -273,5 +298,6 @@ export function useExpenseAutomation() {
     logBottleLoss,
     logTransportExpense,
     logUtilityExpense,
+    logMilkProcurementExpense,
   };
 }

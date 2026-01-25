@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
+import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 import {
   Milk,
@@ -148,7 +149,7 @@ export default function MilkProcurementPage() {
   });
 
   const { toast } = useToast();
-
+  const { logMilkProcurementExpense } = useExpenseAutomation();
   useEffect(() => {
     fetchData();
   }, []);
@@ -353,6 +354,11 @@ export default function MilkProcurementPage() {
       notes: procurementForm.notes || null,
     };
 
+    // Check if payment status is changing to "paid" (for expense tracking)
+    const wasNotPaid = selectedProcurement?.payment_status !== "paid";
+    const isNowPaid = procurementForm.payment_status === "paid";
+    const shouldLogExpense = wasNotPaid && isNowPaid && totalAmount && rate;
+
     if (selectedProcurement) {
       const { error } = await supabase
         .from("milk_procurement")
@@ -362,20 +368,58 @@ export default function MilkProcurementPage() {
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
-        toast({ title: "Record updated", description: "Procurement record updated" });
+        // Log expense when payment is marked as paid
+        if (shouldLogExpense) {
+          await logMilkProcurementExpense(
+            vendor?.name || "Unknown Vendor",
+            quantity,
+            rate!,
+            totalAmount!,
+            procurementForm.procurement_date,
+            selectedProcurement.id,
+            procurementForm.session
+          );
+          toast({ 
+            title: "Record updated & expense logged", 
+            description: `Payment recorded and expense of ₹${totalAmount?.toLocaleString()} auto-tracked` 
+          });
+        } else {
+          toast({ title: "Record updated", description: "Procurement record updated" });
+        }
         setProcurementDialogOpen(false);
         fetchData();
       }
     } else {
-      const { error } = await supabase.from("milk_procurement").insert(payload);
+      const { data, error } = await supabase
+        .from("milk_procurement")
+        .insert(payload)
+        .select()
+        .single();
 
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
-        toast({
-          title: "Procurement recorded",
-          description: `${quantity}L from ${vendor?.name || "vendor"}`,
-        });
+        // Log expense if created with "paid" status
+        if (isNowPaid && totalAmount && rate && data) {
+          await logMilkProcurementExpense(
+            vendor?.name || "Unknown Vendor",
+            quantity,
+            rate,
+            totalAmount,
+            procurementForm.procurement_date,
+            data.id,
+            procurementForm.session
+          );
+          toast({
+            title: "Procurement recorded & expense logged",
+            description: `${quantity}L from ${vendor?.name || "vendor"} - ₹${totalAmount?.toLocaleString()} auto-tracked`,
+          });
+        } else {
+          toast({
+            title: "Procurement recorded",
+            description: `${quantity}L from ${vendor?.name || "vendor"}`,
+          });
+        }
         setProcurementDialogOpen(false);
         fetchData();
       }
