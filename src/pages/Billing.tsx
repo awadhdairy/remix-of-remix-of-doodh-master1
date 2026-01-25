@@ -16,9 +16,10 @@ import {
 } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Receipt, IndianRupee, Loader2 } from "lucide-react";
+import { Receipt, IndianRupee, Loader2, Edit3 } from "lucide-react";
 import { format } from "date-fns";
 import { InvoicePDFGenerator } from "@/components/billing/InvoicePDFGenerator";
+import { EditInvoiceDialog } from "@/components/billing/EditInvoiceDialog";
 import { SmartInvoiceCreator } from "@/components/billing/SmartInvoiceCreator";
 
 interface Customer {
@@ -62,9 +63,11 @@ export default function BillingPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithCustomer | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<InvoiceWithCustomer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
   const { toast } = useToast();
 
@@ -248,19 +251,33 @@ export default function BillingPage() {
       key: "actions",
       header: "Actions",
       render: (item: InvoiceWithCustomer) => (
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1"
-          onClick={() => {
-            setSelectedInvoice(item);
-            setPaymentAmount("");
-            setPaymentDialogOpen(true);
-          }}
-          disabled={item.payment_status === "paid"}
-        >
-          <IndianRupee className="h-3 w-3" /> Pay
-        </Button>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            onClick={() => {
+              setEditingInvoice(item);
+              setEditDialogOpen(true);
+            }}
+            title={item.payment_status === "paid" ? "View invoice" : "Edit invoice"}
+          >
+            <Edit3 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1"
+            onClick={() => {
+              setSelectedInvoice(item);
+              setPaymentAmount("");
+              setPaymentDialogOpen(true);
+            }}
+            disabled={item.payment_status === "paid"}
+          >
+            <IndianRupee className="h-3 w-3" /> Pay
+          </Button>
+        </div>
       ),
     },
   ];
@@ -330,6 +347,15 @@ export default function BillingPage() {
         onOpenChange={setDialogOpen}
         onComplete={fetchData}
         customers={customers}
+        products={products}
+      />
+
+      {/* Edit Invoice Dialog */}
+      <EditInvoiceDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onComplete={fetchData}
+        invoice={editingInvoice}
         products={products}
       />
 
