@@ -13,7 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Minus, Milk, Loader2 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Plus, Minus, Milk, Loader2, ChevronDown, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Product {
@@ -22,14 +27,6 @@ interface Product {
   category: string;
   unit: string;
   base_price: number;
-}
-
-interface SubscriptionProduct {
-  product_id: string;
-  product_name: string;
-  quantity: number;
-  custom_price: number | null;
-  unit: string;
 }
 
 interface DeliveryDays {
@@ -42,10 +39,22 @@ interface DeliveryDays {
   sunday: boolean;
 }
 
+type FrequencyType = "daily" | "alternate" | "weekly" | "custom";
+
+export interface SubscriptionProduct {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  custom_price: number | null;
+  unit: string;
+  frequency: FrequencyType;
+  delivery_days: DeliveryDays;
+}
+
 export interface CustomerSubscriptionData {
   products: SubscriptionProduct[];
-  frequency: "daily" | "alternate" | "weekly" | "custom";
-  delivery_days: DeliveryDays;
+  frequency: FrequencyType; // Global default (used for new products)
+  delivery_days: DeliveryDays; // Global default
   auto_deliver: boolean;
 }
 
@@ -74,12 +83,40 @@ const weekDays = [
   { key: "sunday", label: "Sun" },
 ] as const;
 
+const getDeliveryDaysForFrequency = (frequency: FrequencyType): DeliveryDays => {
+  if (frequency === "daily") {
+    return { ...defaultDeliveryDays };
+  } else if (frequency === "alternate") {
+    return {
+      monday: true,
+      tuesday: false,
+      wednesday: true,
+      thursday: false,
+      friday: true,
+      saturday: false,
+      sunday: true,
+    };
+  } else if (frequency === "weekly") {
+    return {
+      monday: false,
+      tuesday: false,
+      wednesday: false,
+      thursday: false,
+      friday: false,
+      saturday: false,
+      sunday: true,
+    };
+  }
+  return { ...defaultDeliveryDays };
+};
+
 export function CustomerSubscriptionSelector({
   value,
   onChange,
 }: CustomerSubscriptionSelectorProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchProducts();
@@ -107,8 +144,13 @@ export function CustomerSubscriptionSelector({
         ...value,
         products: value.products.filter((p) => p.product_id !== product.id),
       });
+      setExpandedProducts((prev) => {
+        const next = new Set(prev);
+        next.delete(product.id);
+        return next;
+      });
     } else {
-      // Add product with default quantity of 1
+      // Add product with default frequency from global settings
       onChange({
         ...value,
         products: [
@@ -119,6 +161,8 @@ export function CustomerSubscriptionSelector({
             quantity: 1,
             custom_price: null,
             unit: product.unit,
+            frequency: value.frequency,
+            delivery_days: { ...value.delivery_days },
           },
         ],
       });
@@ -150,36 +194,43 @@ export function CustomerSubscriptionSelector({
     });
   };
 
-  const handleFrequencyChange = (frequency: typeof value.frequency) => {
-    let newDeliveryDays = { ...value.delivery_days };
+  const updateProductFrequency = (productId: string, frequency: FrequencyType) => {
+    onChange({
+      ...value,
+      products: value.products.map((p) => {
+        if (p.product_id === productId) {
+          return {
+            ...p,
+            frequency,
+            delivery_days: getDeliveryDaysForFrequency(frequency),
+          };
+        }
+        return p;
+      }),
+    });
+  };
 
-    // Pre-configure delivery days based on frequency
-    if (frequency === "daily") {
-      newDeliveryDays = { ...defaultDeliveryDays };
-    } else if (frequency === "alternate") {
-      // Mon, Wed, Fri, Sun
-      newDeliveryDays = {
-        monday: true,
-        tuesday: false,
-        wednesday: true,
-        thursday: false,
-        friday: true,
-        saturday: false,
-        sunday: true,
-      };
-    } else if (frequency === "weekly") {
-      // Only Sunday
-      newDeliveryDays = {
-        monday: false,
-        tuesday: false,
-        wednesday: false,
-        thursday: false,
-        friday: false,
-        saturday: false,
-        sunday: true,
-      };
-    }
+  const toggleProductDeliveryDay = (productId: string, day: keyof DeliveryDays) => {
+    onChange({
+      ...value,
+      products: value.products.map((p) => {
+        if (p.product_id === productId) {
+          return {
+            ...p,
+            frequency: "custom" as FrequencyType,
+            delivery_days: {
+              ...p.delivery_days,
+              [day]: !p.delivery_days[day],
+            },
+          };
+        }
+        return p;
+      }),
+    });
+  };
 
+  const handleGlobalFrequencyChange = (frequency: FrequencyType) => {
+    const newDeliveryDays = getDeliveryDaysForFrequency(frequency);
     onChange({
       ...value,
       frequency,
@@ -187,13 +238,25 @@ export function CustomerSubscriptionSelector({
     });
   };
 
-  const toggleDeliveryDay = (day: keyof DeliveryDays) => {
+  const toggleGlobalDeliveryDay = (day: keyof DeliveryDays) => {
     onChange({
       ...value,
       delivery_days: {
         ...value.delivery_days,
         [day]: !value.delivery_days[day],
       },
+    });
+  };
+
+  const toggleProductExpanded = (productId: string) => {
+    setExpandedProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
     });
   };
 
@@ -218,13 +281,77 @@ export function CustomerSubscriptionSelector({
   const totalMonthlyValue = value.products.reduce((sum, p) => {
     const product = products.find((pr) => pr.id === p.product_id);
     const price = p.custom_price ?? product?.base_price ?? 0;
-    const deliveryDaysCount = Object.values(value.delivery_days).filter(Boolean).length;
+    const deliveryDaysCount = Object.values(p.delivery_days).filter(Boolean).length;
     const daysPerMonth = (deliveryDaysCount / 7) * 30;
     return sum + price * p.quantity * daysPerMonth;
   }, 0);
 
+  const frequencyLabels: Record<FrequencyType, string> = {
+    daily: "Daily",
+    alternate: "Alternate",
+    weekly: "Weekly",
+    custom: "Custom",
+  };
+
   return (
     <div className="space-y-4">
+      {/* Global Default Settings */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-medium">Default Schedule (for new products)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-4">
+            <Label className="text-xs w-20">Frequency</Label>
+            <Select
+              value={value.frequency}
+              onValueChange={(v) => handleGlobalFrequencyChange(v as FrequencyType)}
+            >
+              <SelectTrigger className="h-8 flex-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="alternate">Alternate Days</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="custom">Custom Days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {weekDays.map((day) => (
+              <Badge
+                key={day.key}
+                variant={value.delivery_days[day.key] ? "default" : "outline"}
+                className={cn(
+                  "cursor-pointer text-xs transition-colors",
+                  value.delivery_days[day.key]
+                    ? "bg-primary hover:bg-primary/80"
+                    : "hover:bg-muted"
+                )}
+                onClick={() => toggleGlobalDeliveryDay(day.key)}
+              >
+                {day.label}
+              </Badge>
+            ))}
+          </div>
+          <div className="flex items-center justify-between pt-2 border-t">
+            <div>
+              <p className="text-sm font-medium">Auto-mark as Delivered</p>
+              <p className="text-xs text-muted-foreground">
+                Automatically mark deliveries as completed
+              </p>
+            </div>
+            <Checkbox
+              checked={value.auto_deliver}
+              onCheckedChange={(checked) =>
+                onChange({ ...value, auto_deliver: !!checked })
+              }
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Subscription Products */}
       <Card>
         <CardHeader className="pb-3">
@@ -239,65 +366,126 @@ export function CustomerSubscriptionSelector({
               <Label className="text-xs uppercase text-muted-foreground">
                 {category}
               </Label>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="space-y-2">
                 {categoryProducts.map((product) => {
                   const isSelected = selectedProductIds.has(product.id);
                   const selectedProduct = value.products.find(
                     (p) => p.product_id === product.id
                   );
+                  const isExpanded = expandedProducts.has(product.id);
 
                   return (
                     <div
                       key={product.id}
                       className={cn(
-                        "flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors",
+                        "rounded-lg border transition-colors",
                         isSelected
                           ? "bg-primary/5 border-primary"
                           : "hover:bg-muted/50"
                       )}
-                      onClick={() => handleProductToggle(product)}
                     >
-                      <div className="flex items-center gap-3">
-                        <Checkbox checked={isSelected} />
-                        <div>
-                          <p className="font-medium text-sm">{product.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            ₹{product.base_price}/{product.unit}
-                          </p>
+                      {/* Main Product Row */}
+                      <div
+                        className="flex items-center justify-between p-3 cursor-pointer"
+                        onClick={() => handleProductToggle(product)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Checkbox checked={isSelected} />
+                          <div>
+                            <p className="font-medium text-sm">{product.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              ₹{product.base_price}/{product.unit}
+                            </p>
+                          </div>
                         </div>
+
+                        {isSelected && selectedProduct && (
+                          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                            {/* Quantity Controls */}
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => updateQuantity(product.id, -0.5)}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <Input
+                                type="number"
+                                step="0.25"
+                                min="0.25"
+                                value={selectedProduct.quantity}
+                                onChange={(e) =>
+                                  setQuantity(product.id, parseFloat(e.target.value) || 0.25)
+                                }
+                                className="h-7 w-14 text-center"
+                              />
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => updateQuantity(product.id, 0.5)}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+
+                            {/* Expand Schedule Button */}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2"
+                              onClick={() => toggleProductExpanded(product.id)}
+                            >
+                              <Calendar className="h-3 w-3 mr-1" />
+                              <span className="text-xs">{frequencyLabels[selectedProduct.frequency]}</span>
+                              <ChevronDown className={cn("h-3 w-3 ml-1 transition-transform", isExpanded && "rotate-180")} />
+                            </Button>
+                          </div>
+                        )}
                       </div>
 
-                      {isSelected && selectedProduct && (
+                      {/* Individual Product Schedule */}
+                      {isSelected && selectedProduct && isExpanded && (
                         <div
-                          className="flex items-center gap-1"
+                          className="px-3 pb-3 pt-1 border-t bg-muted/30 space-y-2"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => updateQuantity(product.id, -0.5)}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <Input
-                            type="number"
-                            step="0.25"
-                            min="0.25"
-                            value={selectedProduct.quantity}
-                            onChange={(e) =>
-                              setQuantity(product.id, parseFloat(e.target.value) || 0.25)
-                            }
-                            className="h-7 w-16 text-center"
-                          />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => updateQuantity(product.id, 0.5)}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
+                          <div className="flex items-center gap-3">
+                            <Label className="text-xs w-16">Schedule</Label>
+                            <Select
+                              value={selectedProduct.frequency}
+                              onValueChange={(v) => updateProductFrequency(product.id, v as FrequencyType)}
+                            >
+                              <SelectTrigger className="h-7 flex-1 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="daily">Daily</SelectItem>
+                                <SelectItem value="alternate">Alternate Days</SelectItem>
+                                <SelectItem value="weekly">Weekly</SelectItem>
+                                <SelectItem value="custom">Custom Days</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {weekDays.map((day) => (
+                              <Badge
+                                key={day.key}
+                                variant={selectedProduct.delivery_days[day.key] ? "default" : "outline"}
+                                className={cn(
+                                  "cursor-pointer text-xs transition-colors",
+                                  selectedProduct.delivery_days[day.key]
+                                    ? "bg-primary hover:bg-primary/80"
+                                    : "hover:bg-muted"
+                                )}
+                                onClick={() => toggleProductDeliveryDay(product.id, day.key)}
+                              >
+                                {day.label}
+                              </Badge>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -315,72 +503,6 @@ export function CustomerSubscriptionSelector({
         </CardContent>
       </Card>
 
-      {/* Delivery Frequency */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-medium">Delivery Schedule</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Frequency</Label>
-            <Select
-              value={value.frequency}
-              onValueChange={(v) =>
-                handleFrequencyChange(v as typeof value.frequency)
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">Daily</SelectItem>
-                <SelectItem value="alternate">Alternate Days</SelectItem>
-                <SelectItem value="weekly">Weekly</SelectItem>
-                <SelectItem value="custom">Custom Days</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Delivery Days Selector */}
-          <div className="space-y-2">
-            <Label>Delivery Days</Label>
-            <div className="flex flex-wrap gap-2">
-              {weekDays.map((day) => (
-                <Badge
-                  key={day.key}
-                  variant={value.delivery_days[day.key] ? "default" : "outline"}
-                  className={cn(
-                    "cursor-pointer transition-colors",
-                    value.delivery_days[day.key]
-                      ? "bg-primary hover:bg-primary/80"
-                      : "hover:bg-muted"
-                  )}
-                  onClick={() => toggleDeliveryDay(day.key)}
-                >
-                  {day.label}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          {/* Auto-Deliver Toggle */}
-          <div className="flex items-center justify-between pt-2 border-t">
-            <div>
-              <p className="text-sm font-medium">Auto-mark as Delivered</p>
-              <p className="text-xs text-muted-foreground">
-                Automatically mark deliveries as completed daily
-              </p>
-            </div>
-            <Checkbox
-              checked={value.auto_deliver}
-              onCheckedChange={(checked) =>
-                onChange({ ...value, auto_deliver: !!checked })
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Summary */}
       {value.products.length > 0 && (
         <Card className="bg-muted/50">
@@ -390,9 +512,16 @@ export function CustomerSubscriptionSelector({
                 <p className="text-sm font-medium">
                   {value.products.length} product{value.products.length !== 1 ? "s" : ""} selected
                 </p>
-                <p className="text-xs text-muted-foreground">
-                  {Object.values(value.delivery_days).filter(Boolean).length} days/week
-                </p>
+                <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
+                  {value.products.map((p) => (
+                    <div key={p.product_id} className="flex items-center gap-2">
+                      <span>{p.product_name}</span>
+                      <Badge variant="outline" className="text-[10px] h-4 px-1">
+                        {frequencyLabels[p.frequency]}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-lg font-bold text-primary">

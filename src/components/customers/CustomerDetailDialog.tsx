@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CustomerDeliveryCalendar } from "./CustomerDeliveryCalendar";
+import { QuickAddOnOrderDialog } from "./QuickAddOnOrderDialog";
 import { 
   User, Phone, MapPin, Calendar, Mail,
   Clock, CheckCircle, XCircle, AlertCircle,
   Package, Receipt, Truck, DollarSign,
   TrendingUp, CreditCard, Palmtree, ShoppingCart,
-  CalendarDays
+  CalendarDays, Plus
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
 
@@ -107,6 +110,7 @@ interface CustomerDetailDialogProps {
 }
 
 export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerDetailDialogProps) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -114,7 +118,7 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
-
+  const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
   useEffect(() => {
     if (customer && open) {
       fetchCustomerData();
@@ -252,13 +256,36 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <User className="h-5 w-5" />
-            {customer.name}
-            <Badge variant={customer.is_active ? "default" : "secondary"} className="ml-2">
-              {customer.is_active ? "Active" : "Inactive"}
-            </Badge>
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              <User className="h-5 w-5" />
+              {customer.name}
+              <Badge variant={customer.is_active ? "default" : "secondary"} className="ml-2">
+                {customer.is_active ? "Active" : "Inactive"}
+              </Badge>
+            </DialogTitle>
+            <div className="flex items-center gap-2 mr-8">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setAddOnDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add Order
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  onOpenChange(false);
+                  navigate(`/deliveries?customer=${customer.id}`);
+                }}
+              >
+                <Truck className="h-4 w-4 mr-1" />
+                Deliveries
+              </Button>
+            </div>
+          </div>
         </DialogHeader>
 
         {loading ? (
@@ -875,6 +902,15 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
           </ScrollArea>
         )}
       </DialogContent>
+
+      {/* Quick Add-on Order Dialog */}
+      <QuickAddOnOrderDialog
+        open={addOnDialogOpen}
+        onOpenChange={setAddOnDialogOpen}
+        customerId={customer.id}
+        customerName={customer.name}
+        onSuccess={fetchCustomerData}
+      />
     </Dialog>
   );
 }

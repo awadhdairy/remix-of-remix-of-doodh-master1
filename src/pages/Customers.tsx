@@ -168,33 +168,36 @@ export default function CustomersPage() {
         .eq("is_active", true);
 
       if (existingProducts && existingProducts.length > 0) {
+        // Parse delivery days from notes if available
+        let globalDeliveryDays = defaultSubscriptionData.delivery_days;
+        let autoDeliver = true;
+        let productSchedules: Record<string, { frequency: string; delivery_days: any }> = {};
+        
+        // Try to parse schedule from notes (stored as JSON)
+        const notesMatch = customer.notes?.match(/Schedule:\s*(\{[\s\S]*\})/);
+        if (notesMatch) {
+          try {
+            const schedule = JSON.parse(notesMatch[1]);
+            if (schedule.delivery_days) globalDeliveryDays = schedule.delivery_days;
+            if (typeof schedule.auto_deliver === "boolean") autoDeliver = schedule.auto_deliver;
+            if (schedule.product_schedules) productSchedules = schedule.product_schedules;
+          } catch {}
+        }
+
         const products = existingProducts.map((p: any) => ({
           product_id: p.product_id,
           product_name: p.product?.name || "Unknown",
           quantity: p.quantity,
           custom_price: p.custom_price,
           unit: p.product?.unit || "unit",
+          frequency: (productSchedules[p.product_id]?.frequency || customer.subscription_type || "daily") as "daily" | "alternate" | "weekly" | "custom",
+          delivery_days: productSchedules[p.product_id]?.delivery_days || { ...globalDeliveryDays },
         }));
-
-        // Parse delivery days from notes if available
-        let deliveryDays = defaultSubscriptionData.delivery_days;
-        let autoDeliver = true;
-        
-        // Try to parse schedule from notes (stored as JSON)
-        // Notes format: "... Schedule: {\"delivery_days\":{...},\"auto_deliver\":true}"
-        const notesMatch = customer.notes?.match(/Schedule:\s*(\{[\s\S]*\})/);
-        if (notesMatch) {
-          try {
-            const schedule = JSON.parse(notesMatch[1]);
-            if (schedule.delivery_days) deliveryDays = schedule.delivery_days;
-            if (typeof schedule.auto_deliver === "boolean") autoDeliver = schedule.auto_deliver;
-          } catch {}
-        }
 
         setSubscriptionData({
           products,
           frequency: customer.subscription_type as any || "daily",
-          delivery_days: deliveryDays,
+          delivery_days: globalDeliveryDays,
           auto_deliver: autoDeliver,
         });
       } else {
@@ -234,10 +237,19 @@ export default function CustomersPage() {
       custom: "custom",
     };
 
-    // Build schedule metadata
+    // Build schedule metadata with per-product schedules
+    const productSchedules: Record<string, { frequency: string; delivery_days: any }> = {};
+    subscriptionData.products.forEach(p => {
+      productSchedules[p.product_id] = {
+        frequency: p.frequency,
+        delivery_days: p.delivery_days,
+      };
+    });
+
     const scheduleMetadata = {
       delivery_days: subscriptionData.delivery_days,
       auto_deliver: subscriptionData.auto_deliver,
+      product_schedules: productSchedules,
     };
 
     // Combine user notes with schedule metadata
