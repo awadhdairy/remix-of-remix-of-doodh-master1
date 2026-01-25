@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
+import { useCapacitor } from "@/hooks/useCapacitor";
 
 interface Customer {
   id: string;
@@ -109,6 +110,7 @@ const itemVariants = {
 };
 
 export function QuickActionsCard() {
+  const { hapticImpact, hapticSelection } = useCapacitor();
   const [customerSelectOpen, setCustomerSelectOpen] = useState(false);
   const [addonDialogOpen, setAddonDialogOpen] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -154,16 +156,22 @@ export function QuickActionsCard() {
   }, [customers, searchQuery]);
 
   const handleAddonClick = () => {
+    hapticImpact("light");
     setCustomerSelectOpen(true);
   };
 
   const handleCustomerSelect = (customer: Customer) => {
+    hapticSelection();
     setSelectedCustomer(customer);
     setCustomerSelectOpen(false);
     // Small delay to ensure smooth dialog transition
     setTimeout(() => {
       setAddonDialogOpen(true);
     }, 100);
+  };
+
+  const handleActionClick = () => {
+    hapticImpact("light");
   };
 
   const handleAddonDialogClose = (open: boolean) => {
@@ -203,7 +211,7 @@ export function QuickActionsCard() {
     }
 
     return (
-      <Link to={action.href!}>
+      <Link to={action.href!} onClick={handleActionClick}>
         <motion.div
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
