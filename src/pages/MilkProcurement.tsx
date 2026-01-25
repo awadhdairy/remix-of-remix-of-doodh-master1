@@ -40,7 +40,9 @@ import {
   Building2,
   Phone,
   MapPin,
+  Wallet,
 } from "lucide-react";
+import { VendorPaymentsDialog } from "@/components/procurement/VendorPaymentsDialog";
 
 interface MilkVendor {
   id: string;
@@ -50,6 +52,7 @@ interface MilkVendor {
   area: string | null;
   is_active: boolean;
   notes: string | null;
+  current_balance: number;
   created_at: string;
 }
 
@@ -128,6 +131,7 @@ export default function MilkProcurementPage() {
   const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
   const [procurementDialogOpen, setProcurementDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState<"vendor" | "procurement">("vendor");
 
   // Selected items
@@ -504,11 +508,21 @@ export default function MilkProcurementPage() {
       ),
     },
     {
-      key: "address",
-      header: "Address",
-      render: (item: MilkVendor) => (
-        <span className="text-sm">{item.address || "-"}</span>
-      ),
+      key: "balance",
+      header: "Balance",
+      render: (item: MilkVendor) => {
+        const balance = Number(item.current_balance) || 0;
+        return (
+          <div className="flex flex-col">
+            <span className={`font-semibold ${balance > 0 ? "text-destructive" : balance < 0 ? "text-green-600" : ""}`}>
+              ₹{Math.abs(balance).toLocaleString()}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {balance > 0 ? "Due" : balance < 0 ? "Advance" : "Settled"}
+            </span>
+          </div>
+        );
+      },
     },
     {
       key: "is_active",
@@ -521,7 +535,19 @@ export default function MilkProcurementPage() {
       key: "actions",
       header: "Actions",
       render: (item: MilkVendor) => (
-        <div className="flex gap-2">
+        <div className="flex gap-1">
+          <Button 
+            size="sm" 
+            variant="ghost"
+            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+            onClick={() => {
+              setSelectedVendor(item);
+              setPaymentDialogOpen(true);
+            }}
+            title="Payments"
+          >
+            <Wallet className="h-4 w-4" />
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => handleOpenVendorDialog(item)}>
             <Edit className="h-4 w-4" />
           </Button>
@@ -1060,6 +1086,14 @@ export default function MilkProcurementPage() {
         confirmText={deleteType === "vendor" ? "Deactivate" : "Delete"}
         onConfirm={deleteType === "vendor" ? handleDeleteVendor : handleDeleteProcurement}
         variant="destructive"
+      />
+
+      {/* Vendor Payments Dialog */}
+      <VendorPaymentsDialog
+        open={paymentDialogOpen}
+        onOpenChange={setPaymentDialogOpen}
+        vendor={selectedVendor}
+        onPaymentSuccess={fetchData}
       />
     </div>
   );
