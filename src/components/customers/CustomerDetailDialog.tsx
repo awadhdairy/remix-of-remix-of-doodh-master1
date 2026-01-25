@@ -591,7 +591,70 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
                 </Card>
               </TabsContent>
 
-              <TabsContent value="subscriptions" className="mt-4">
+              <TabsContent value="subscriptions" className="mt-4 space-y-4">
+                {/* Subscription Cost Summary */}
+                <Card className="bg-gradient-to-br from-primary/5 to-accent/5 border-primary/20">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <TrendingUp className="h-4 w-4 text-primary" />
+                      Subscription Cost Breakdown
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {subscriptions.filter(s => s.is_active).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No active subscriptions</p>
+                    ) : (
+                      <>
+                        {/* Per Product Breakdown */}
+                        <div className="space-y-2 mb-4">
+                          {subscriptions.filter(s => s.is_active).map((sub) => {
+                            const unitPrice = sub.custom_price || sub.base_price;
+                            const dailyCost = unitPrice * sub.quantity;
+                            return (
+                              <div key={sub.id} className="flex items-center justify-between text-sm">
+                                <span className="font-medium">{sub.product_name}</span>
+                                <div className="flex items-center gap-4 text-muted-foreground">
+                                  <span>{sub.quantity} × ₹{unitPrice.toLocaleString()}</span>
+                                  <span className="font-semibold text-foreground">₹{dailyCost.toLocaleString()}/day</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        
+                        {/* Total Summary */}
+                        <div className="grid grid-cols-3 gap-4 pt-3 border-t">
+                          {(() => {
+                            const dailyTotal = subscriptions
+                              .filter(s => s.is_active)
+                              .reduce((sum, s) => sum + (s.custom_price || s.base_price) * s.quantity, 0);
+                            const weeklyTotal = dailyTotal * 7;
+                            const monthlyTotal = dailyTotal * 30;
+                            
+                            return (
+                              <>
+                                <div className="text-center">
+                                  <p className="text-xs text-muted-foreground">Daily</p>
+                                  <p className="text-lg font-bold text-primary">₹{dailyTotal.toLocaleString()}</p>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-xs text-muted-foreground">Weekly</p>
+                                  <p className="text-lg font-bold text-primary">₹{weeklyTotal.toLocaleString()}</p>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-xs text-muted-foreground">Monthly (30 days)</p>
+                                  <p className="text-lg font-bold text-primary">₹{monthlyTotal.toLocaleString()}</p>
+                                </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Subscribed Products List */}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center justify-between">
@@ -600,10 +663,10 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <ScrollArea className="h-[250px]">
+                    <ScrollArea className="h-[180px]">
                       <div className="space-y-2">
                         {subscriptions.length === 0 ? (
-                          <p className="text-center text-muted-foreground py-8">No subscriptions</p>
+                          <p className="text-center text-muted-foreground py-4">No subscriptions</p>
                         ) : (
                           subscriptions.map((sub) => (
                             <div 
@@ -636,6 +699,93 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
                     </ScrollArea>
                   </CardContent>
                 </Card>
+
+                {/* Add-on / Extra Orders */}
+                {(() => {
+                  // Find delivery items that are NOT in the subscription list (add-ons)
+                  const subscribedProductIds = new Set(subscriptions.map(s => s.product_name.toLowerCase()));
+                  
+                  const addOnOrders: Array<{
+                    date: string;
+                    items: Array<{
+                      product_name: string;
+                      quantity: number;
+                      unit_price: number;
+                      total_amount: number;
+                    }>;
+                  }> = [];
+
+                  deliveries.forEach(delivery => {
+                    if (delivery.status === 'delivered' && delivery.items.length > 0) {
+                      const addOnItems = delivery.items.filter(item => 
+                        !subscribedProductIds.has(item.product_name.toLowerCase())
+                      );
+                      
+                      if (addOnItems.length > 0) {
+                        addOnOrders.push({
+                          date: delivery.delivery_date,
+                          items: addOnItems,
+                        });
+                      }
+                    }
+                  });
+
+                  if (addOnOrders.length === 0) return null;
+
+                  const totalAddOnValue = addOnOrders.reduce((sum, order) => 
+                    sum + order.items.reduce((itemSum, item) => itemSum + item.total_amount, 0), 0
+                  );
+
+                  return (
+                    <Card className="border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center justify-between">
+                          <span className="flex items-center gap-2">
+                            <ShoppingCart className="h-4 w-4 text-amber-600" />
+                            Add-on / Extra Orders
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-amber-700 border-amber-300">
+                              {addOnOrders.length} orders
+                            </Badge>
+                            <Badge className="bg-amber-600 hover:bg-amber-600">
+                              ₹{totalAddOnValue.toLocaleString()} total
+                            </Badge>
+                          </div>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ScrollArea className="h-[150px]">
+                          <div className="space-y-2">
+                            {addOnOrders.slice(0, 20).map((order, idx) => (
+                              <div key={idx} className="p-2 rounded-lg border bg-background/60">
+                                <div className="flex items-center justify-between mb-1">
+                                  <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                    {format(parseISO(order.date), "EEE, dd MMM yyyy")}
+                                  </p>
+                                  <p className="text-xs font-semibold">
+                                    ₹{order.items.reduce((s, i) => s + i.total_amount, 0).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div className="space-y-0.5">
+                                  {order.items.map((item, itemIdx) => (
+                                    <div key={itemIdx} className="flex justify-between text-xs text-muted-foreground">
+                                      <span>✨ {item.product_name} × {item.quantity}</span>
+                                      <span>₹{item.total_amount.toLocaleString()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                        <p className="text-xs text-muted-foreground mt-2 italic">
+                          * These items are charged separately from regular subscription
+                        </p>
+                      </CardContent>
+                    </Card>
+                  );
+                })()}
 
                 {/* Vacation History */}
                 {vacations.length > 0 && (
