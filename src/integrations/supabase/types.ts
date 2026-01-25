@@ -1297,6 +1297,68 @@ export type Database = {
           },
         ]
       }
+      milk_procurement: {
+        Row: {
+          created_at: string | null
+          fat_percentage: number | null
+          id: string
+          notes: string | null
+          payment_status: string | null
+          procurement_date: string
+          quantity_liters: number
+          rate_per_liter: number | null
+          recorded_by: string | null
+          session: string
+          snf_percentage: number | null
+          total_amount: number | null
+          updated_at: string | null
+          vendor_id: string | null
+          vendor_name: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          fat_percentage?: number | null
+          id?: string
+          notes?: string | null
+          payment_status?: string | null
+          procurement_date: string
+          quantity_liters: number
+          rate_per_liter?: number | null
+          recorded_by?: string | null
+          session: string
+          snf_percentage?: number | null
+          total_amount?: number | null
+          updated_at?: string | null
+          vendor_id?: string | null
+          vendor_name?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          fat_percentage?: number | null
+          id?: string
+          notes?: string | null
+          payment_status?: string | null
+          procurement_date?: string
+          quantity_liters?: number
+          rate_per_liter?: number | null
+          recorded_by?: string | null
+          session?: string
+          snf_percentage?: number | null
+          total_amount?: number | null
+          updated_at?: string | null
+          vendor_id?: string | null
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "milk_procurement_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "milk_vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       milk_production: {
         Row: {
           cattle_id: string
@@ -1343,6 +1405,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      milk_vendors: {
+        Row: {
+          address: string | null
+          area: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          notes: string | null
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          area?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          area?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       notification_logs: {
         Row: {

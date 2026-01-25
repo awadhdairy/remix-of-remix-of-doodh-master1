@@ -28,6 +28,7 @@ import RoutesPage from "./pages/Routes";
 import PriceRulesPage from "./pages/PriceRules";
 import AuditLogsPage from "./pages/AuditLogs";
 import NotificationsPage from "./pages/Notifications";
+import MilkProcurementPage from "./pages/MilkProcurement";
 import NotFound from "./pages/NotFound";
 // Customer App Pages
 import CustomerAuth from "./pages/customer/CustomerAuth";
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/cattle" element={<CattlePage />} />
             <Route path="/production" element={<ProductionPage />} />
+            <Route path="/milk-procurement" element={<MilkProcurementPage />} />
             <Route path="/products" element={<ProductsPage />} />
             <Route path="/customers" element={<CustomersPage />} />
             <Route path="/deliveries" element={<DeliveriesPage />} />
