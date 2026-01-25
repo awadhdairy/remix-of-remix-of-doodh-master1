@@ -43,6 +43,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
+import awadhDairyLogo from "@/assets/awadh-dairy-logo.png";
 
 interface NavItem {
   title: string;
@@ -234,7 +235,14 @@ export function MobileNavbar() {
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-                <h2 className="text-lg font-semibold">Menu</h2>
+                <div className="flex items-center gap-3">
+                  <img 
+                    src={awadhDairyLogo} 
+                    alt="Awadh Dairy" 
+                    className="h-10 w-10 object-contain"
+                  />
+                  <span className="text-lg font-semibold">Menu</span>
+                </div>
                 <SheetClose asChild>
                   <button className="p-2 -mr-2 rounded-full hover:bg-muted touch-active">
                     <X className="h-5 w-5" />

@@ -34,6 +34,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThemeToggle } from "@/components/common/ThemeToggle";
+import awadhDairyLogo from "@/assets/awadh-dairy-logo.png";
 
 interface NavItem {
   title: string;
@@ -154,9 +155,11 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
         {!collapsed && (
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
-              <Droplets className="h-5 w-5 text-sidebar-primary-foreground" />
-            </div>
+            <img 
+              src={awadhDairyLogo} 
+              alt="Awadh Dairy" 
+              className="h-10 w-10 object-contain"
+            />
             <div className="flex flex-col">
               <span className="text-sm font-bold text-sidebar-foreground">Awadh Dairy</span>
               <span className="text-[10px] text-sidebar-foreground/60">Dairy Management</span>
@@ -164,9 +167,11 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           </div>
         )}
         {collapsed && (
-          <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
-            <Droplets className="h-5 w-5 text-sidebar-primary-foreground" />
-          </div>
+          <img 
+            src={awadhDairyLogo} 
+            alt="Awadh Dairy" 
+            className="mx-auto h-10 w-10 object-contain"
+          />
         )}
       </div>
 

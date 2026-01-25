@@ -6,10 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Droplets, Phone, Loader2 } from "lucide-react";
+import { Phone, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { sanitizeError } from "@/lib/errors";
+import awadhDairyLogo from "@/assets/awadh-dairy-logo.png";
 
 const loginSchema = z.object({
   phone: z.string()
@@ -161,9 +162,11 @@ export default function Auth() {
       {/* Left side - Branding */}
       <div className="hidden w-1/2 gradient-hero lg:flex lg:flex-col lg:items-center lg:justify-center lg:p-12">
         <div className="max-w-md text-center animate-fade-in">
-          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-sidebar-primary shadow-glow">
-            <Droplets className="h-10 w-10 text-sidebar-primary-foreground" />
-          </div>
+          <img 
+            src={awadhDairyLogo} 
+            alt="Awadh Dairy" 
+            className="mx-auto mb-6 h-32 w-32 object-contain"
+          />
           <h1 className="mb-4 text-4xl font-bold text-sidebar-foreground">
             Awadh Dairy
           </h1>
@@ -192,9 +195,11 @@ export default function Auth() {
       <div className="flex w-full items-center justify-center bg-background p-6 lg:w-1/2">
         <Card className="w-full max-w-md border-border/50 shadow-lg animate-slide-up">
           <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary lg:hidden">
-              <Droplets className="h-6 w-6 text-primary-foreground" />
-            </div>
+            <img 
+              src={awadhDairyLogo} 
+              alt="Awadh Dairy" 
+              className="mx-auto mb-2 h-16 w-16 object-contain lg:hidden"
+            />
             <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
             <CardDescription>
               Sign in with your mobile number & PIN
