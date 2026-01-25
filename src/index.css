@@ -800,7 +800,12 @@ body.keyboard-open .bottom-nav {
 
 /* Mobile-optimized dialog */
 @media (max-width: 640px) {
-  [role="dialog"] {
+  /*
+    IMPORTANT:
+    Don't apply the bottom-sheet layout to the right-side navigation drawer (Sheet).
+    The Sheet component marks itself with [data-sheet], so it stays full-height and flush-right.
+  */
+  [role="dialog"]:not([data-sheet]) {
     @apply fixed inset-x-0 bottom-0 top-auto max-w-full rounded-t-2xl rounded-b-none;
     max-height: 90vh;
     max-height: 90dvh;
