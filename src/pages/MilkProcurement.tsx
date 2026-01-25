@@ -43,6 +43,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { VendorPaymentsDialog } from "@/components/procurement/VendorPaymentsDialog";
+import { ProcurementAnalytics } from "@/components/procurement/ProcurementAnalytics";
 
 interface MilkVendor {
   id: string;
@@ -121,7 +122,7 @@ const emptyProcurementForm: ProcurementFormData = {
 };
 
 export default function MilkProcurementPage() {
-  const [activeTab, setActiveTab] = useState<"records" | "vendors">("records");
+  const [activeTab, setActiveTab] = useState<"records" | "vendors" | "analytics">("records");
   const [vendors, setVendors] = useState<MilkVendor[]>([]);
   const [procurements, setProcurements] = useState<MilkProcurement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -765,6 +766,7 @@ export default function MilkProcurementPage() {
         <TabsList>
           <TabsTrigger value="records">Procurement Records</TabsTrigger>
           <TabsTrigger value="vendors">Vendors</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="records" className="mt-4">
@@ -805,6 +807,10 @@ export default function MilkProcurementPage() {
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-4">
+          <ProcurementAnalytics />
         </TabsContent>
       </Tabs>
 
