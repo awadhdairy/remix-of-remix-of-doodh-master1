@@ -231,7 +231,7 @@ export function MobileNavbar() {
             <SheetContent 
               side="right" 
               hideCloseButton
-              className="w-[85%] max-w-[320px] p-0 border-l border-border/50 bg-background"
+              className="w-[85%] max-w-[320px] p-0 border-l border-border/50 bg-background flex flex-col h-full"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
@@ -250,7 +250,7 @@ export function MobileNavbar() {
                 </SheetClose>
               </div>
               
-              <ScrollArea className="h-[calc(100vh-180px)]">
+              <ScrollArea className="flex-1 max-h-[calc(100vh-280px)]">
                 <div className="px-4 py-3">
                   <AnimatePresence>
                     {visibleMenuItems.map((item, index) => {
@@ -279,7 +279,7 @@ export function MobileNavbar() {
               </ScrollArea>
 
               {/* Footer Section */}
-              <div className="absolute bottom-0 left-0 right-0 border-t border-border/50 bg-background p-4 space-y-2">
+              <div className="border-t border-border/50 bg-background p-4 space-y-2 mt-auto">
                 {/* Dark Mode Toggle */}
                 <button
                   onClick={toggleTheme}
