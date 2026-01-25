@@ -7,6 +7,13 @@ import { ProductionChart } from "./ProductionChart";
 import { ProductionInsights } from "./ProductionInsights";
 import { ExpenseAutomationCard } from "./ExpenseAutomationCard";
 import { DeliveryAutomationCard } from "./DeliveryAutomationCard";
+import { RevenueGrowthChart } from "./RevenueGrowthChart";
+import { ExpensePieChart } from "./ExpensePieChart";
+import { CattleCompositionChart } from "./CattleCompositionChart";
+import { DeliveryPerformanceChart } from "./DeliveryPerformanceChart";
+import { MonthComparisonChart } from "./MonthComparisonChart";
+import { CustomerGrowthChart } from "./CustomerGrowthChart";
+import { ProcurementProductionChart } from "./ProcurementProductionChart";
 import { useBreedingAlerts } from "@/hooks/useBreedingAlerts";
 import { BreedingAlertsPanel } from "@/components/breeding/BreedingAlertsPanel";
 import { DashboardSkeleton } from "@/components/common/LoadingSkeleton";
@@ -93,19 +100,50 @@ export function AdminDashboard() {
         <RecentActivityCard />
       </motion.div>
 
-      <motion.div
+      {/* Revenue Growth Chart - Full Width */}
+      <RevenueGrowthChart />
+
+      {/* Three Column Charts */}
+      <motion.div 
+        className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.4 }}
       >
+        <ExpensePieChart />
+        <CattleCompositionChart />
+        <DeliveryPerformanceChart />
+      </motion.div>
+
+      {/* Two Column Charts */}
+      <motion.div 
+        className="grid gap-4 lg:grid-cols-2"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.45 }}
+      >
+        <MonthComparisonChart />
+        <CustomerGrowthChart />
+      </motion.div>
+
+      {/* Procurement vs Production */}
+      <ProcurementProductionChart />
+
+      {/* Production Insights */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.5 }}
+      >
         <ProductionInsights />
       </motion.div>
 
+      {/* Breeding Alerts & Automation Cards */}
       <motion.div 
         className="grid gap-4 lg:grid-cols-3"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.5 }}
+        transition={{ duration: 0.4, delay: 0.55 }}
       >
         <BreedingAlertsPanel
           alerts={alerts}
