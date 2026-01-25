@@ -49,7 +49,13 @@ export function DashboardLayout() {
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
-    if (error) {
+    
+    // If error is "session_not_found", the user is already logged out - treat as success
+    const isAlreadyLoggedOut = error?.message?.includes('session') || 
+                                error?.message?.includes('Auth session missing');
+    
+    if (error && !isAlreadyLoggedOut) {
+      // Only show error for genuine failures (network issues, etc.)
       toast({
         title: "Error signing out",
         description: error.message,
@@ -60,8 +66,10 @@ export function DashboardLayout() {
         title: "Signed out successfully",
         description: "See you next time!",
       });
-      navigate('/auth');
     }
+    
+    // Always navigate to auth page - user clicked logout, honor their intent
+    navigate('/auth');
   };
 
   if (loading) {
