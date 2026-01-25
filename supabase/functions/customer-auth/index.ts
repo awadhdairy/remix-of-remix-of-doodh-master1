@@ -6,6 +6,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Allowed origins for redirect validation (prevents open redirect attacks)
+const ALLOWED_ORIGINS = [
+  'https://awadhd.lovable.app',
+  'https://id-preview--c9769607-a092-45ff-8257-44be40434034.lovable.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+
+function isValidOrigin(origin: string | null): boolean {
+  if (!origin) return false;
+  return ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed));
+}
+
+function getSafeRedirectUrl(origin: string | null, path: string): string {
+  if (origin && isValidOrigin(origin)) {
+    return `${origin}${path}`;
+  }
+  return path; // Relative path as fallback
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -21,6 +41,16 @@ serve(async (req) => {
 
     const { action, phone, pin, currentPin, newPin, customerId } = await req.json();
     console.log(`Customer auth action: ${action} for phone: ${phone?.slice(-4) || 'N/A'}`);
+
+    // Validate required phone format
+    if ((action === 'register' || action === 'login') && phone) {
+      if (!/^\d{10}$/.test(phone)) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'Phone number must be 10 digits' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     switch (action) {
       case 'register': {
@@ -103,6 +133,14 @@ serve(async (req) => {
           );
         }
 
+        // Validate PIN format
+        if (!/^\d{6}$/.test(pin)) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'PIN must be 6 digits' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Verify PIN using database function
         const { data: verifyResult, error: verifyError } = await supabaseAdmin.rpc('verify_customer_pin', {
           _phone: phone,
@@ -133,15 +171,17 @@ serve(async (req) => {
           );
         }
 
-        // Get or create auth session
+        // Get or create auth session with validated redirect
         const email = `customer_${phone}@awadhdairy.com`;
+        const origin = req.headers.get('origin');
+        const safeRedirect = getSafeRedirectUrl(origin, '/customer/dashboard');
         
         // Try to sign in
         const { data: signInData, error: signInError } = await supabaseAdmin.auth.admin.generateLink({
           type: 'magiclink',
           email,
           options: {
-            redirectTo: `${req.headers.get('origin')}/customer/dashboard`
+            redirectTo: safeRedirect
           }
         });
 

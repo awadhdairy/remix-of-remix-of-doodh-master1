@@ -92,19 +92,39 @@ serve(async (req) => {
 
     const userId = authData.user.id
 
-    // Wait a bit for the trigger to create profile/role
-    await new Promise(resolve => setTimeout(resolve, 500))
+    // Directly upsert profile - don't rely on trigger (matches create-user pattern)
+    const { error: profileUpsertError } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        id: userId,
+        full_name: 'Super Admin',
+        phone: phone,
+        role: 'super_admin',
+        is_active: true
+      }, { onConflict: 'id' })
 
-    // Update user_roles to super_admin
-    await supabaseAdmin
+    if (profileUpsertError) {
+      console.error('Profile upsert error:', profileUpsertError)
+    }
+
+    // Upsert user_roles to super_admin
+    const { error: roleUpsertError } = await supabaseAdmin
       .from('user_roles')
       .upsert({ user_id: userId, role: 'super_admin' }, { onConflict: 'user_id' })
 
-    // Update profiles to super_admin
-    await supabaseAdmin
-      .from('profiles')
-      .update({ role: 'super_admin', full_name: 'Super Admin', phone: phone })
-      .eq('id', userId)
+    if (roleUpsertError) {
+      console.error('Role upsert error:', roleUpsertError)
+    }
+
+    // Set PIN hash using database function
+    const { error: pinError } = await supabaseAdmin.rpc('update_pin_only', {
+      _user_id: userId,
+      _pin: pin
+    })
+
+    if (pinError) {
+      console.error('PIN set error:', pinError)
+    }
 
     return new Response(
       JSON.stringify({ 

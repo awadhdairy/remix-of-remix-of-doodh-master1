@@ -8,9 +8,10 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Column<T> {
   key: string;
@@ -31,6 +32,9 @@ interface DataTableProps<T> {
   itemsPerPage?: number;
 }
 
+// Maximum rows to animate for performance
+const MAX_ANIMATED_ROWS = 20;
+
 export function DataTable<T extends { id: string }>({
   data,
   columns,
@@ -44,16 +48,20 @@ export function DataTable<T extends { id: string }>({
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const isMobile = useIsMobile();
 
-  const filteredData = searchable
-    ? data.filter((item) =>
-        Object.values(item).some(
-          (value) =>
-            value &&
-            value.toString().toLowerCase().includes(search.toLowerCase())
-        )
+  // Memoize filtered data for performance
+  const filteredData = useMemo(() => {
+    if (!searchable || !search.trim()) return data;
+    const searchLower = search.toLowerCase();
+    return data.filter((item) =>
+      Object.values(item).some(
+        (value) =>
+          value &&
+          value.toString().toLowerCase().includes(searchLower)
       )
-    : data;
+    );
+  }, [data, search, searchable]);
 
   const totalPages = Math.ceil(filteredData.length / itemsPerPage);
   const paginatedData = filteredData.slice(
@@ -114,25 +122,30 @@ export function DataTable<T extends { id: string }>({
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedData.map((item, index) => (
-                <TableRow
-                  key={item.id}
-                  onClick={() => onRowClick?.(item)}
-                  className={cn(
-                    "animate-slide-up group",
-                    onRowClick && "cursor-pointer"
-                  )}
-                  style={{ animationDelay: `${index * 40}ms` }}
-                >
-                  {columns.map((column) => (
-                    <TableCell key={column.key} className={cn("transition-colors", column.className)}>
-                      {column.render
-                        ? column.render(item)
-                        : (item as Record<string, unknown>)[column.key]?.toString() || "-"}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              paginatedData.map((item, index) => {
+                // Only animate first N rows on desktop for performance
+                const shouldAnimate = !isMobile && index < MAX_ANIMATED_ROWS;
+                return (
+                  <TableRow
+                    key={item.id}
+                    onClick={() => onRowClick?.(item)}
+                    className={cn(
+                      "group",
+                      shouldAnimate && "animate-slide-up",
+                      onRowClick && "cursor-pointer"
+                    )}
+                    style={shouldAnimate ? { animationDelay: `${index * 40}ms` } : undefined}
+                  >
+                    {columns.map((column) => (
+                      <TableCell key={column.key} className={cn("transition-colors", column.className)}>
+                        {column.render
+                          ? column.render(item)
+                          : (item as Record<string, unknown>)[column.key]?.toString() || "-"}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

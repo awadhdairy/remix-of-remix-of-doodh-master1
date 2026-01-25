@@ -277,18 +277,10 @@ export default function UserManagement() {
   const handleCleanupOrphaned = async () => {
     setCleaningUp(true);
     try {
-      // These are the known orphaned auth user IDs from the database investigation
-      const orphanedUserIds = [
-        "ebf9354e-d35e-4758-b92d-65e7d9708997",
-        "11801600-2589-4ff5-bcd3-04c1a1942c04",
-        "262befb9-c895-4db2-bf96-48e9e44ad10e",
-        "0bea4173-707c-4772-9d20-d58ac60ebc30"
-      ];
-
+      // Dynamically find orphaned users by comparing auth users with profiles
       const response = await supabase.functions.invoke("delete-user", {
         body: { 
-          action: "cleanup-orphaned",
-          userIds: orphanedUserIds 
+          action: "find-and-cleanup-orphaned"
         },
       });
 
@@ -300,8 +292,9 @@ export default function UserManagement() {
         throw new Error(response.data.error);
       }
 
-      toast.success(response.data.message);
+      toast.success(response.data.message || "Cleanup completed");
       setCleanupDialogOpen(false);
+      fetchUsers(); // Refresh the list
     } catch (error: any) {
       toast.error(error.message || "Failed to cleanup orphaned users");
     } finally {
@@ -582,8 +575,8 @@ export default function UserManagement() {
         open={cleanupDialogOpen}
         onOpenChange={setCleanupDialogOpen}
         title="Cleanup Orphaned Users"
-        description="This will delete 4 orphaned authentication records that have no associated profiles. These are blocking phone numbers from being reused. This action cannot be undone."
-        confirmText={cleaningUp ? "Cleaning up..." : "Cleanup Now"}
+        description="This will scan for and delete any orphaned authentication records that have no associated profiles. These may be blocking phone numbers from being reused. This action cannot be undone."
+        confirmText={cleaningUp ? "Scanning & Cleaning..." : "Scan & Cleanup"}
         onConfirm={handleCleanupOrphaned}
         variant="destructive"
       />

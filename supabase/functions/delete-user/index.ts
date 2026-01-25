@@ -73,9 +73,103 @@ serve(async (req) => {
     const body = await req.json()
     const { userId, action, userIds } = body
 
-    // Handle cleanup-orphaned action
+    // Handle find-and-cleanup-orphaned action (dynamic detection)
+    if (action === 'find-and-cleanup-orphaned') {
+      console.log('Finding and cleaning up orphaned users dynamically...')
+      
+      // Get all auth users
+      const { data: authUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      if (listError) {
+        console.error('Failed to list auth users:', listError)
+        return new Response(
+          JSON.stringify({ error: 'Failed to list auth users' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Get all profile IDs
+      const { data: profiles, error: profilesError } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+
+      if (profilesError) {
+        console.error('Failed to list profiles:', profilesError)
+        return new Response(
+          JSON.stringify({ error: 'Failed to list profiles' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const profileIds = new Set(profiles?.map(p => p.id) || [])
+      
+      // Filter for staff-created users (emails ending with @awadhdairy.com) that have no profile
+      const orphanedUsers = authUsers?.users?.filter(u => 
+        u.email?.endsWith('@awadhdairy.com') && 
+        !profileIds.has(u.id) &&
+        u.id !== requestingUser.id // Never delete the requesting user
+      ) || []
+
+      console.log(`Found ${orphanedUsers.length} orphaned users`)
+
+      if (orphanedUsers.length === 0) {
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: 'No orphaned users found',
+            deleted_count: 0
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const results = []
+      for (const orphan of orphanedUsers) {
+        try {
+          const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(orphan.id)
+          if (deleteError) {
+            console.error(`Failed to delete orphaned user ${orphan.id}:`, deleteError)
+            results.push({ id: orphan.id, email: orphan.email, success: false, error: deleteError.message })
+          } else {
+            console.log(`Deleted orphaned user: ${orphan.id} (${orphan.email})`)
+            results.push({ id: orphan.id, email: orphan.email, success: true })
+          }
+        } catch (err) {
+          console.error(`Error deleting orphaned user ${orphan.id}:`, err)
+          results.push({ id: orphan.id, email: orphan.email, success: false, error: String(err) })
+        }
+      }
+
+      const deletedCount = results.filter(r => r.success).length
+
+      // Log the cleanup action
+      await supabaseAdmin
+        .from('activity_logs')
+        .insert({
+          user_id: requestingUser.id,
+          action: 'orphaned_users_cleanup',
+          entity_type: 'user',
+          details: {
+            deleted_count: deletedCount,
+            failed_count: results.filter(r => !r.success).length,
+            results,
+            deleted_by: requestingUser.email,
+          },
+        })
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Cleaned up ${deletedCount} orphaned user(s)`,
+          deleted_count: deletedCount,
+          results 
+        }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Handle cleanup-orphaned action (legacy - accepts explicit IDs)
     if (action === 'cleanup-orphaned' && userIds && Array.isArray(userIds)) {
-      console.log('Cleaning up orphaned users:', userIds)
+      console.log('Cleaning up orphaned users (legacy):', userIds)
       const results = []
       
       for (const id of userIds) {
@@ -126,7 +220,6 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
-
 
     // Prevent self-deletion
     if (userId === requestingUser.id) {
