@@ -1,1 +1,28 @@
 project_id = "wqrlsqeuigqmevqpjomv"
+
+[functions.bootstrap-admin]
+verify_jwt = false
+
+[functions.change-pin]
+verify_jwt = false
+
+[functions.create-user]
+verify_jwt = false
+
+[functions.customer-auth]
+verify_jwt = false
+
+[functions.delete-user]
+verify_jwt = false
+
+[functions.health-check]
+verify_jwt = false
+
+[functions.reset-user-pin]
+verify_jwt = false
+
+[functions.update-user-status]
+verify_jwt = false
+
+[functions.auto-deliver-daily]
+verify_jwt = false
