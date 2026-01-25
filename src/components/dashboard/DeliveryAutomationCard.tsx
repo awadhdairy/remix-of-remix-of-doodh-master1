@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoDeliveryScheduler } from "@/hooks/useAutoDeliveryScheduler";
+import { supabase } from "@/integrations/supabase/client";
 import { format, addDays } from "date-fns";
 import { 
   Truck, 
@@ -14,11 +15,13 @@ import {
   CheckCircle2, 
   AlertCircle,
   Zap,
-  RefreshCw
+  RefreshCw,
+  Clock
 } from "lucide-react";
 
 export function DeliveryAutomationCard() {
   const [loading, setLoading] = useState(false);
+  const [cronLoading, setCronLoading] = useState(false);
   const [autoDeliverEnabled, setAutoDeliverEnabled] = useState(false);
   const [lastResult, setLastResult] = useState<{
     scheduled: number;
@@ -33,6 +36,40 @@ export function DeliveryAutomationCard() {
   } = useAutoDeliveryScheduler();
 
   const today = format(new Date(), "yyyy-MM-dd");
+
+  // Trigger the edge function manually
+  const handleTriggerCronJob = async () => {
+    setCronLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("auto-deliver-daily", {
+        body: { triggered_at: new Date().toISOString(), manual: true },
+      });
+
+      if (error) throw error;
+
+      const result = data?.result;
+      if (result) {
+        toast({
+          title: "Auto-delivery complete",
+          description: `Delivered: ${result.delivered}, Scheduled: ${result.scheduled}, Skipped: ${result.skipped}`,
+        });
+        setLastResult({
+          scheduled: result.scheduled,
+          skipped: result.skipped,
+          autoDelivered: result.delivered,
+          errors: result.errors || [],
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error triggering auto-delivery",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setCronLoading(false);
+    }
+  };
 
   const handleScheduleToday = async () => {
     setLoading(true);
@@ -168,6 +205,32 @@ export function DeliveryAutomationCard() {
           </Button>
         </div>
 
+        {/* Cron Job Trigger */}
+        <div className="pt-2 border-t">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground">
+                Auto-runs daily at <span className="font-medium text-foreground">10:00 AM IST</span>
+              </span>
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleTriggerCronJob}
+            disabled={cronLoading}
+            className="w-full"
+          >
+            {cronLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Zap className="mr-2 h-4 w-4" />
+            )}
+            Run Auto-Delivery Now
+          </Button>
+        </div>
+
         {/* Last Result */}
         {lastResult && (
           <div className="pt-2 border-t">
@@ -198,9 +261,9 @@ export function DeliveryAutomationCard() {
 
         {/* Quick Info */}
         <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
-          <p>• Deliveries are created based on customer subscriptions</p>
+          <p>• Subscription orders auto-marked as <span className="text-success font-medium">delivered</span> at 10 AM</p>
           <p>• Customers on vacation are automatically skipped</p>
-          <p>• Frequency settings (daily/alternate/weekly) are respected</p>
+          <p>• Manually marked as "missed" or "partial" are NOT changed</p>
         </div>
       </CardContent>
     </Card>
