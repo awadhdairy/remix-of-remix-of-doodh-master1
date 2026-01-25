@@ -1,3 +1,4 @@
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -8,6 +9,16 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { Button } from "@/components/ui/button";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -30,6 +41,35 @@ export function ConfirmDialog({
   onConfirm,
   variant = "default",
 }: ConfirmDialogProps) {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="pb-safe">
+          <DrawerHeader className="text-left">
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription>{description}</DrawerDescription>
+          </DrawerHeader>
+          <DrawerFooter className="pt-2">
+            <Button
+              onClick={() => {
+                onConfirm();
+                onOpenChange(false);
+              }}
+              variant={variant === "destructive" ? "destructive" : "default"}
+            >
+              {confirmText}
+            </Button>
+            <DrawerClose asChild>
+              <Button variant="outline">{cancelText}</Button>
+            </DrawerClose>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
+    );
+  }
+
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>

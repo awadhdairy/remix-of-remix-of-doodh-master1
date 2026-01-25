@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+} from "@/components/ui/responsive-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useMilkHistory, MilkHistoryRecord, DailyProductionTotal } from "@/hooks/useMilkHistory";
@@ -246,15 +246,15 @@ export function MilkHistoryDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-3xl">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="flex items-center gap-2">
             {getIcon()}
             {getTitle()}
-          </DialogTitle>
-          <DialogDescription>{getDescription()}</DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>{getDescription()}</ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         <Tabs value={days.toString()} onValueChange={(v) => setDays(parseInt(v))}>
           <TabsList className="grid w-full grid-cols-3">
@@ -357,7 +357,7 @@ export function MilkHistoryDialog({
             )}
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

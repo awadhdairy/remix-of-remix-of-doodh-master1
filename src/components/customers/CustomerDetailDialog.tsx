@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -253,17 +253,17 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-4xl">
+        <ResponsiveDialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
+            <ResponsiveDialogTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
               {customer.name}
               <Badge variant={customer.is_active ? "default" : "secondary"} className="ml-2">
                 {customer.is_active ? "Active" : "Inactive"}
               </Badge>
-            </DialogTitle>
+            </ResponsiveDialogTitle>
             <div className="flex items-center gap-2 mr-8">
               <Button
                 size="sm"
@@ -286,7 +286,7 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
               </Button>
             </div>
           </div>
-        </DialogHeader>
+        </ResponsiveDialogHeader>
 
         {loading ? (
           <div className="space-y-4">
@@ -298,7 +298,7 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
             <Skeleton className="h-[300px]" />
           </div>
         ) : (
-          <ScrollArea className="h-[calc(90vh-120px)] pr-4">
+          <ScrollArea className="h-[calc(80vh-120px)] pr-4">
             {/* Customer Info */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <Card>
@@ -901,7 +901,7 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
             </Tabs>
           </ScrollArea>
         )}
-      </DialogContent>
+      </ResponsiveDialogContent>
 
       {/* Quick Add-on Order Dialog */}
       <QuickAddOnOrderDialog
@@ -911,6 +911,6 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
         customerName={customer.name}
         onSuccess={fetchCustomerData}
       />
-    </Dialog>
+    </ResponsiveDialog>
   );
 }

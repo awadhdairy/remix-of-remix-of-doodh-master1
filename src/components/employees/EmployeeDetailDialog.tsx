@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -149,17 +149,17 @@ export function EmployeeDetailDialog({ employee, open, onOpenChange }: EmployeeD
     : null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-4xl">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
             {employee.name}
             <Badge variant={employee.is_active ? "default" : "secondary"} className="ml-2">
               {employee.is_active ? "Active" : "Inactive"}
             </Badge>
-          </DialogTitle>
-        </DialogHeader>
+          </ResponsiveDialogTitle>
+        </ResponsiveDialogHeader>
 
         {loading ? (
           <div className="space-y-4">
@@ -171,7 +171,7 @@ export function EmployeeDetailDialog({ employee, open, onOpenChange }: EmployeeD
             <Skeleton className="h-[300px]" />
           </div>
         ) : (
-          <ScrollArea className="h-[calc(90vh-120px)] pr-4">
+          <ScrollArea className="h-[calc(80vh-120px)] pr-4">
             {/* Employee Info */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <Card>
@@ -458,7 +458,7 @@ export function EmployeeDetailDialog({ employee, open, onOpenChange }: EmployeeD
             </Tabs>
           </ScrollArea>
         )}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

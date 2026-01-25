@@ -7,12 +7,12 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog";
 import {
   Popover,
   PopoverContent,
@@ -216,17 +216,17 @@ export function QuickAddOnOrderDialog({
   }, {} as Record<string, Product[]>);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-lg">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
             Quick Add-on Order
-          </DialogTitle>
+          </ResponsiveDialogTitle>
           <p className="text-sm text-muted-foreground">
             For: <span className="font-medium">{customerName}</span>
           </p>
-        </DialogHeader>
+        </ResponsiveDialogHeader>
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -371,7 +371,7 @@ export function QuickAddOnOrderDialog({
           </div>
         )}
 
-        <DialogFooter className="flex-shrink-0 gap-2 pt-4 border-t">
+        <ResponsiveDialogFooter className="flex-shrink-0 gap-2 pt-4 border-t">
           <Button variant="outline" onClick={handleGoToDeliveries}>
             <Truck className="h-4 w-4 mr-2" />
             Go to Deliveries
@@ -387,8 +387,8 @@ export function QuickAddOnOrderDialog({
             )}
             Add Order
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </ResponsiveDialogFooter>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

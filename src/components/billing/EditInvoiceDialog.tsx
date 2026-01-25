@@ -5,12 +5,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogDescription,
+} from "@/components/ui/responsive-dialog";
 import {
   Select,
   SelectContent,
@@ -372,10 +372,10 @@ export function EditInvoiceDialog({
   const canEdit = invoice && invoice.payment_status !== "paid";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <ResponsiveDialog open={open} onOpenChange={onOpenChange}>
+      <ResponsiveDialogContent className="max-w-3xl">
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle className="flex items-center gap-2">
             <Edit3 className="h-5 w-5" />
             Edit Invoice
             {invoice && (
@@ -383,11 +383,11 @@ export function EditInvoiceDialog({
                 {invoice.invoice_number}
               </Badge>
             )}
-          </DialogTitle>
-          <DialogDescription>
+          </ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             {invoice?.customer?.name} • {invoice && format(new Date(invoice.billing_period_start), "dd MMM")} - {invoice && format(new Date(invoice.billing_period_end), "dd MMM yyyy")}
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         {!canEdit && (
           <div className="rounded-lg bg-warning/10 border border-warning/30 p-3 flex items-center gap-3">
@@ -396,7 +396,7 @@ export function EditInvoiceDialog({
           </div>
         )}
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 pr-4 max-h-[60vh]">
           <div className="grid gap-4 py-4">
             {loading ? (
               <div className="flex items-center justify-center py-12">
@@ -539,7 +539,7 @@ export function EditInvoiceDialog({
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end gap-2 pt-4 border-t">
+        <div className="flex justify-end gap-2 pt-4 border-t mt-4">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
@@ -551,8 +551,8 @@ export function EditInvoiceDialog({
             Update Invoice
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 
   function renderItemsTable(items: LineItem[], isAddon: boolean) {
