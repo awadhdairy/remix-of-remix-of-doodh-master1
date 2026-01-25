@@ -139,14 +139,21 @@ export function QuickAddOnOrderDialog({
 
     setSaving(true);
     try {
-      // Create delivery record
+      // Create delivery record with delivery_time since it's marked as delivered
+      const currentTime = new Date().toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+      
       const { data: delivery, error: deliveryError } = await supabase
         .from("deliveries")
         .insert({
           customer_id: customerId,
           delivery_date: format(deliveryDate, "yyyy-MM-dd"),
           status: "delivered",
-          notes: "Quick add-on order",
+          delivery_time: currentTime,
+          notes: "Add-on order",
         })
         .select("id")
         .single();

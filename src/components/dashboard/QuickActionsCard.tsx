@@ -1,18 +1,20 @@
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { motion } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
-  Plus, 
   Droplets, 
-  Truck, 
   Receipt, 
   Beef, 
   Users,
   Zap,
   Milk,
-  PackagePlus
+  PackagePlus,
+  Search,
+  Loader2,
+  MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,22 +25,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 
 interface Customer {
   id: string;
   name: string;
   area: string | null;
+  phone: string | null;
 }
 
-const quickActions = [
+interface QuickAction {
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  href: string | null;
+  color: string;
+  bgColor: string;
+  isAddonAction?: boolean;
+}
+
+const quickActions: QuickAction[] = [
   {
     title: "Record Milk",
     icon: Droplets,
@@ -49,7 +55,7 @@ const quickActions = [
   {
     title: "Addon Delivery",
     icon: PackagePlus,
-    href: null, // Will open dialog instead
+    href: null,
     color: "text-warning",
     bgColor: "bg-warning/10 hover:bg-warning/20",
     isAddonAction: true,
@@ -108,10 +114,12 @@ export function QuickActionsCard() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (customerSelectOpen) {
       fetchCustomers();
+      setSearchQuery("");
     }
   }, [customerSelectOpen]);
 
@@ -120,7 +128,7 @@ export function QuickActionsCard() {
     try {
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, area")
+        .select("id, name, area, phone")
         .eq("is_active", true)
         .order("name");
 
@@ -128,36 +136,57 @@ export function QuickActionsCard() {
       setCustomers(data || []);
     } catch (error) {
       console.error("Error fetching customers:", error);
+      toast.error("Failed to load customers");
     } finally {
       setLoading(false);
     }
   };
 
+  const filteredCustomers = useMemo(() => {
+    if (!searchQuery.trim()) return customers;
+    const query = searchQuery.toLowerCase();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.area?.toLowerCase().includes(query) ||
+        c.phone?.includes(query)
+    );
+  }, [customers, searchQuery]);
+
   const handleAddonClick = () => {
     setCustomerSelectOpen(true);
   };
 
-  const handleCustomerSelect = (customerId: string) => {
-    const customer = customers.find(c => c.id === customerId);
-    if (customer) {
-      setSelectedCustomer(customer);
-      setCustomerSelectOpen(false);
+  const handleCustomerSelect = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setCustomerSelectOpen(false);
+    // Small delay to ensure smooth dialog transition
+    setTimeout(() => {
       setAddonDialogOpen(true);
+    }, 100);
+  };
+
+  const handleAddonDialogClose = (open: boolean) => {
+    setAddonDialogOpen(open);
+    if (!open) {
+      setSelectedCustomer(null);
     }
   };
 
   const handleAddonSuccess = () => {
     setAddonDialogOpen(false);
     setSelectedCustomer(null);
+    toast.success("Addon delivery created successfully!");
   };
 
-  const renderActionButton = (action: typeof quickActions[0]) => {
+  const renderActionButton = (action: QuickAction) => {
     if (action.isAddonAction) {
       return (
         <motion.div
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
           onClick={handleAddonClick}
+          className="cursor-pointer"
         >
           <Button
             variant="ghost"
@@ -232,36 +261,68 @@ export function QuickActionsCard() {
 
       {/* Customer Selection Dialog */}
       <Dialog open={customerSelectOpen} onOpenChange={setCustomerSelectOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <PackagePlus className="h-5 w-5 text-warning" />
-              Addon Delivery
+              Select Customer for Addon Delivery
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Select Customer</Label>
-              <Select onValueChange={handleCustomerSelect} disabled={loading}>
-                <SelectTrigger>
-                  <SelectValue placeholder={loading ? "Loading customers..." : "Choose a customer"} />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {customers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      <div className="flex items-center gap-2">
-                        <span>{customer.name}</span>
-                        {customer.area && (
-                          <span className="text-xs text-muted-foreground">({customer.area})</span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          
+          <div className="space-y-4 flex-1 flex flex-col min-h-0">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, area, or phone..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+                autoFocus
+              />
             </div>
-            <p className="text-sm text-muted-foreground">
-              Create an addon delivery for extra products requested by a customer. This will be properly recorded in deliveries, ledger, and billing.
+
+            {/* Customer List */}
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredCustomers.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {searchQuery ? "No customers found" : "No active customers"}
+              </div>
+            ) : (
+              <ScrollArea className="flex-1 -mx-6 px-6">
+                <div className="space-y-2 pb-4">
+                  {filteredCustomers.map((customer) => (
+                    <motion.div
+                      key={customer.id}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start h-auto py-3 px-4"
+                        onClick={() => handleCustomerSelect(customer)}
+                      >
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="font-medium">{customer.name}</span>
+                          {customer.area && (
+                            <span className="text-xs text-muted-foreground flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {customer.area}
+                            </span>
+                          )}
+                        </div>
+                      </Button>
+                    </motion.div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+
+            <p className="text-xs text-muted-foreground text-center pt-2 border-t">
+              Select a customer to create an addon delivery
             </p>
           </div>
         </DialogContent>
@@ -271,7 +332,7 @@ export function QuickActionsCard() {
       {selectedCustomer && (
         <QuickAddOnOrderDialog
           open={addonDialogOpen}
-          onOpenChange={setAddonDialogOpen}
+          onOpenChange={handleAddonDialogClose}
           customerId={selectedCustomer.id}
           customerName={selectedCustomer.name}
           onSuccess={handleAddonSuccess}
