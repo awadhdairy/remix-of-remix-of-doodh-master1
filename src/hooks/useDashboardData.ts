@@ -148,9 +148,11 @@ export function useDashboardData() {
   return useQuery({
     queryKey: ["dashboard-data"],
     queryFn: fetchDashboardData,
-    staleTime: 30000,
-    gcTime: 5 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes for better performance
+    gcTime: 10 * 60 * 1000, // 10 minutes garbage collection
     refetchOnWindowFocus: false,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }
 
