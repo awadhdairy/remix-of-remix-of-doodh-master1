@@ -203,11 +203,22 @@
   html {
     font-family: var(--font-body);
     scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Global smooth transitions for interactive elements */
+  button, a, [role="button"] {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  input, select, textarea {
+    @apply transition-colors duration-200 ease-out;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -217,20 +228,20 @@
 
   /* Smooth scrollbar */
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    @apply bg-muted/30 rounded-full;
+    @apply bg-muted/20 rounded-full;
   }
 
   ::-webkit-scrollbar-thumb {
-    @apply bg-muted-foreground/20 rounded-full transition-colors;
+    @apply bg-muted-foreground/15 rounded-full transition-colors;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-muted-foreground/35;
+    @apply bg-muted-foreground/30;
   }
 }
 

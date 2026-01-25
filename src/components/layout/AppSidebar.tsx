@@ -121,20 +121,20 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       <Link
         to={item.href}
         className={cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+          "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-all duration-300 ease-out",
+          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-0.5",
           isActive
             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
             : "text-sidebar-foreground/80",
           collapsed && "justify-center px-2"
         )}
       >
-        <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-sidebar-primary-foreground")} />
+        <item.icon className={cn("h-4 w-4 shrink-0 transition-transform duration-200", isActive && "text-sidebar-primary-foreground")} />
         {!collapsed && (
           <span className="truncate">{item.title}</span>
         )}
         {!collapsed && item.badge && (
-          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sidebar-primary text-[10px] font-semibold text-sidebar-primary-foreground">
+          <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-sidebar-primary text-[9px] font-semibold text-sidebar-primary-foreground">
             {item.badge}
           </span>
         )}
@@ -176,16 +176,16 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       </div>
 
       {/* Navigation */}
-      <ScrollArea className="flex-1 px-3 py-4">
+      <ScrollArea className="flex-1 px-2 py-3">
         {loading ? (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {[1, 2, 3, 4, 5].map(i => (
-              <Skeleton key={i} className="h-10 w-full" />
+              <Skeleton key={i} className="h-8 w-full" />
             ))}
           </div>
         ) : (
           <>
-            <nav className="flex flex-col gap-1">
+            <nav className="flex flex-col gap-0.5">
               {mainItems.map((item) => (
                 <NavLink key={item.href} item={item} />
               ))}
@@ -193,15 +193,15 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
 
             {managementItems.length > 0 && (
               <>
-                <Separator className="my-4 bg-sidebar-border" />
+                <Separator className="my-3 bg-sidebar-border" />
 
                 {!collapsed && (
-                  <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                  <p className="mb-1.5 px-2.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
                     Management
                   </p>
                 )}
                 
-                <nav className="flex flex-col gap-1">
+                <nav className="flex flex-col gap-0.5">
                   {managementItems.map((item) => (
                     <NavLink key={item.href} item={item} />
                   ))}
@@ -213,7 +213,7 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       </ScrollArea>
 
       {/* Footer */}
-      <div className="border-t border-sidebar-border p-3">
+      <div className="border-t border-sidebar-border p-2">
         {/* Theme Toggle */}
         <ThemeToggle collapsed={collapsed} />
 
@@ -221,13 +221,13 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           <Link
             to="/settings"
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
-              "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              "flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-all duration-300 ease-out",
+              "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-0.5",
               location.pathname === "/settings" && "bg-sidebar-accent text-sidebar-accent-foreground",
               collapsed && "justify-center px-2"
             )}
           >
-            <Settings className="h-5 w-5 shrink-0" />
+            <Settings className="h-4 w-4 shrink-0" />
             {!collapsed && <span>Settings</span>}
           </Link>
         )}
@@ -236,28 +236,28 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           variant="ghost"
           onClick={onLogout}
           className={cn(
-            "mt-1 w-full justify-start gap-3 px-3 py-2.5 text-sm font-medium",
-            "text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive",
+            "mt-1 w-full justify-start gap-2.5 px-2.5 py-1.5 text-[13px] font-medium h-auto",
+            "text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive transition-all duration-300 ease-out",
             collapsed && "justify-center px-2"
           )}
         >
-          <LogOut className="h-5 w-5 shrink-0" />
+          <LogOut className="h-4 w-4 shrink-0" />
           {!collapsed && <span>Logout</span>}
         </Button>
 
-        <Separator className="my-3 bg-sidebar-border" />
+        <Separator className="my-2 bg-sidebar-border" />
 
-        <div className={cn("flex items-center gap-3 px-3", collapsed && "justify-center px-0")}>
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sidebar-accent">
-            <UserCircle className="h-5 w-5 text-sidebar-accent-foreground" />
+        <div className={cn("flex items-center gap-2.5 px-2.5", collapsed && "justify-center px-0")}>
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sidebar-accent transition-transform duration-200 hover:scale-105">
+            <UserCircle className="h-4 w-4 text-sidebar-accent-foreground" />
           </div>
           {!collapsed && (
             <div className="flex flex-col overflow-hidden">
-              <span className="truncate text-xs font-medium text-sidebar-foreground">
+              <span className="truncate text-[12px] font-medium text-sidebar-foreground">
                 {userName || "User"}
               </span>
-              <span className="truncate text-[10px] text-sidebar-foreground/50 flex items-center gap-1">
-                <Shield className="h-2.5 w-2.5" />
+              <span className="truncate text-[9px] text-sidebar-foreground/50 flex items-center gap-1">
+                <Shield className="h-2 w-2" />
                 {role ? roleLabels[role] || role : "Loading..."}
               </span>
             </div>
