@@ -54,10 +54,11 @@ export default function Auth() {
   const handleBootstrap = async () => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     
-    if (cleanPhone !== '7897716792' || pin !== '101101') {
+    // Validate basic input requirements before sending to server
+    if (cleanPhone.length < 10 || pin.length !== 6) {
       toast({
         title: "Invalid credentials",
-        description: "Only the designated admin can bootstrap the account.",
+        description: "Please enter valid phone number and 6-digit PIN.",
         variant: "destructive",
       });
       return;
@@ -66,6 +67,7 @@ export default function Auth() {
     setBootstrapping(true);
 
     try {
+      // Server-side validation against secure environment variables
       const response = await supabase.functions.invoke('bootstrap-admin', {
         body: { phone: cleanPhone, pin }
       });
@@ -126,19 +128,11 @@ export default function Auth() {
     setLoading(false);
 
     if (error) {
-      // If login fails and this is the admin phone, offer to bootstrap
-      if (cleanPhone === '7897716792' && pin === '101101') {
-        toast({
-          title: "Account not found",
-          description: "Click 'Setup Admin Account' to create your admin account.",
-        });
-      } else {
-        toast({
-          title: "Login failed",
-          description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Login failed",
+        description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
+        variant: "destructive",
+      });
     } else {
       toast({
         title: "Welcome back!",
@@ -155,7 +149,8 @@ export default function Auth() {
   };
 
   const cleanPhone = phone.replace(/[^0-9]/g, '');
-  const isAdminCredentials = cleanPhone === '7897716792' && pin === '101101';
+  // Show bootstrap button when login fails and user has entered valid-looking credentials
+  const showBootstrapOption = cleanPhone.length >= 10 && pin.length === 6;
 
   return (
     <div className="flex min-h-screen">
@@ -259,7 +254,7 @@ export default function Auth() {
                 )}
               </Button>
 
-              {isAdminCredentials && (
+              {showBootstrapOption && (
                 <Button 
                   type="button" 
                   variant="outline" 

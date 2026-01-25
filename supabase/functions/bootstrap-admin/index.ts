@@ -15,8 +15,21 @@ serve(async (req) => {
   try {
     const { phone, pin } = await req.json()
 
-    // Validate input - only allow the specific admin credentials
-    if (phone !== '7897716792' || pin !== '101101') {
+    // Get admin credentials from environment variables
+    const ADMIN_PHONE = Deno.env.get('BOOTSTRAP_ADMIN_PHONE')
+    const ADMIN_PIN = Deno.env.get('BOOTSTRAP_ADMIN_PIN')
+
+    // Validate that environment variables are configured
+    if (!ADMIN_PHONE || !ADMIN_PIN) {
+      console.error('Bootstrap admin credentials not configured in environment')
+      return new Response(
+        JSON.stringify({ error: 'Bootstrap not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate input against secure environment credentials
+    if (phone !== ADMIN_PHONE || pin !== ADMIN_PIN) {
       return new Response(
         JSON.stringify({ error: 'Invalid bootstrap credentials' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
