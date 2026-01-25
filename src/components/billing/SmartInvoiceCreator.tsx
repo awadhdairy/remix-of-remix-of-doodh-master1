@@ -341,6 +341,13 @@ export function SmartInvoiceCreator({
 
     const invoiceNumber = generateInvoiceNumber();
 
+    // Fetch current UPI handle from dairy settings
+    const { data: dairySettings } = await supabase
+      .from("dairy_settings")
+      .select("upi_handle")
+      .limit(1)
+      .single();
+
     const { error } = await supabase.from("invoices").insert({
       invoice_number: invoiceNumber,
       customer_id: customerId,
@@ -353,6 +360,7 @@ export function SmartInvoiceCreator({
       payment_status: "pending",
       due_date: format(new Date(new Date().setDate(new Date().getDate() + 15)), "yyyy-MM-dd"),
       notes: allDetails || null,
+      upi_handle: dairySettings?.upi_handle || null,
     });
 
     if (error) {

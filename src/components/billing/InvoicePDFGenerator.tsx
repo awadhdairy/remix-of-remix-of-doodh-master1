@@ -22,6 +22,7 @@ interface DairySettings {
   currency: string;
   invoice_prefix: string;
   logo_url: string | null;
+  upi_handle: string | null;
 }
 
 interface Customer {
@@ -67,6 +68,7 @@ interface Invoice {
   due_date: string | null;
   created_at: string;
   notes?: string | null;
+  upi_handle?: string | null;
   customer?: {
     id: string;
     name: string;
@@ -128,6 +130,7 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
         currency: "INR",
         invoice_prefix: "INV",
         logo_url: null,
+        upi_handle: null,
       };
 
       // Fetch customer details
@@ -611,6 +614,43 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
         }
         
         yPos += 28;
+      }
+
+      // === UPI PAYMENT SECTION ===
+      // Use invoice-specific UPI if available, otherwise fall back to current dairy settings
+      const upiHandle = invoice.upi_handle || settings.upi_handle;
+      
+      if (upiHandle && yPos < pageHeight - 95) {
+        doc.setFillColor(240, 240, 255); // Light purple/blue background
+        doc.setDrawColor(88, 86, 214);   // UPI purple
+        doc.setLineWidth(0.5);
+        doc.roundedRect(margin, yPos, pageWidth - margin * 2, 28, 3, 3, "FD");
+        
+        // UPI icon/label
+        doc.setTextColor(88, 86, 214);
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text("PAY VIA UPI", margin + 10, yPos + 10);
+        
+        // UPI Handle - clickable
+        doc.setTextColor(30, 30, 30);
+        doc.setFontSize(13);
+        doc.setFont("helvetica", "bold");
+        doc.text(upiHandle, margin + 10, yPos + 20);
+        
+        // Tap to pay hint
+        doc.setTextColor(88, 86, 214);
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "italic");
+        doc.text("Tap to open payment app", pageWidth - margin - 10, yPos + 20, { align: "right" });
+        
+        // Create UPI deep link for payment apps
+        const upiDeepLink = `upi://pay?pa=${encodeURIComponent(upiHandle)}&pn=${encodeURIComponent(settings.dairy_name)}&am=${invoice.final_amount}&cu=INR&tn=Invoice%20${encodeURIComponent(invoice.invoice_number)}`;
+        
+        // Make the entire box clickable
+        doc.link(margin, yPos, pageWidth - margin * 2, 28, { url: upiDeepLink });
+        
+        yPos += 36;
       }
 
       // === TERMS AND BANK DETAILS ===

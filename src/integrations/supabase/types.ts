@@ -784,6 +784,7 @@ export type Database = {
           phone: string | null
           settings: Json | null
           updated_at: string | null
+          upi_handle: string | null
         }
         Insert: {
           address?: string | null
@@ -798,6 +799,7 @@ export type Database = {
           phone?: string | null
           settings?: Json | null
           updated_at?: string | null
+          upi_handle?: string | null
         }
         Update: {
           address?: string | null
@@ -812,6 +814,7 @@ export type Database = {
           phone?: string | null
           settings?: Json | null
           updated_at?: string | null
+          upi_handle?: string | null
         }
         Relationships: []
       }
@@ -1196,6 +1199,7 @@ export type Database = {
           tax_amount: number | null
           total_amount: number
           updated_at: string | null
+          upi_handle: string | null
         }
         Insert: {
           billing_period_end: string
@@ -1214,6 +1218,7 @@ export type Database = {
           tax_amount?: number | null
           total_amount: number
           updated_at?: string | null
+          upi_handle?: string | null
         }
         Update: {
           billing_period_end?: string
@@ -1232,6 +1237,7 @@ export type Database = {
           tax_amount?: number | null
           total_amount?: number
           updated_at?: string | null
+          upi_handle?: string | null
         }
         Relationships: [
           {

@@ -167,6 +167,15 @@ export function useAutoInvoiceGenerator() {
       invoices: [],
     };
 
+    // Fetch current UPI handle from dairy settings
+    const { data: dairySettings } = await supabase
+      .from("dairy_settings")
+      .select("upi_handle")
+      .limit(1)
+      .single();
+    
+    const currentUpiHandle = dairySettings?.upi_handle || null;
+
     try {
       // Get all active customers
       const { data: customers, error: custError } = await supabase
@@ -216,6 +225,7 @@ export function useAutoInvoiceGenerator() {
           paid_amount: 0,
           payment_status: "pending",
           due_date: dueDate,
+          upi_handle: currentUpiHandle,
         });
 
         if (insertError) {

@@ -18,6 +18,7 @@ interface DairySettings {
   email: string | null;
   invoice_prefix: string;
   financial_year_start: number;
+  upi_handle: string | null;
 }
 
 interface Profile {
@@ -324,6 +325,21 @@ export default function SettingsPage() {
                       placeholder="Full address"
                       rows={3}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="upi_handle">UPI Handle (for Payments)</Label>
+                    <Input
+                      id="upi_handle"
+                      value={dairySettings.upi_handle || ""}
+                      onChange={(e) =>
+                        setDairySettings({ ...dairySettings, upi_handle: e.target.value })
+                      }
+                      placeholder="yourname@upi or 9876543210@paytm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      This UPI ID will appear on invoices. Customers can tap to pay directly.
+                    </p>
                   </div>
 
                   <Button onClick={handleSaveDairySettings} disabled={saving} className="gap-2">
