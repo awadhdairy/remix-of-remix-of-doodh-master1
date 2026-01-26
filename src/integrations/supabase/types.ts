@@ -2257,6 +2257,15 @@ export type Database = {
         }[]
       }
       verify_pin: { Args: { _phone: string; _pin: string }; Returns: string }
+      verify_staff_pin: {
+        Args: { _phone: string; _pin: string }
+        Returns: {
+          full_name: string
+          is_active: boolean
+          role: string
+          user_id: string
+        }[]
+      }
     }
     Enums: {
       bottle_size: "500ml" | "1L" | "2L"
