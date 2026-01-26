@@ -169,13 +169,42 @@ export default function UserManagement() {
     }
 
     setCreating(true);
+    
+    // Save admin session tokens at the start
+    let adminTokens: { access_token: string; refresh_token: string } | null = null;
+    let sessionRestored = false;
+    
+    const restoreAdminSession = async () => {
+      if (sessionRestored || !adminTokens) return true;
+      
+      try {
+        const { error: restoreError } = await supabase.auth.setSession({
+          access_token: adminTokens.access_token,
+          refresh_token: adminTokens.refresh_token,
+        });
+        
+        if (restoreError) {
+          console.error("Failed to restore admin session:", restoreError);
+          toast.error("Session error. Please log in again.");
+          navigate("/auth");
+          return false;
+        }
+        sessionRestored = true;
+        return true;
+      } catch (err) {
+        console.error("Session restore exception:", err);
+        toast.error("Session error. Please log in again.");
+        navigate("/auth");
+        return false;
+      }
+    };
+
     try {
       // First check if phone is available or reactivatable
       const availability = await checkPhoneAvailability(phone);
       
       if (!availability.available) {
         if (availability.orphaned_auth && availability.auth_user_id) {
-          // Orphaned auth record exists - clean it up first
           toast.info("Cleaning up orphaned record...");
           const { data: cleanupData, error: cleanupError } = await (supabase.rpc as Function)('admin_cleanup_orphaned_auth', {
             _phone: phone,
@@ -191,9 +220,7 @@ export default function UserManagement() {
           }
           
           toast.success("Orphaned record cleaned up, creating user...");
-          // Continue with user creation after cleanup
         } else if (availability.reactivatable && availability.user_id) {
-          // Show reactivation dialog instead
           setReactivationUser({
             id: availability.user_id,
             name: availability.full_name || "Unknown",
@@ -208,50 +235,37 @@ export default function UserManagement() {
         }
       }
 
-      // Step 1: Save current admin session before creating new user
-      // signUp() automatically logs in the new user, so we need to preserve admin session
+      // Step 1: Save current admin session
       const { data: currentSession } = await supabase.auth.getSession();
       if (!currentSession.session) {
         throw new Error("Admin session not found. Please log in again.");
       }
-      const adminTokens = {
+      adminTokens = {
         access_token: currentSession.session.access_token,
         refresh_token: currentSession.session.refresh_token,
       };
 
-      // Step 2: Create auth user using signUp (this will switch session to new user)
+      // Step 2: Create auth user (this switches session to new user)
       const email = `${phone}@awadhdairy.com`;
-      let signUpData;
-      let signUpError;
-      
-      try {
-        const result = await supabase.auth.signUp({
-          email,
-          password: pin,
-          options: {
-            data: {
-              phone,
-              full_name: fullName,
-            },
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password: pin,
+        options: {
+          data: {
+            phone,
+            full_name: fullName,
           },
-        });
-        signUpData = result.data;
-        signUpError = result.error;
-      } finally {
-        // Step 3: ALWAYS restore admin session, even if signUp fails
-        const { error: restoreError } = await supabase.auth.setSession({
-          access_token: adminTokens.access_token,
-          refresh_token: adminTokens.refresh_token,
-        });
-        
-        if (restoreError) {
-          console.error("Failed to restore admin session:", restoreError);
-          toast.error("Session error. Please log in again.");
-          navigate("/auth");
-          return;
-        }
+        },
+      });
+
+      // Step 3: IMMEDIATELY restore admin session before ANY other operations
+      const restored = await restoreAdminSession();
+      if (!restored) {
+        setCreating(false);
+        return;
       }
 
+      // Now check signUp result
       if (signUpError) {
         throw new Error(signUpError.message);
       }
@@ -262,7 +276,7 @@ export default function UserManagement() {
 
       const newUserId = signUpData.user.id;
 
-      // Step 4: Set up profile and role via RPC (now running as admin again)
+      // Step 4: Set up profile and role via RPC (running as admin)
       const { data: rpcData, error: rpcError } = await supabase.rpc('admin_create_staff_user', {
         _user_id: newUserId,
         _full_name: fullName,
@@ -271,21 +285,31 @@ export default function UserManagement() {
         _pin: pin,
       });
 
+      // Check for RPC errors - this is critical
       if (rpcError) {
-        throw new Error(rpcError.message);
+        console.error("RPC Error:", rpcError);
+        throw new Error(`Failed to set user role: ${rpcError.message}`);
       }
 
       const result = rpcData as unknown as RpcResponse;
-      if (result && !result.success) {
+      if (!result) {
+        throw new Error("No response from server. Please check if the database function exists.");
+      }
+      
+      if (!result.success) {
         throw new Error(result.error || "Failed to set up user profile");
       }
 
-      toast.success("User created successfully");
+      toast.success("User created successfully with role: " + selectedRole);
       setDialogOpen(false);
       resetForm();
       fetchUsers();
     } catch (error: unknown) {
+      // Ensure admin session is restored even on error
+      await restoreAdminSession();
+      
       const message = error instanceof Error ? error.message : "Failed to create user";
+      console.error("Create user error:", error);
       toast.error(message);
     } finally {
       setCreating(false);
