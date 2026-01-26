@@ -2,9 +2,8 @@ name: Keep Alive Ping
 
 on:
   schedule:
-    # Run every alternate day at 3 AM UTC
     - cron: '0 3 */2 * *'
-  workflow_dispatch: # Allow manual trigger
+  workflow_dispatch:
 
 jobs:
   keep-alive:
@@ -12,11 +11,10 @@ jobs:
     steps:
       - name: Ping Database via PostgREST
         run: |
-          # Ping the database directly via PostgREST to keep it active
           response=$(curl -s -w "\n%{http_code}" \
             -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            "https://sgpnlunidlrbfdbegapw.supabase.co/rest/v1/dairy_settings_public?select=dairy_name&limit=1")
+            "https://rihedsukjinwqvsvufls.supabase.co/rest/v1/dairy_settings_public?select=dairy_name&limit=1")
           
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
