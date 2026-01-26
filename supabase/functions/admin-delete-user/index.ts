@@ -17,12 +17,16 @@ Deno.serve(async (req) => {
       throw new Error('Missing authorization header');
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-    const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Use EXTERNAL Supabase (user's own backend) for all operations
+    const externalSupabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!;
+    const externalServiceRoleKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Create client with user's JWT to verify identity
-    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+    if (!externalSupabaseUrl || !externalServiceRoleKey) {
+      throw new Error('External Supabase credentials not configured');
+    }
+
+    // Create client with user's JWT to verify identity against EXTERNAL backend
+    const userClient = createClient(externalSupabaseUrl, externalServiceRoleKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
@@ -35,7 +39,7 @@ Deno.serve(async (req) => {
 
     console.log('[admin-delete-user] Caller:', user.id);
 
-    // Verify caller is super_admin using RPC
+    // Verify caller is super_admin using RPC on EXTERNAL backend
     const { data: roleCheck, error: roleError } = await userClient.rpc('has_role', {
       _user_id: user.id,
       _role: 'super_admin',
@@ -66,8 +70,8 @@ Deno.serve(async (req) => {
       throw new Error('Cannot delete your own account');
     }
 
-    // Create admin client with service_role key for privileged operations
-    const adminClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
+    // Create admin client with service_role key for privileged operations on EXTERNAL backend
+    const adminClient = createClient(externalSupabaseUrl, externalServiceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -111,7 +115,7 @@ Deno.serve(async (req) => {
       // Continue anyway, as auth deletion is the main goal
     }
 
-    // Delete from auth.users using Admin API
+    // Delete from auth.users using Admin API on EXTERNAL backend
     console.log('[admin-delete-user] Deleting from auth.users...');
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(target_user_id);
 
