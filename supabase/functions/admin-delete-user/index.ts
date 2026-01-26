@@ -134,11 +134,12 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error('[admin-delete-user] Error:', error.message);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    console.error('[admin-delete-user] Error:', errorMessage);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message || 'An unexpected error occurred' 
+        error: errorMessage
       }),
       { 
         status: 400, 

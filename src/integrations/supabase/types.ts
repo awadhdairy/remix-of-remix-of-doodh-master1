@@ -2186,7 +2186,21 @@ export type Database = {
         }
         Returns: Json
       }
-      admin_delete_user: { Args: { _target_user_id: string }; Returns: Json }
+      admin_delete_user:
+        | { Args: { _target_user_id: string }; Returns: Json }
+        | {
+            Args: { _permanent?: boolean; _target_user_id: string }
+            Returns: Json
+          }
+      admin_reactivate_user: {
+        Args: {
+          _full_name: string
+          _pin: string
+          _role: Database["public"]["Enums"]["user_role"]
+          _user_id: string
+        }
+        Returns: Json
+      }
       admin_reset_user_pin: {
         Args: { _new_pin: string; _target_user_id: string }
         Returns: Json
@@ -2200,6 +2214,7 @@ export type Database = {
         Args: { _current_pin: string; _new_pin: string }
         Returns: Json
       }
+      check_phone_availability: { Args: { _phone: string }; Returns: Json }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["user_role"][]
