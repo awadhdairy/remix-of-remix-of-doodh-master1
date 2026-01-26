@@ -1,58 +1,67 @@
-# Edge Function Migration - COMPLETED
 
-All Edge Functions have been migrated to database RPCs on the external Supabase.
+
+# Update GitHub Keep-Alive Workflow
+
+## Overview
+
+Update the `.github/workflows/keep-alive.yml` file to use the external Supabase project URL. The anon key you provided will be stored as a GitHub repository secret (not in the file itself for security).
+
+## File Changes
+
+### `.github/workflows/keep-alive.yml`
+
+The file will be updated to ping your external Supabase database:
+
+```yaml
+name: Keep Alive Ping
+
+on:
+  schedule:
+    - cron: '0 3 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Database via PostgREST
+        run: |
+          response=$(curl -s -w "\n%{http_code}" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            "https://rihedsukjinwqvsvufls.supabase.co/rest/v1/dairy_settings_public?select=dairy_name&limit=1")
+          
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          
+          echo "Response: $body"
+          echo "HTTP Status: $http_code"
+          
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Keep-alive ping successful at $(date -u)"
+          else
+            echo "❌ Keep-alive ping failed with status $http_code"
+            exit 1
+          fi
+```
+
+## Manual Step Required
+
+After the file is updated, you need to update the GitHub repository secret:
+
+1. Go to your GitHub repository
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Update (or create) the secret `SUPABASE_ANON_KEY` with the value:
+   ```
+   eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpaGVkc3Vramlud3F2c3Z1ZmxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzOTA3MzksImV4cCI6MjA4NDk2NjczOX0._yHtz7Yu4n77UjHKm-CYmViOeSWYbyP-BMNE9bGowIg
+   ```
 
 ## Summary
 
-- **Permanent user deletion** now uses `admin_permanent_delete_user` RPC instead of Edge Function
-- All Edge Function files removed from repository
-- Website is now completely independent of Lovable Cloud Edge Functions
+| Item | Value |
+|------|-------|
+| External Supabase URL | `https://rihedsukjinwqvsvufls.supabase.co` |
+| Endpoint | `/rest/v1/dairy_settings_public?select=dairy_name&limit=1` |
+| Secret Name | `SUPABASE_ANON_KEY` |
+| Schedule | Every 2 days at 3 AM UTC |
 
-## Required: Run SQL on External Supabase
-
-Execute this SQL in your external Supabase SQL Editor (https://supabase.com/dashboard/project/rihedsukjinwqvsvufls):
-
-```sql
-CREATE OR REPLACE FUNCTION public.admin_permanent_delete_user(_target_user_id uuid)
-RETURNS json
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'auth'
-AS $$
-DECLARE
-  _caller_id uuid;
-  _target_role text;
-BEGIN
-  _caller_id := auth.uid();
-  
-  IF _caller_id IS NULL THEN
-    RETURN json_build_object('success', false, 'error', 'Not authenticated');
-  END IF;
-  
-  IF NOT public.has_role(_caller_id, 'super_admin') THEN
-    RETURN json_build_object('success', false, 'error', 'Only super admin can permanently delete users');
-  END IF;
-  
-  IF _target_user_id = _caller_id THEN
-    RETURN json_build_object('success', false, 'error', 'Cannot delete your own account');
-  END IF;
-  
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE id = _target_user_id) THEN
-    RETURN json_build_object('success', false, 'error', 'User not found');
-  END IF;
-  
-  SELECT role INTO _target_role FROM public.user_roles WHERE user_id = _target_user_id;
-  IF _target_role = 'super_admin' THEN
-    RETURN json_build_object('success', false, 'error', 'Cannot delete super admin account');
-  END IF;
-  
-  DELETE FROM public.user_roles WHERE user_id = _target_user_id;
-  DELETE FROM public.profiles WHERE id = _target_user_id;
-  DELETE FROM auth.users WHERE id = _target_user_id;
-  
-  RETURN json_build_object('success', true, 'message', 'User permanently deleted');
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.admin_permanent_delete_user(uuid) TO authenticated;
-```
