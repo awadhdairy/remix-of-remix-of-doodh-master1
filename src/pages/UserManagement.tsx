@@ -372,17 +372,19 @@ export default function UserManagement() {
     setDeleting(true);
     try {
       if (deleteType === "permanent") {
-        // Call Edge Function for permanent deletion from auth.users
-        const { data, error } = await supabase.functions.invoke('admin-delete-user', {
-          body: { target_user_id: selectedUser.id }
+        // Call database function for permanent deletion from auth.users
+        // Note: RPC name not in types yet - will be after SQL migration is run
+        const { data, error } = await (supabase.rpc as Function)('admin_permanent_delete_user', {
+          _target_user_id: selectedUser.id
         });
         
         if (error) {
           throw new Error(error.message);
         }
         
-        if (!data?.success) {
-          throw new Error(data?.error || "Failed to permanently delete user");
+        const result = data as unknown as RpcResponse;
+        if (!result?.success) {
+          throw new Error(result?.error || "Failed to permanently delete user");
         }
         
         toast.success("User permanently deleted");
