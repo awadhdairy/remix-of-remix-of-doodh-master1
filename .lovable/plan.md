@@ -1,178 +1,151 @@
 
+# Comprehensive Bug Fix Plan: Post Edge Function Removal Integrity Check
 
-# Plan: Cleanup and Fix Residual Issues
+## Executive Summary
 
-## Overview
-After comprehensive analysis of the Edge Function to RPC migration, the application code is clean and functioning correctly. However, three issues need to be addressed:
-
-1. **pg_cron job missing** - Auto-delivery is not scheduled
-2. **Documentation outdated** - References to deleted Edge Functions
-3. **React ref warnings** - Pre-existing cosmetic issue
+After thoroughly reviewing the codebase following the Edge Function removal, I've identified **8 critical issues** that need to be fixed before deployment for long-term sustainability.
 
 ---
 
-## Phase 1: Database - Add pg_cron Scheduled Job
+## Issues Identified
 
-The `cron.job` table is currently empty. The auto-delivery function needs to be scheduled.
+### 1. CRITICAL: Settings.tsx Uses Deprecated `supabase.auth.getUser()`
+**Location:** `src/pages/Settings.tsx` (line 61)
+**Problem:** The Settings page still uses `supabase.auth.getUser()` to fetch user profile, but since we removed Supabase Auth dependency, this will always return null.
+**Impact:** Staff cannot view or edit their profile, and the "Change PIN" feature in Settings page is completely broken.
 
-**SQL Migration Required:**
+### 2. CRITICAL: MobileNavbar.tsx Uses Deprecated `supabase.auth.signOut()`
+**Location:** `src/components/mobile/MobileNavbar.tsx` (line 163)
+**Problem:** Mobile logout uses `supabase.auth.signOut()` which does nothing in our custom auth system.
+**Impact:** Mobile users' logout appears successful but their custom session remains active.
+
+### 3. CRITICAL: `change_own_pin` RPC Still Uses `auth.uid()`
+**Problem:** The existing `change_own_pin` database function relies on `auth.uid()` which will return NULL in our custom session system.
+**Impact:** Staff cannot change their own PIN via the Settings page.
+
+### 4. CRITICAL: All RLS Policies Depend on `auth.uid()`
+**Problem:** Over 30 RLS policies across all tables use `auth.uid()` directly or through helper functions like `has_role(auth.uid(), ...)`, `is_manager_or_admin(auth.uid())`, etc.
+**Impact:** Since we're not using Supabase Auth, `auth.uid()` returns NULL for all requests, effectively **breaking all RLS-protected data access**. Users will be unable to read/write most tables.
+
+### 5. MODERATE: React Ref Warning in Console
+**Location:** `App.tsx` route structure
+**Problem:** "Function components cannot be given refs" warning appearing in console for `StaffAuthProvider` and `Auth` components.
+**Impact:** Not breaking, but creates console noise and may indicate improper component wrapping.
+
+### 6. MINOR: Missing `useStaffAuth` in MobileNavbar
+**Problem:** MobileNavbar imports `supabase` directly but should use the `useStaffAuth` context for logout.
+**Impact:** Inconsistent logout behavior between desktop and mobile.
+
+### 7. ARCHITECTURAL: Duplicate Session Token Calculation
+**Problem:** Session expiration is calculated both client-side (7 days in frontend) and server-side (from DB). If these drift, sessions may behave unexpectedly.
+**Impact:** Low - currently aligned at 7 days for staff.
+
+### 8. SECURITY: Auth Sessions RLS Policies Too Permissive
+**Problem:** Current policies use `USING (true)` and `FOR DELETE USING (true)` which means anyone can view or delete any session.
+**Impact:** Security vulnerability - any user can enumerate or invalidate other users' sessions.
+
+---
+
+## Fix Strategy
+
+### Phase 1: Database Migration (Required Before Frontend Fixes)
+
+Create a new database migration to:
+
+1. **Update `change_own_pin` function** to accept a session token instead of relying on `auth.uid()`:
 ```sql
--- Schedule daily auto-delivery at 4:30 AM UTC (10:00 AM IST)
-SELECT cron.schedule(
-  'auto-deliver-daily',
-  '30 4 * * *',
-  $$SELECT public.run_auto_delivery()$$
-);
+CREATE OR REPLACE FUNCTION public.staff_change_own_pin(
+  _session_token text,
+  _current_pin text, 
+  _new_pin text
+)
+RETURNS json
 ```
 
-This ensures the `run_auto_delivery()` function runs automatically every day without manual intervention.
+2. **Add RLS bypass approach** - Since we can't use `auth.uid()`, we have two options:
+   - **Option A (Recommended):** Use `SECURITY DEFINER` wrapper functions for all data operations, bypassing RLS
+   - **Option B:** Set a session variable `current_setting('app.current_user_id')` at request start and update all RLS policies to use it
 
----
+   For simplicity and minimal disruption, I recommend Option A - keeping RLS for basic protection but using SECURITY DEFINER functions for actual operations.
 
-## Phase 2: Update Documentation Files
-
-### File 1: DEPLOYMENT_GUIDE.md
-Remove references to deleted functions from the deployment commands.
-
-**Current (lines 51-59):**
-```bash
-supabase functions deploy bootstrap-admin
-supabase functions deploy create-user
-supabase functions deploy update-user-status  # DELETE
-supabase functions deploy reset-user-pin      # DELETE
-supabase functions deploy change-pin          # DELETE
-supabase functions deploy customer-auth
-supabase functions deploy delete-user
+3. **Fix auth_sessions RLS** to properly restrict access:
+```sql
+-- Users can only see their own sessions
+CREATE POLICY "Users can view own sessions" ON public.auth_sessions
+  FOR SELECT USING (
+    user_id::text = current_setting('app.current_user_id', true)
+  );
 ```
 
-**Updated:**
-```bash
-supabase functions deploy bootstrap-admin
-supabase functions deploy create-user
-supabase functions deploy customer-auth
-supabase functions deploy delete-user
-```
+### Phase 2: Frontend Fixes
 
-Add a note about the RPC-based architecture for the replaced functions.
+1. **Fix Settings.tsx:**
+   - Remove `supabase.auth.getUser()` call
+   - Import and use `useStaffAuth()` to get current user
+   - Update profile fetch to use the user ID from auth context
+   - Update `handleChangePin` to call new `staff_change_own_pin` RPC with session token
 
----
+2. **Fix MobileNavbar.tsx:**
+   - Remove `supabase.auth.signOut()` call
+   - Import and use `useStaffAuth()` for logout
+   - Use the `logout()` function from the context
 
-### File 2: AWADH_DAIRY_COMPLETE_BLUEPRINT.md
-Update sections 5.4-5.6 (lines 1000-1011) to reflect the new RPC-based architecture:
-
-**Remove:**
-- Section 5.4 `update-user-status`
-- Section 5.5 `reset-user-pin`
-- Section 5.6 `change-pin`
-
-**Replace with:**
-A new section documenting the Database RPC functions:
-- `admin_update_user_status(_target_user_id, _is_active)`
-- `admin_reset_user_pin(_target_user_id, _new_pin)`
-- `change_own_pin(_current_pin, _new_pin)`
-- `run_auto_delivery()`
-
-Also update lines 1879-1881 to remove the deleted function deployment commands.
+3. **Fix Console Warnings:**
+   - Restructure App.tsx route wrapping to avoid ref issues
+   - Use proper React element syntax instead of nested Route elements with JSX children
 
 ---
 
-### File 3: AWADH_DAIRY_COMPREHENSIVE_PROMPT.md
-Update lines 707-715 to reflect the current architecture:
+## Detailed File Changes
 
-**Remove references to:**
-- `update-user-status`
-- `reset-user-pin`
-- `change-pin`
+### Files to Create:
+- `supabase/migrations/[timestamp]_fix_post_edge_function_issues.sql`
 
-**Add documentation for:**
-- Database RPC functions that replaced them
-- Benefits of the RPC approach (faster, no cold starts)
+### Files to Modify:
+1. `src/pages/Settings.tsx` - Use StaffAuthContext instead of supabase.auth
+2. `src/components/mobile/MobileNavbar.tsx` - Use StaffAuthContext for logout
+3. `src/App.tsx` - Fix route structure to eliminate ref warnings
 
----
-
-## Phase 3: Fix React Ref Warnings (Optional)
-
-The console shows warnings about function components not being given refs. These are pre-existing and unrelated to the migration, but can be fixed for cleaner console output.
-
-**Affected components:**
-- `Navigate` from react-router-dom (library issue, not fixable)
-- `DashboardLayout` - Already a function component, warning is benign
-- `Auth` - Already a function component, warning is benign
-
-**Assessment:** These warnings are cosmetic and do not affect functionality. They occur because React Router v7 sometimes tries to attach refs to route elements. No code changes required.
+### Database Changes:
+1. Create `staff_change_own_pin(_session_token, _current_pin, _new_pin)` RPC
+2. Update auth_sessions RLS policies to be properly restrictive
+3. Grant EXECUTE on new function to anon and authenticated roles
 
 ---
 
-## Implementation Summary
+## Risk Assessment
 
-| Task | Type | Priority |
-|------|------|----------|
-| Add pg_cron job for auto-delivery | Database Migration | High |
-| Update DEPLOYMENT_GUIDE.md | Documentation | Medium |
-| Update AWADH_DAIRY_COMPLETE_BLUEPRINT.md | Documentation | Medium |
-| Update AWADH_DAIRY_COMPREHENSIVE_PROMPT.md | Documentation | Medium |
-| React ref warnings | No action needed | Low |
-
----
-
-## Verification After Implementation
-
-1. Run `SELECT * FROM cron.job;` to confirm job is scheduled
-2. Verify the 4 Edge Functions still work:
-   - `bootstrap-admin` - Test first-time setup
-   - `create-user` - Create a test user
-   - `delete-user` - Delete the test user
-   - `customer-auth` - Test customer login
-3. Verify the 4 RPC functions work:
-   - Toggle user status (super_admin required)
-   - Reset user PIN (super_admin required)
-   - Change own PIN (any authenticated user)
-   - Manual auto-delivery trigger
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| RLS policies blocking all data | HIGH | Use SECURITY DEFINER functions for data operations |
+| Staff PIN change broken | HIGH | Create new session-based PIN change RPC |
+| Mobile logout not working | MEDIUM | Update to use custom auth context |
+| Session enumeration | MEDIUM | Fix auth_sessions RLS policies |
+| Console warnings | LOW | Restructure route components |
 
 ---
 
-## Technical Notes
+## Testing Checklist After Fix
 
-### Current Architecture After Migration
+- [ ] Staff login works with phone + PIN
+- [ ] Staff logout works on desktop (sidebar)
+- [ ] Staff logout works on mobile (hamburger menu)
+- [ ] Staff can view Settings page with their profile
+- [ ] Staff can change their own PIN in Settings
+- [ ] Customer login/register works
+- [ ] Customer can change PIN in Profile page
+- [ ] Super Admin can create new staff users
+- [ ] Super Admin can delete staff users
+- [ ] All dashboard data loads correctly (cattle, deliveries, customers, etc.)
+- [ ] No console errors related to auth
 
-```text
-Authentication Flow:
-┌─────────────────────────────────────────────────────────────┐
-│ Staff Login                                                  │
-│   Auth.tsx → verify_staff_pin (RPC) → Supabase Auth session │
-├─────────────────────────────────────────────────────────────┤
-│ Customer Login                                               │
-│   CustomerAuth.tsx → customer-auth (Edge) → Session         │
-├─────────────────────────────────────────────────────────────┤
-│ First-Time Setup                                             │
-│   Auth.tsx → bootstrap-admin (Edge) → Creates super_admin   │
-└─────────────────────────────────────────────────────────────┘
+---
 
-User Management Flow:
-┌─────────────────────────────────────────────────────────────┐
-│ Create User: create-user (Edge) - needs auth.admin          │
-│ Delete User: delete-user (Edge) - needs auth.admin          │
-│ Toggle Status: admin_update_user_status (RPC)               │
-│ Reset PIN: admin_reset_user_pin (RPC)                       │
-│ Change Own PIN: change_own_pin (RPC)                        │
-└─────────────────────────────────────────────────────────────┘
+## Implementation Order
 
-Automation Flow:
-┌─────────────────────────────────────────────────────────────┐
-│ Scheduled: pg_cron → run_auto_delivery (RPC) @ 10:00 AM IST │
-│ Manual: DeliveryAutomationCard → run_auto_delivery (RPC)    │
-│ Keep-alive: GitHub Actions → REST API query                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Why These 4 Edge Functions Must Remain
-
-| Function | Reason |
-|----------|--------|
-| `bootstrap-admin` | Uses `auth.admin.createUser()` to create first admin |
-| `create-user` | Uses `auth.admin.createUser()` for staff accounts |
-| `delete-user` | Uses `auth.admin.deleteUser()` for cleanup |
-| `customer-auth` | Uses `signInWithPassword()` with service role for customer sessions |
-
-Database RPC functions cannot access the `auth.users` table or create authentication sessions - only Edge Functions with the Service Role Key can do this.
+1. **Database migration first** - Create `staff_change_own_pin` function and fix RLS
+2. **Settings.tsx** - Update to use StaffAuthContext
+3. **MobileNavbar.tsx** - Update logout to use StaffAuthContext
+4. **App.tsx** - Fix route structure (optional, for clean console)
+5. **Test all auth flows end-to-end**
 
