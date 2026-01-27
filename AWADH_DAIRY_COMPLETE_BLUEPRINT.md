@@ -997,19 +997,23 @@ $$ LANGUAGE plpgsql SET search_path TO 'public';
 // Uses service role key for admin.createUser
 ```
 
-### 5.4 update-user-status
-**Purpose**: Activate/deactivate staff accounts
-**Location**: `supabase/functions/update-user-status/index.ts`
+### 5.4 Database RPC Functions (Replacing Edge Functions)
 
-### 5.5 reset-user-pin
-**Purpose**: Admin resets staff PIN
-**Location**: `supabase/functions/reset-user-pin/index.ts`
+The following operations use direct database RPC calls for faster performance (no cold starts):
 
-### 5.6 change-pin
-**Purpose**: Staff self-service PIN change
-**Location**: `supabase/functions/change-pin/index.ts`
+| Function | Purpose | Authorization |
+|----------|---------|---------------|
+| `admin_update_user_status(_target_user_id, _is_active)` | Activate/deactivate staff | super_admin only |
+| `admin_reset_user_pin(_target_user_id, _new_pin)` | Admin resets staff PIN | super_admin only |
+| `change_own_pin(_current_pin, _new_pin)` | Staff self-service PIN change | Any authenticated user |
+| `run_auto_delivery()` | Generates daily deliveries | Scheduled via pg_cron |
 
-### 5.7 delete-user
+**Benefits over Edge Functions:**
+- Zero cold start latency
+- Direct database execution
+- `SECURITY DEFINER` with proper authorization checks
+
+### 5.5 delete-user
 **Purpose**: Remove staff accounts
 **Location**: `supabase/functions/delete-user/index.ts`
 
@@ -1871,16 +1875,14 @@ USING (has_any_role(auth.uid(), ARRAY['super_admin', 'manager']::user_role[]));
 ### 19.1 Supabase Setup
 1. Create new Supabase project
 2. Run all migrations from `supabase/migrations/` in order
-3. Deploy edge functions:
+3. Deploy Edge Functions (only 4 required):
    ```bash
    supabase functions deploy bootstrap-admin
-   supabase functions deploy customer-auth
    supabase functions deploy create-user
-   supabase functions deploy update-user-status
-   supabase functions deploy reset-user-pin
-   supabase functions deploy change-pin
+   supabase functions deploy customer-auth
    supabase functions deploy delete-user
    ```
+   > User management RPCs (status, PIN) are database functions - no deployment needed.
 4. Enable email auth with auto-confirm
 
 ### 19.2 Vercel Deployment
