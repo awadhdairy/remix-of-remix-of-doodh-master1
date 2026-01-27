@@ -6,15 +6,15 @@ import { cn } from '@/lib/utils';
 import { useCapacitor } from '@/hooks/useCapacitor';
 
 export function CustomerLayout() {
-  const { user, loading, customerData } = useCustomerAuth();
+  const { customerId, loading, customerData } = useCustomerAuth();
   const navigate = useNavigate();
   const { isNative, keyboardVisible } = useCapacitor();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !customerId) {
       navigate('/customer/auth');
     }
-  }, [loading, user, navigate]);
+  }, [loading, customerId, navigate]);
 
   if (loading) {
     return (
@@ -27,7 +27,7 @@ export function CustomerLayout() {
     );
   }
 
-  if (!user) {
+  if (!customerId) {
     return null;
   }
 

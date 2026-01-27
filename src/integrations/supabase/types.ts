@@ -119,6 +119,42 @@ export type Database = {
         }
         Relationships: []
       }
+      auth_sessions: {
+        Row: {
+          created_at: string | null
+          expires_at: string
+          id: string
+          ip_address: string | null
+          last_activity: string | null
+          session_token: string
+          user_agent: string | null
+          user_id: string
+          user_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          ip_address?: string | null
+          last_activity?: string | null
+          session_token: string
+          user_agent?: string | null
+          user_id: string
+          user_type?: string
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          ip_address?: string | null
+          last_activity?: string | null
+          session_token?: string
+          user_agent?: string | null
+          user_id?: string
+          user_type?: string
+        }
+        Relationships: []
+      }
       bottle_transactions: {
         Row: {
           bottle_id: string
@@ -2176,6 +2212,16 @@ export type Database = {
       }
     }
     Functions: {
+      admin_create_staff: {
+        Args: {
+          _full_name: string
+          _phone: string
+          _pin: string
+          _role: Database["public"]["Enums"]["user_role"]
+          _session_token: string
+        }
+        Returns: Json
+      }
       admin_create_staff_user: {
         Args: {
           _full_name: string
@@ -2184,6 +2230,10 @@ export type Database = {
           _role: Database["public"]["Enums"]["user_role"]
           _user_id: string
         }
+        Returns: Json
+      }
+      admin_delete_staff_v2: {
+        Args: { _session_token: string; _target_user_id: string }
         Returns: Json
       }
       admin_delete_user:
@@ -2210,11 +2260,26 @@ export type Database = {
         Returns: Json
       }
       auto_create_daily_attendance: { Args: never; Returns: undefined }
+      bootstrap_super_admin: {
+        Args: { _phone: string; _pin: string }
+        Returns: Json
+      }
       change_own_pin: {
         Args: { _current_pin: string; _new_pin: string }
         Returns: Json
       }
       check_phone_availability: { Args: { _phone: string }; Returns: Json }
+      cleanup_expired_sessions: { Args: never; Returns: undefined }
+      customer_change_pin: {
+        Args: { _current_pin: string; _new_pin: string; _session_token: string }
+        Returns: Json
+      }
+      customer_login: { Args: { _phone: string; _pin: string }; Returns: Json }
+      customer_logout: { Args: { _session_token: string }; Returns: Json }
+      customer_register: {
+        Args: { _phone: string; _pin: string }
+        Returns: Json
+      }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["user_role"][]
@@ -2245,6 +2310,8 @@ export type Database = {
       }
       run_auto_delivery: { Args: never; Returns: Json }
       setup_initial_admin: { Args: never; Returns: undefined }
+      staff_login: { Args: { _phone: string; _pin: string }; Returns: Json }
+      staff_logout: { Args: { _session_token: string }; Returns: Json }
       update_customer_pin: {
         Args: { _current_pin: string; _customer_id: string; _new_pin: string }
         Returns: Json
@@ -2263,6 +2330,11 @@ export type Database = {
         }
         Returns: undefined
       }
+      validate_customer_session: {
+        Args: { _session_token: string }
+        Returns: Json
+      }
+      validate_session: { Args: { _session_token: string }; Returns: Json }
       verify_customer_pin: {
         Args: { _phone: string; _pin: string }
         Returns: {

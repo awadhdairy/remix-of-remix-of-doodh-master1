@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
-import { supabase } from "@/integrations/supabase/client";
-import { User, Session } from "@supabase/supabase-js";
+import { useStaffAuth } from "@/contexts/StaffAuthContext";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -11,64 +10,24 @@ import { QuickActionFab } from "@/components/mobile/QuickActionFab";
 import { useCapacitor } from "@/hooks/useCapacitor";
 
 export function DashboardLayout() {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, loading, logout } = useStaffAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const isMobile = useIsMobile();
   const { isNative, keyboardVisible } = useCapacitor();
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-
-        if (event === 'SIGNED_OUT') {
-          navigate('/auth');
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-
-      if (!session) {
-        navigate('/auth');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (!loading && !user) {
+      navigate('/auth');
+    }
+  }, [loading, user, navigate]);
 
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    
-    // If error is "session_not_found", the user is already logged out - treat as success
-    const isAlreadyLoggedOut = error?.message?.includes('session') || 
-                                error?.message?.includes('Auth session missing');
-    
-    if (error && !isAlreadyLoggedOut) {
-      // Only show error for genuine failures (network issues, etc.)
-      toast({
-        title: "Error signing out",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Signed out successfully",
-        description: "See you next time!",
-      });
-    }
-    
-    // Always navigate to auth page - user clicked logout, honor their intent
+    await logout();
+    toast({
+      title: "Signed out successfully",
+      description: "See you next time!",
+    });
     navigate('/auth');
   };
 
