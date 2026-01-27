@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useSessionToken } from "@/contexts/StaffAuthContext";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -39,6 +40,13 @@ interface UserProfile {
   created_at: string;
 }
 
+interface RpcResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  user_id?: string;
+}
+
 const roleOptions = [
   { value: "manager", label: "Manager" },
   { value: "accountant", label: "Accountant" },
@@ -60,6 +68,7 @@ const roleColors: Record<string, string> = {
 
 export default function UserManagement() {
   const { role, loading: roleLoading } = useUserRole();
+  const sessionToken = useSessionToken();
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -127,32 +136,32 @@ export default function UserManagement() {
       return;
     }
 
+    if (!sessionToken) {
+      toast.error("Not authenticated. Please login again.");
+      return;
+    }
+
     setCreating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error("Not authenticated");
-        return;
-      }
-
-      const response = await supabase.functions.invoke("create-user", {
-        body: {
-          phone,
-          pin,
-          fullName,
-          role: selectedRole,
-        },
+      const { data, error } = await supabase.rpc("admin_create_staff", {
+        _session_token: sessionToken,
+        _full_name: fullName,
+        _phone: phone,
+        _pin: pin,
+        _role: selectedRole as "manager" | "accountant" | "delivery_staff" | "farm_worker" | "vet_staff" | "auditor",
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to create user");
+      if (error) {
+        throw new Error(error.message);
       }
 
-      if (response.data?.error) {
-        throw new Error(response.data.error);
+      const response = data as unknown as RpcResponse;
+
+      if (!response?.success) {
+        throw new Error(response?.error || "Failed to create user");
       }
 
-      toast.success("User created successfully");
+      toast.success(response.message || "User created successfully");
       setDialogOpen(false);
       resetForm();
       fetchUsers();
@@ -180,7 +189,7 @@ export default function UserManagement() {
 
       if (error) throw new Error(error.message);
       
-      const result = data as { success: boolean; message?: string; error?: string } | null;
+      const result = data as unknown as RpcResponse;
       if (!result?.success) throw new Error(result?.error || 'Failed to update status');
 
       toast.success(result.message);
@@ -212,7 +221,7 @@ export default function UserManagement() {
 
       if (error) throw new Error(error.message);
       
-      const result = data as { success: boolean; message?: string; error?: string } | null;
+      const result = data as unknown as RpcResponse;
       if (!result?.success) throw new Error(result?.error || 'Failed to reset PIN');
 
       toast.success(result.message);
@@ -238,23 +247,29 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = async () => {
-    if (!selectedUser) return;
+    if (!selectedUser || !sessionToken) {
+      toast.error("Not authenticated");
+      return;
+    }
 
     setDeleting(true);
     try {
-      const response = await supabase.functions.invoke("delete-user", {
-        body: { userId: selectedUser.id },
+      const { data, error } = await supabase.rpc("admin_delete_staff_v2", {
+        _session_token: sessionToken,
+        _target_user_id: selectedUser.id,
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to delete user");
+      if (error) {
+        throw new Error(error.message);
       }
 
-      if (response.data?.error) {
-        throw new Error(response.data.error);
+      const response = data as unknown as RpcResponse;
+
+      if (!response?.success) {
+        throw new Error(response?.error || "Failed to delete user");
       }
 
-      toast.success(response.data.message);
+      toast.success(response.message || "User deleted successfully");
       setDeleteDialogOpen(false);
       setSelectedUser(null);
       fetchUsers();

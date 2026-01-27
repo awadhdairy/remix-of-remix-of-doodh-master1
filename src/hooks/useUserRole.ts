@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useStaffAuth } from '@/contexts/StaffAuthContext';
 import { Database } from "@/integrations/supabase/types";
 
 type UserRole = Database["public"]["Enums"]["user_role"];
@@ -12,61 +11,14 @@ interface UserRoleData {
 }
 
 export function useUserRole(): UserRoleData {
-  const [role, setRole] = useState<UserRole | null>(null);
-  const [userName, setUserName] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        
-        if (!user) {
-          setLoading(false);
-          return;
-        }
-
-        // Fetch role from user_roles table
-        const { data: roleData, error: roleError } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (roleError) {
-          setError(roleError.message);
-          setLoading(false);
-          return;
-        }
-
-        // Fetch user name from profiles_safe view (excludes pin_hash)
-        const { data: profileData } = await supabase
-          .from("profiles_safe")
-          .select("full_name")
-          .eq("id", user.id)
-          .maybeSingle();
-
-        setRole(roleData?.role || null);
-        setUserName(profileData?.full_name || null);
-        setLoading(false);
-      } catch (err) {
-        setError("Failed to fetch user role");
-        setLoading(false);
-      }
-    };
-
-    fetchUserRole();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(() => {
-      fetchUserRole();
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return { role, loading, error, userName };
+  const { user, loading } = useStaffAuth();
+  
+  return {
+    role: (user?.role as UserRole) || null,
+    loading,
+    error: null,
+    userName: user?.full_name || null,
+  };
 }
 
 // Role-based permission checks
