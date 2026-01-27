@@ -188,24 +188,19 @@ export default function SettingsPage() {
 
     setChangingPin(true);
     try {
-      const response = await supabase.functions.invoke("change-pin", {
-        body: {
-          currentPin,
-          newPin,
-        },
+      const { data, error } = await supabase.rpc('change_own_pin', {
+        _current_pin: currentPin,
+        _new_pin: newPin,
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to change PIN");
-      }
-
-      if (response.data?.error) {
-        throw new Error(response.data.error);
-      }
+      if (error) throw new Error(error.message);
+      
+      const result = data as { success: boolean; message?: string; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to change PIN');
 
       toast({
         title: "PIN changed",
-        description: "Your login PIN has been updated successfully",
+        description: result.message || "Your login PIN has been updated successfully",
       });
       setCurrentPin("");
       setNewPin("");

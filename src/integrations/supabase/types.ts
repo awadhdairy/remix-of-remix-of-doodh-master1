@@ -2176,7 +2176,45 @@ export type Database = {
       }
     }
     Functions: {
+      admin_create_staff_user: {
+        Args: {
+          _full_name: string
+          _phone: string
+          _pin: string
+          _role: Database["public"]["Enums"]["user_role"]
+          _user_id: string
+        }
+        Returns: Json
+      }
+      admin_delete_user:
+        | { Args: { _target_user_id: string }; Returns: Json }
+        | {
+            Args: { _permanent?: boolean; _target_user_id: string }
+            Returns: Json
+          }
+      admin_reactivate_user: {
+        Args: {
+          _full_name: string
+          _pin: string
+          _role: Database["public"]["Enums"]["user_role"]
+          _user_id: string
+        }
+        Returns: Json
+      }
+      admin_reset_user_pin: {
+        Args: { _new_pin: string; _target_user_id: string }
+        Returns: Json
+      }
+      admin_update_user_status: {
+        Args: { _is_active: boolean; _target_user_id: string }
+        Returns: Json
+      }
       auto_create_daily_attendance: { Args: never; Returns: undefined }
+      change_own_pin: {
+        Args: { _current_pin: string; _new_pin: string }
+        Returns: Json
+      }
+      check_phone_availability: { Args: { _phone: string }; Returns: Json }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["user_role"][]
@@ -2205,6 +2243,7 @@ export type Database = {
         Args: { _phone: string; _pin: string }
         Returns: Json
       }
+      run_auto_delivery: { Args: never; Returns: Json }
       setup_initial_admin: { Args: never; Returns: undefined }
       update_customer_pin: {
         Args: { _current_pin: string; _customer_id: string; _new_pin: string }
@@ -2233,6 +2272,15 @@ export type Database = {
         }[]
       }
       verify_pin: { Args: { _phone: string; _pin: string }; Returns: string }
+      verify_staff_pin: {
+        Args: { _phone: string; _pin: string }
+        Returns: {
+          full_name: string
+          is_active: boolean
+          role: string
+          user_id: string
+        }[]
+      }
     }
     Enums: {
       bottle_size: "500ml" | "1L" | "2L"

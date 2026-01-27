@@ -173,22 +173,17 @@ export default function UserManagement() {
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
     setTogglingUser(userId);
     try {
-      const response = await supabase.functions.invoke("update-user-status", {
-        body: {
-          userId,
-          isActive: !currentStatus,
-        },
+      const { data, error } = await supabase.rpc('admin_update_user_status', {
+        _target_user_id: userId,
+        _is_active: !currentStatus,
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to update status");
-      }
+      if (error) throw new Error(error.message);
+      
+      const result = data as { success: boolean; message?: string; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to update status');
 
-      if (response.data?.error) {
-        throw new Error(response.data.error);
-      }
-
-      toast.success(response.data.message);
+      toast.success(result.message);
       fetchUsers();
     } catch (error: any) {
       toast.error(error.message || "Failed to update user status");
@@ -210,22 +205,17 @@ export default function UserManagement() {
 
     setResettingPin(true);
     try {
-      const response = await supabase.functions.invoke("reset-user-pin", {
-        body: {
-          userId: selectedUser.id,
-          newPin,
-        },
+      const { data, error } = await supabase.rpc('admin_reset_user_pin', {
+        _target_user_id: selectedUser.id,
+        _new_pin: newPin,
       });
 
-      if (response.error) {
-        throw new Error(response.error.message || "Failed to reset PIN");
-      }
+      if (error) throw new Error(error.message);
+      
+      const result = data as { success: boolean; message?: string; error?: string } | null;
+      if (!result?.success) throw new Error(result?.error || 'Failed to reset PIN');
 
-      if (response.data?.error) {
-        throw new Error(response.data.error);
-      }
-
-      toast.success(response.data.message);
+      toast.success(result.message);
       setResetPinDialogOpen(false);
       setSelectedUser(null);
       setNewPin("");
