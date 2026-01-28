@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useStaffAuth } from "@/contexts/StaffAuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Phone, Loader2 } from "lucide-react";
 import { z } from "zod";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { sanitizeError } from "@/lib/errors";
 import awadhDairyLogo from "@/assets/awadh-dairy-logo.png";
 
 const loginSchema = z.object({
@@ -27,18 +28,33 @@ export default function Auth() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, loading: authLoading, login, bootstrap } = useStaffAuth();
 
-  // Redirect if already logged in
   useEffect(() => {
-    if (!authLoading && user) {
-      navigate('/dashboard');
-    }
-  }, [user, authLoading, navigate]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        navigate('/dashboard');
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        navigate('/dashboard');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  // Format phone to create a unique email-like identifier
+  const phoneToEmail = (phoneNumber: string) => {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    return `${cleanPhone}@awadhdairy.com`;
+  };
 
   const handleBootstrap = async () => {
     const cleanPhone = phone.replace(/[^0-9]/g, '');
     
+    // Validate basic input requirements before sending to server
     if (cleanPhone.length < 10 || pin.length !== 6) {
       toast({
         title: "Invalid credentials",
@@ -51,12 +67,15 @@ export default function Auth() {
     setBootstrapping(true);
 
     try {
-      const result = await bootstrap(cleanPhone, pin);
+      // Server-side validation against secure environment variables
+      const response = await supabase.functions.invoke('bootstrap-admin', {
+        body: { phone: cleanPhone, pin }
+      });
 
-      if (!result.success) {
+      if (response.error) {
         toast({
           title: "Bootstrap failed",
-          description: result.error || "Could not create admin account.",
+          description: response.error.message || "Could not create admin account.",
           variant: "destructive",
         });
         setBootstrapping(false);
@@ -65,7 +84,7 @@ export default function Auth() {
 
       toast({
         title: "Admin account ready",
-        description: result.message || "You can now sign in with your credentials.",
+        description: "You can now sign in with your credentials.",
       });
 
       // Now try to login
@@ -99,14 +118,19 @@ export default function Auth() {
 
     setLoading(true);
 
-    const result = await login(cleanPhone, pin);
+    const email = phoneToEmail(cleanPhone);
+    
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: pin,
+    });
 
     setLoading(false);
 
-    if (!result.success) {
+    if (error) {
       toast({
         title: "Login failed",
-        description: result.error || "Invalid mobile number or PIN. Please try again.",
+        description: sanitizeError(error, "Invalid mobile number or PIN. Please try again."),
         variant: "destructive",
       });
     } else {
@@ -124,18 +148,8 @@ export default function Auth() {
     await handleLogin();
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   const cleanPhone = phone.replace(/[^0-9]/g, '');
+  // Show bootstrap button when login fails and user has entered valid-looking credentials
   const showBootstrapOption = cleanPhone.length >= 10 && pin.length === 6;
 
   return (

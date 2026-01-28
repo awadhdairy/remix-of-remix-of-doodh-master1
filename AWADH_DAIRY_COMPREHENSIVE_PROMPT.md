@@ -704,21 +704,20 @@ Create new staff user with:
 ### 3. delete-user
 Soft delete user (deactivate)
 
-### 4. customer-auth
+### 4. update-user-status
+Activate/deactivate user accounts
+
+### 5. reset-user-pin
+Admin reset user's PIN
+
+### 6. change-pin
+User self-service PIN change
+
+### 7. customer-auth
 Customer app authentication:
 - Login with phone + PIN
 - Registration with phone + PIN
 - Account approval flow
-
-### 5. Database RPC Functions (No Edge Function Needed)
-These operations use direct database RPC calls for faster performance:
-
-| RPC Function | Purpose |
-|--------------|---------|
-| `admin_update_user_status` | Activate/deactivate staff accounts |
-| `admin_reset_user_pin` | Admin reset user's PIN |
-| `change_own_pin` | User self-service PIN change |
-| `run_auto_delivery` | Daily delivery automation (pg_cron scheduled) |
 
 ---
 

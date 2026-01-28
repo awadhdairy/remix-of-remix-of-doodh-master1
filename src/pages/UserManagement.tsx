@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
-import { useSessionToken } from "@/contexts/StaffAuthContext";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -40,13 +39,6 @@ interface UserProfile {
   created_at: string;
 }
 
-interface RpcResponse {
-  success: boolean;
-  message?: string;
-  error?: string;
-  user_id?: string;
-}
-
 const roleOptions = [
   { value: "manager", label: "Manager" },
   { value: "accountant", label: "Accountant" },
@@ -68,7 +60,6 @@ const roleColors: Record<string, string> = {
 
 export default function UserManagement() {
   const { role, loading: roleLoading } = useUserRole();
-  const sessionToken = useSessionToken();
   const navigate = useNavigate();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,32 +127,32 @@ export default function UserManagement() {
       return;
     }
 
-    if (!sessionToken) {
-      toast.error("Not authenticated. Please login again.");
-      return;
-    }
-
     setCreating(true);
     try {
-      const { data, error } = await supabase.rpc("admin_create_staff", {
-        _session_token: sessionToken,
-        _full_name: fullName,
-        _phone: phone,
-        _pin: pin,
-        _role: selectedRole as "manager" | "accountant" | "delivery_staff" | "farm_worker" | "vet_staff" | "auditor",
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Not authenticated");
+        return;
+      }
+
+      const response = await supabase.functions.invoke("create-user", {
+        body: {
+          phone,
+          pin,
+          fullName,
+          role: selectedRole,
+        },
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to create user");
       }
 
-      const response = data as unknown as RpcResponse;
-
-      if (!response?.success) {
-        throw new Error(response?.error || "Failed to create user");
+      if (response.data?.error) {
+        throw new Error(response.data.error);
       }
 
-      toast.success(response.message || "User created successfully");
+      toast.success("User created successfully");
       setDialogOpen(false);
       resetForm();
       fetchUsers();
@@ -182,17 +173,22 @@ export default function UserManagement() {
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
     setTogglingUser(userId);
     try {
-      const { data, error } = await supabase.rpc('admin_update_user_status', {
-        _target_user_id: userId,
-        _is_active: !currentStatus,
+      const response = await supabase.functions.invoke("update-user-status", {
+        body: {
+          userId,
+          isActive: !currentStatus,
+        },
       });
 
-      if (error) throw new Error(error.message);
-      
-      const result = data as unknown as RpcResponse;
-      if (!result?.success) throw new Error(result?.error || 'Failed to update status');
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to update status");
+      }
 
-      toast.success(result.message);
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success(response.data.message);
       fetchUsers();
     } catch (error: any) {
       toast.error(error.message || "Failed to update user status");
@@ -214,17 +210,22 @@ export default function UserManagement() {
 
     setResettingPin(true);
     try {
-      const { data, error } = await supabase.rpc('admin_reset_user_pin', {
-        _target_user_id: selectedUser.id,
-        _new_pin: newPin,
+      const response = await supabase.functions.invoke("reset-user-pin", {
+        body: {
+          userId: selectedUser.id,
+          newPin,
+        },
       });
 
-      if (error) throw new Error(error.message);
-      
-      const result = data as unknown as RpcResponse;
-      if (!result?.success) throw new Error(result?.error || 'Failed to reset PIN');
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to reset PIN");
+      }
 
-      toast.success(result.message);
+      if (response.data?.error) {
+        throw new Error(response.data.error);
+      }
+
+      toast.success(response.data.message);
       setResetPinDialogOpen(false);
       setSelectedUser(null);
       setNewPin("");
@@ -247,29 +248,23 @@ export default function UserManagement() {
   };
 
   const handleDeleteUser = async () => {
-    if (!selectedUser || !sessionToken) {
-      toast.error("Not authenticated");
-      return;
-    }
+    if (!selectedUser) return;
 
     setDeleting(true);
     try {
-      const { data, error } = await supabase.rpc("admin_delete_staff_v2", {
-        _session_token: sessionToken,
-        _target_user_id: selectedUser.id,
+      const response = await supabase.functions.invoke("delete-user", {
+        body: { userId: selectedUser.id },
       });
 
-      if (error) {
-        throw new Error(error.message);
+      if (response.error) {
+        throw new Error(response.error.message || "Failed to delete user");
       }
 
-      const response = data as unknown as RpcResponse;
-
-      if (!response?.success) {
-        throw new Error(response?.error || "Failed to delete user");
+      if (response.data?.error) {
+        throw new Error(response.data.error);
       }
 
-      toast.success(response.message || "User deleted successfully");
+      toast.success(response.data.message);
       setDeleteDialogOpen(false);
       setSelectedUser(null);
       fetchUsers();

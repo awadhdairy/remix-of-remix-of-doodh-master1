@@ -10,13 +10,11 @@ jobs:
   keep-alive:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Database via REST API
+      - name: Ping Health Check Endpoint
         run: |
-          # Query the public dairy_settings view to keep the database active
+          # Ping the health-check edge function to keep the database active
           response=$(curl -s -w "\n%{http_code}" \
-            "https://sgpnlunidlrbfdbegapw.supabase.co/rest/v1/dairy_settings_public?select=dairy_name&limit=1" \
-            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNncG5sdW5pZGxyYmZkYmVnYXB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzNTQ1NzYsImV4cCI6MjA4NDkzMDU3Nn0.4gMVIz6scGWTPq4o4TjKEy6Zlmn8MjVoMUUhw8nTFys" \
-            -H "Content-Type: application/json")
+            "https://eqedibnoatuxczjwkbbx.supabase.co/functions/v1/health-check")
           
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)

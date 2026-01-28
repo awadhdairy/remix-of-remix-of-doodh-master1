@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { useCustomerAuth } from '@/hooks/useCustomerAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 const authSchema = z.object({
   phone: z.string().min(10, 'Enter a valid 10-digit mobile number').max(10, 'Enter a valid 10-digit mobile number'),
@@ -24,7 +24,6 @@ export default function CustomerAuth() {
   const [pendingApproval, setPendingApproval] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { login, register } = useCustomerAuth();
 
   const loginForm = useForm<AuthFormData>({
     resolver: zodResolver(authSchema),
@@ -41,10 +40,14 @@ export default function CustomerAuth() {
     setPendingApproval(false);
 
     try {
-      const result = await login(values.phone, values.pin);
+      const { data, error } = await supabase.functions.invoke('customer-auth', {
+        body: { action: 'login', phone: values.phone, pin: values.pin }
+      });
 
-      if (!result.success) {
-        if (result.pending) {
+      if (error) throw error;
+
+      if (!data.success) {
+        if (data.pending) {
           setPendingApproval(true);
           toast({
             title: "Account Pending Approval",
@@ -54,19 +57,26 @@ export default function CustomerAuth() {
         } else {
           toast({
             title: "Login Failed",
-            description: result.error || "Invalid credentials",
+            description: data.error || "Invalid credentials",
             variant: "destructive",
           });
         }
         return;
       }
 
-      toast({
-        title: "Welcome!",
-        description: "Logged in successfully",
-      });
-      
-      navigate('/customer/dashboard');
+      if (data.session) {
+        await supabase.auth.setSession({
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token
+        });
+        
+        toast({
+          title: "Welcome!",
+          description: "Logged in successfully",
+        });
+        
+        navigate('/customer/dashboard');
+      }
     } catch (error: any) {
       toast({
         title: "Error",
@@ -82,18 +92,22 @@ export default function CustomerAuth() {
     setLoading(true);
 
     try {
-      const result = await register(values.phone, values.pin);
+      const { data, error } = await supabase.functions.invoke('customer-auth', {
+        body: { action: 'register', phone: values.phone, pin: values.pin }
+      });
 
-      if (!result.success) {
+      if (error) throw error;
+
+      if (!data.success) {
         toast({
           title: "Registration Failed",
-          description: result.error || "Could not create account",
+          description: data.error || "Could not create account",
           variant: "destructive",
         });
         return;
       }
 
-      if (result.approved) {
+      if (data.approved) {
         toast({
           title: "Account Created!",
           description: "Your account has been approved. Please login to continue.",

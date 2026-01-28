@@ -37,24 +37,17 @@ export function DeliveryAutomationCard() {
 
   const today = format(new Date(), "yyyy-MM-dd");
 
-  // Trigger the auto-delivery RPC directly
+  // Trigger the edge function manually
   const handleTriggerCronJob = async () => {
     setCronLoading(true);
     try {
-      const { data, error } = await supabase.rpc('run_auto_delivery');
+      const { data, error } = await supabase.functions.invoke("auto-deliver-daily", {
+        body: { triggered_at: new Date().toISOString(), manual: true },
+      });
 
       if (error) throw error;
 
-      // RPC returns the result directly - cast to proper type
-      const result = data as { 
-        success: boolean; 
-        date: string;
-        scheduled: number; 
-        delivered: number; 
-        skipped: number; 
-        errors: string[]; 
-      } | null;
-      
+      const result = data?.result;
       if (result) {
         toast({
           title: "Auto-delivery complete",

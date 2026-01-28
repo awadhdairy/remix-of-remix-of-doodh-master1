@@ -47,16 +47,16 @@ This guide will help you deploy Awadh Dairy completely free on Vercel (frontend)
    ```bash
    supabase link --project-ref your-project-id
    ```
-4. Deploy Edge Functions (only 4 required):
+4. Deploy all functions:
    ```bash
    supabase functions deploy bootstrap-admin
    supabase functions deploy create-user
+   supabase functions deploy update-user-status
+   supabase functions deploy reset-user-pin
+   supabase functions deploy change-pin
    supabase functions deploy customer-auth
    supabase functions deploy delete-user
    ```
-   
-   > **Note**: User management functions (status toggle, PIN reset, PIN change) 
-   > are now handled by database RPC functions for faster performance.
 
 ### Step 5: Configure Authentication
 
