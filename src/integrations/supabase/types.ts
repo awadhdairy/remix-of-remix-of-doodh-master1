@@ -2022,42 +2022,30 @@ export type Database = {
       customer_accounts_safe: {
         Row: {
           approval_status: string | null
-          approved_at: string | null
-          approved_by: string | null
           created_at: string | null
           customer_id: string | null
           id: string | null
           is_approved: boolean | null
           last_login: string | null
           phone: string | null
-          updated_at: string | null
-          user_id: string | null
         }
         Insert: {
           approval_status?: string | null
-          approved_at?: string | null
-          approved_by?: string | null
           created_at?: string | null
           customer_id?: string | null
           id?: string | null
           is_approved?: boolean | null
           last_login?: string | null
           phone?: string | null
-          updated_at?: string | null
-          user_id?: string | null
         }
         Update: {
           approval_status?: string | null
-          approved_at?: string | null
-          approved_by?: string | null
           created_at?: string | null
           customer_id?: string | null
           id?: string | null
           is_approved?: boolean | null
           last_login?: string | null
           phone?: string | null
-          updated_at?: string | null
-          user_id?: string | null
         }
         Relationships: [
           {
@@ -2081,25 +2069,28 @@ export type Database = {
           address: string | null
           area: string | null
           id: string | null
-          is_active: boolean | null
           name: string | null
+          phone: string | null
           route_id: string | null
+          subscription_type: string | null
         }
         Insert: {
           address?: string | null
           area?: string | null
           id?: string | null
-          is_active?: boolean | null
           name?: string | null
+          phone?: string | null
           route_id?: string | null
+          subscription_type?: string | null
         }
         Update: {
           address?: string | null
           area?: string | null
           id?: string | null
-          is_active?: boolean | null
           name?: string | null
+          phone?: string | null
           route_id?: string | null
+          subscription_type?: string | null
         }
         Relationships: [
           {
@@ -2113,34 +2104,18 @@ export type Database = {
       }
       dairy_settings_public: {
         Row: {
+          address: string | null
           currency: string | null
           dairy_name: string | null
-          financial_year_start: number | null
-          id: string | null
+          email: string | null
           invoice_prefix: string | null
           logo_url: string | null
-        }
-        Insert: {
-          currency?: string | null
-          dairy_name?: string | null
-          financial_year_start?: number | null
-          id?: string | null
-          invoice_prefix?: string | null
-          logo_url?: string | null
-        }
-        Update: {
-          currency?: string | null
-          dairy_name?: string | null
-          financial_year_start?: number | null
-          id?: string | null
-          invoice_prefix?: string | null
-          logo_url?: string | null
+          phone: string | null
         }
         Relationships: []
       }
       employees_auditor_view: {
         Row: {
-          address: string | null
           created_at: string | null
           id: string | null
           is_active: boolean | null
@@ -2148,11 +2123,9 @@ export type Database = {
           name: string | null
           phone: string | null
           role: Database["public"]["Enums"]["user_role"] | null
-          updated_at: string | null
           user_id: string | null
         }
         Insert: {
-          address?: string | null
           created_at?: string | null
           id?: string | null
           is_active?: boolean | null
@@ -2160,11 +2133,9 @@ export type Database = {
           name?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
-          updated_at?: string | null
           user_id?: string | null
         }
         Update: {
-          address?: string | null
           created_at?: string | null
           id?: string | null
           is_active?: boolean | null
@@ -2172,14 +2143,12 @@ export type Database = {
           name?: string | null
           phone?: string | null
           role?: Database["public"]["Enums"]["user_role"] | null
-          updated_at?: string | null
           user_id?: string | null
         }
         Relationships: []
       }
       profiles_safe: {
         Row: {
-          avatar_url: string | null
           created_at: string | null
           full_name: string | null
           id: string | null
@@ -2189,7 +2158,6 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          avatar_url?: string | null
           created_at?: string | null
           full_name?: string | null
           id?: string | null
@@ -2199,7 +2167,6 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          avatar_url?: string | null
           created_at?: string | null
           full_name?: string | null
           id?: string | null

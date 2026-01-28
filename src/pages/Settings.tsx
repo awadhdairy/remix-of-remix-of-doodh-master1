@@ -62,7 +62,7 @@ export default function SettingsPage() {
     if (user) {
       const { data: profileData } = await supabase
         .from("profiles_safe")
-        .select("id, full_name, phone, role, is_active, avatar_url, created_at, updated_at")
+        .select("id, full_name, phone, role")
         .eq("id", user.id)
         .maybeSingle();
 
