@@ -13,9 +13,10 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+    // Use EXTERNAL Supabase variables
+    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY')!
 
     // Create admin client for creating users
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
