@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,6 @@ export default function Auth() {
   const [phone, setPhone] = useState("");
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [bootstrapping, setBootstrapping] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -49,55 +48,6 @@ export default function Auth() {
   const phoneToEmail = (phoneNumber: string) => {
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
     return `${cleanPhone}@awadhdairy.com`;
-  };
-
-  const handleBootstrap = async () => {
-    const cleanPhone = phone.replace(/[^0-9]/g, '');
-    
-    // Validate basic input requirements before sending to server
-    if (cleanPhone.length < 10 || pin.length !== 6) {
-      toast({
-        title: "Invalid credentials",
-        description: "Please enter valid phone number and 6-digit PIN.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setBootstrapping(true);
-
-    try {
-      // Server-side validation against secure environment variables
-      const response = await supabase.functions.invoke('bootstrap-admin', {
-        body: { phone: cleanPhone, pin }
-      });
-
-      if (response.error) {
-        toast({
-          title: "Bootstrap failed",
-          description: response.error.message || "Could not create admin account.",
-          variant: "destructive",
-        });
-        setBootstrapping(false);
-        return;
-      }
-
-      toast({
-        title: "Admin account ready",
-        description: "You can now sign in with your credentials.",
-      });
-
-      // Now try to login
-      setBootstrapping(false);
-      await handleLogin();
-    } catch (err) {
-      toast({
-        title: "Bootstrap failed",
-        description: "Could not create admin account. Please try again.",
-        variant: "destructive",
-      });
-      setBootstrapping(false);
-    }
   };
 
   const handleLogin = async () => {
@@ -147,10 +97,6 @@ export default function Auth() {
     setErrors({});
     await handleLogin();
   };
-
-  const cleanPhone = phone.replace(/[^0-9]/g, '');
-  // Show bootstrap button when login fails and user has entered valid-looking credentials
-  const showBootstrapOption = cleanPhone.length >= 10 && pin.length === 6;
 
   return (
     <div className="flex min-h-screen">
@@ -243,7 +189,7 @@ export default function Auth() {
                 )}
               </div>
               
-              <Button type="submit" className="w-full" disabled={loading || bootstrapping}>
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -253,25 +199,6 @@ export default function Auth() {
                   "Sign In"
                 )}
               </Button>
-
-              {showBootstrapOption && (
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  className="w-full" 
-                  disabled={loading || bootstrapping}
-                  onClick={handleBootstrap}
-                >
-                  {bootstrapping ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Setting up...
-                    </>
-                  ) : (
-                    "Setup Admin Account"
-                  )}
-                </Button>
-              )}
               
               <p className="text-xs text-center text-muted-foreground mt-4">
                 Contact your administrator for account access
