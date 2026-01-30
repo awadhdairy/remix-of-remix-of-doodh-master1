@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoAttendance } from "@/hooks/useAutoAttendance";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";

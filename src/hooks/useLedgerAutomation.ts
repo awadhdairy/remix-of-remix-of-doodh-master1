@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { format } from "date-fns";
 
 interface LedgerEntry {

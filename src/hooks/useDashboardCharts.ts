@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { format, subMonths, startOfMonth, endOfMonth, subDays } from "date-fns";
 
 // Types

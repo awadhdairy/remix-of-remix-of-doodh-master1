@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertTriangle, Bell, Syringe, TrendingDown, Package, Loader2, IndianRupee, Beef } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { format, addDays, isBefore, isAfter } from "date-fns";
 
 interface Alert {

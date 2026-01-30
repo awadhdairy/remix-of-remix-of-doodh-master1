@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoDeliveryScheduler } from "@/hooks/useAutoDeliveryScheduler";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { format, addDays } from "date-fns";
 import { 
   Truck, 

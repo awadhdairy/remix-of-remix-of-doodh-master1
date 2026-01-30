@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { User, Session } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
