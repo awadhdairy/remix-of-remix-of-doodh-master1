@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion } from "framer-motion";
 import { Activity, Droplets, Truck, Receipt, Beef, Clock, Loader2, Syringe } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { formatDistanceToNow } from "date-fns";
 
 interface ActivityItem {

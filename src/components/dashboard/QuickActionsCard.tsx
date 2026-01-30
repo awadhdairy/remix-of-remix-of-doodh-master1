@@ -17,7 +17,7 @@ import {
   MapPin
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { QuickAddOnOrderDialog } from "@/components/customers/QuickAddOnOrderDialog";
 import {
   Dialog,
