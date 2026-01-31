@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase as supabase } from '@/lib/external-supabase';
 import { getProductName } from '@/lib/supabase-helpers';
 
 interface DeliverySummary {

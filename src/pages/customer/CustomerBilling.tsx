@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase as supabase } from '@/lib/external-supabase';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { numberToIndianWords } from '@/lib/numberToWords';

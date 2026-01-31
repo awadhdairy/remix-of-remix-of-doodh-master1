@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase as supabase } from '@/lib/external-supabase';
 
 interface Product {
   id: string;

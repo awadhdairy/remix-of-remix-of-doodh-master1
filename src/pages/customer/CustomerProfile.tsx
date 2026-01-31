@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useCustomerAuth } from '@/hooks/useCustomerAuth';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase as supabase } from '@/lib/external-supabase';
 import { useNavigate } from 'react-router-dom';
 // Fallback for loading state
 const fallbackData = {

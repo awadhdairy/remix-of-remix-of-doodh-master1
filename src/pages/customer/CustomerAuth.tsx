@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase as supabase } from '@/lib/external-supabase';
 
 const authSchema = z.object({
   phone: z.string().min(10, 'Enter a valid 10-digit mobile number').max(10, 'Enter a valid 10-digit mobile number'),
