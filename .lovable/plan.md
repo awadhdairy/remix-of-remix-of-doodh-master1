@@ -179,6 +179,27 @@ Since I cannot execute SQL directly on the external Supabase database, I can:
 
 ---
 
+## Next Steps (CRITICAL)
+
+**The external Supabase database has NO tables!** You must run the SQL migration script:
+
+1. **Go to your external Supabase dashboard:**
+   `https://supabase.com/dashboard/project/htsfxnuttobkdquxwvjj`
+
+2. **Navigate to SQL Editor**
+
+3. **Copy and run the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql`**
+   (This file is in the project root)
+
+4. **After schema is created, run this to create the super admin:**
+   ```sql
+   SELECT public.bootstrap_super_admin('7897716792', '101101');
+   ```
+
+5. **Return here and login with the admin credentials**
+
+---
+
 ## Summary
 
 | Issue | Cause | Fix |
