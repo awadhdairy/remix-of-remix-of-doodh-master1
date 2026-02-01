@@ -5,58 +5,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
+// Hardcode external Supabase credentials (deployed to external project)
+const EXTERNAL_URL = 'https://htsfxnuttobkdquxwvjj.supabase.co'
+const EXTERNAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0c2Z4bnV0dG9ia2RxdXh3dmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1ODQ1ODgsImV4cCI6MjA4NTE2MDU4OH0.kM-uVIvO_bGqBeBQgoXBLlzTbTyQGVRgL6aVYMG2OcM'
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Use the EXTERNAL Supabase (where actual data lives)
-    const externalUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || 'https://htsfxnuttobkdquxwvjj.supabase.co'
-    const externalServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')
-    const externalAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0c2Z4bnV0dG9ia2RxdXh3dmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1ODQ1ODgsImV4cCI6MjA4NTE2MDU4OH0.kM-uVIvO_bGqBeBQgoXBLlzTbTyQGVRgL6aVYMG2OcM'
-
-    if (!externalServiceKey) {
-      console.error('Missing EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')
+    // Get the service role key from environment (set via CLI)
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    
+    if (!serviceRoleKey) {
+      console.error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
       return new Response(
-        JSON.stringify({ error: 'Server configuration error: Missing service role key' }),
+        JSON.stringify({ error: 'Server configuration error' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Create admin client for external Supabase
-    const supabaseAdmin = createClient(externalUrl, externalServiceKey)
+    // Create admin client with service role key
+    const supabaseAdmin = createClient(EXTERNAL_URL, serviceRoleKey)
 
-    // Get session token from Authorization header
+    // Get the JWT token from Authorization header
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
+        JSON.stringify({ error: 'Missing or invalid authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const sessionToken = authHeader.replace('Bearer ', '')
+    const token = authHeader.replace('Bearer ', '')
 
-    // Validate session using the external database's validate_session function
-    const { data: sessionResult, error: sessionError } = await supabaseAdmin.rpc('validate_session', {
-      _session_token: sessionToken
+    // Create a client with the user's token to verify their identity
+    const supabaseClient = createClient(EXTERNAL_URL, EXTERNAL_ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
     })
 
-    if (sessionError || !sessionResult?.success) {
-      console.error('Session validation failed:', sessionError || sessionResult?.error)
+    // Verify the user's JWT by calling getUser
+    const { data: { user: requestingUser }, error: userError } = await supabaseClient.auth.getUser(token)
+    
+    if (userError || !requestingUser) {
+      console.error('User verification failed:', userError)
       return new Response(
-        JSON.stringify({ error: 'Invalid or expired session. Please login again.' }),
+        JSON.stringify({ error: 'Invalid authentication token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const requestingUserId = sessionResult.user?.id
-    const requestingUserRole = sessionResult.user?.role
+    console.log('Authenticated user:', requestingUser.id, requestingUser.email)
 
-    // Check if requesting user is super_admin
-    if (requestingUserRole !== 'super_admin') {
+    // Check if requesting user is super_admin using service role client
+    const { data: roleData, error: roleError } = await supabaseAdmin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', requestingUser.id)
+      .single()
+
+    if (roleError) {
+      console.error('Role lookup error:', roleError)
+      return new Response(
+        JSON.stringify({ error: 'Failed to verify user permissions' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (roleData?.role !== 'super_admin') {
       return new Response(
         JSON.stringify({ error: 'Only super admin can create users' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -104,16 +122,14 @@ Deno.serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
-      // If inactive, we can reactivate - but let's use the reactivate flow instead
       return new Response(
         JSON.stringify({ error: 'This phone number belongs to a deactivated user. Please reactivate the account instead.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Create the auth user in EXTERNAL Supabase
+    // Create the auth user
     const email = `${phone}@awadhdairy.com`
-
     console.log(`Creating auth user for phone: ${phone}, email: ${email}`)
 
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -130,7 +146,7 @@ Deno.serve(async (req) => {
       console.error('Error creating auth user:', createError)
       let errorMessage = 'Failed to create user'
       if (createError.message?.includes('already been registered')) {
-        errorMessage = 'A user with this phone number already exists. Please use a different phone number.'
+        errorMessage = 'A user with this phone number already exists'
       } else if (createError.message) {
         errorMessage = createError.message
       }
@@ -144,8 +160,7 @@ Deno.serve(async (req) => {
     console.log('Created auth user with ID:', userId)
 
     // Upsert the profile
-    console.log('Upserting profile for user:', userId)
-    const { error: profileUpsertError } = await supabaseAdmin
+    const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert({
         id: userId,
@@ -155,40 +170,29 @@ Deno.serve(async (req) => {
         is_active: true
       }, { onConflict: 'id' })
 
-    if (profileUpsertError) {
-      console.error('Error upserting profile:', profileUpsertError)
-    } else {
-      console.log('Profile upserted successfully')
+    if (profileError) {
+      console.error('Error upserting profile:', profileError)
     }
 
-    // Set PIN hash using the database function
-    console.log('Setting PIN hash for user:', userId)
+    // Set PIN hash
     const { error: pinError } = await supabaseAdmin.rpc('update_pin_only', {
       _user_id: userId,
       _pin: pin
     })
 
     if (pinError) {
-      console.error('Error setting PIN hash:', pinError)
+      console.error('Error setting PIN:', pinError)
       // Try alternative method
-      const { error: altPinError } = await supabaseAdmin.rpc('update_user_profile_with_pin', {
+      await supabaseAdmin.rpc('update_user_profile_with_pin', {
         _user_id: userId,
         _full_name: fullName,
         _phone: phone,
         _role: role,
         _pin: pin
       })
-      if (altPinError) {
-        console.error('Alternative PIN set also failed:', altPinError)
-      } else {
-        console.log('PIN set via alternative method')
-      }
-    } else {
-      console.log('PIN hash set successfully')
     }
 
     // Upsert the user_roles entry
-    console.log('Upserting user role:', role)
     const { error: roleUpsertError } = await supabaseAdmin
       .from('user_roles')
       .upsert({
@@ -198,15 +202,13 @@ Deno.serve(async (req) => {
 
     if (roleUpsertError) {
       console.error('Error upserting role:', roleUpsertError)
-    } else {
-      console.log('User role upserted successfully')
     }
 
     // Log activity
     await supabaseAdmin
       .from('activity_logs')
       .insert({
-        user_id: requestingUserId,
+        user_id: requestingUser.id,
         action: 'user_created',
         entity_type: 'user',
         entity_id: userId,
