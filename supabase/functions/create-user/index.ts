@@ -1,27 +1,34 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    // Use EXTERNAL Supabase variables
-    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
-    const supabaseAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY')!
+    // Use the EXTERNAL Supabase (where actual data lives)
+    const externalUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || 'https://htsfxnuttobkdquxwvjj.supabase.co'
+    const externalServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')
+    const externalAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0c2Z4bnV0dG9ia2RxdXh3dmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1ODQ1ODgsImV4cCI6MjA4NTE2MDU4OH0.kM-uVIvO_bGqBeBQgoXBLlzTbTyQGVRgL6aVYMG2OcM'
 
-    // Create admin client for creating users
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+    if (!externalServiceKey) {
+      console.error('Missing EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error: Missing service role key' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-    // Verify the requesting user is a super_admin
+    // Create admin client for external Supabase
+    const supabaseAdmin = createClient(externalUrl, externalServiceKey)
+
+    // Get session token from Authorization header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
@@ -30,27 +37,26 @@ serve(async (req) => {
       )
     }
 
-    const token = authHeader.replace('Bearer ', '')
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
+    const sessionToken = authHeader.replace('Bearer ', '')
+
+    // Validate session using the external database's validate_session function
+    const { data: sessionResult, error: sessionError } = await supabaseAdmin.rpc('validate_session', {
+      _session_token: sessionToken
     })
 
-    const { data: { user: requestingUser }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !requestingUser) {
+    if (sessionError || !sessionResult?.success) {
+      console.error('Session validation failed:', sessionError || sessionResult?.error)
       return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
+        JSON.stringify({ error: 'Invalid or expired session. Please login again.' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Check if requesting user is super_admin
-    const { data: roleData, error: roleError } = await supabaseAdmin
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', requestingUser.id)
-      .single()
+    const requestingUserId = sessionResult.user?.id
+    const requestingUserRole = sessionResult.user?.role
 
-    if (roleError || roleData?.role !== 'super_admin') {
+    // Check if requesting user is super_admin
+    if (requestingUserRole !== 'super_admin') {
       return new Response(
         JSON.stringify({ error: 'Only super admin can create users' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -87,30 +93,26 @@ serve(async (req) => {
     // Check if phone number already exists in profiles
     const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
-      .select('id')
+      .select('id, is_active')
       .eq('phone', phone)
       .single()
 
     if (existingProfile) {
+      if (existingProfile.is_active) {
+        return new Response(
+          JSON.stringify({ error: 'A user with this phone number already exists' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      // If inactive, we can reactivate - but let's use the reactivate flow instead
       return new Response(
-        JSON.stringify({ error: 'A user with this phone number already exists' }),
+        JSON.stringify({ error: 'This phone number belongs to a deactivated user. Please reactivate the account instead.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Create the auth user - MUST match domain used in Auth.tsx login
+    // Create the auth user in EXTERNAL Supabase
     const email = `${phone}@awadhdairy.com`
-
-    // Check if email already exists in auth (handles edge case where profile was deleted but auth user remains)
-    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
-    const emailExists = existingUsers?.users?.some(u => u.email === email)
-    
-    if (emailExists) {
-      return new Response(
-        JSON.stringify({ error: 'A user with this phone number already exists in the system. Please use a different phone number or contact support to reset the existing account.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
 
     console.log(`Creating auth user for phone: ${phone}, email: ${email}`)
 
@@ -141,7 +143,7 @@ serve(async (req) => {
     const userId = authData.user.id
     console.log('Created auth user with ID:', userId)
 
-    // DIRECTLY UPSERT the profile - don't rely on trigger
+    // Upsert the profile
     console.log('Upserting profile for user:', userId)
     const { error: profileUpsertError } = await supabaseAdmin
       .from('profiles')
@@ -155,7 +157,6 @@ serve(async (req) => {
 
     if (profileUpsertError) {
       console.error('Error upserting profile:', profileUpsertError)
-      // Don't fail - the trigger might have created a partial profile
     } else {
       console.log('Profile upserted successfully')
     }
@@ -186,7 +187,7 @@ serve(async (req) => {
       console.log('PIN hash set successfully')
     }
 
-    // UPSERT the user_roles entry - don't rely on trigger
+    // Upsert the user_roles entry
     console.log('Upserting user role:', role)
     const { error: roleUpsertError } = await supabaseAdmin
       .from('user_roles')
@@ -201,24 +202,18 @@ serve(async (req) => {
       console.log('User role upserted successfully')
     }
 
-    // Verify profile was created
-    const { data: verifyProfile, error: verifyError } = await supabaseAdmin
-      .from('profiles')
-      .select('id, full_name, phone, role')
-      .eq('id', userId)
-      .single()
+    // Log activity
+    await supabaseAdmin
+      .from('activity_logs')
+      .insert({
+        user_id: requestingUserId,
+        action: 'user_created',
+        entity_type: 'user',
+        entity_id: userId,
+        details: { created_user_name: fullName, created_user_role: role }
+      })
 
-    if (verifyError || !verifyProfile) {
-      console.error('Profile verification failed:', verifyError)
-      // Cleanup: delete the auth user since profile creation failed
-      await supabaseAdmin.auth.admin.deleteUser(userId)
-      return new Response(
-        JSON.stringify({ error: 'Failed to create user profile. Please try again.' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    console.log('User created and verified successfully:', verifyProfile)
+    console.log('User created successfully:', userId)
 
     return new Response(
       JSON.stringify({ 
@@ -228,10 +223,11 @@ serve(async (req) => {
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Error in create-user function:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
+      JSON.stringify({ error: 'Internal server error: ' + errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
