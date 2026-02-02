@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
 serve(async (req) => {
@@ -15,31 +15,52 @@ serve(async (req) => {
     // Use EXTERNAL Supabase variables
     const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
-    const supabaseAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY')!
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
-
-    // Verify the requesting user is a super_admin
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Missing authorization header' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
     })
 
-    const { data: { user: requestingUser }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !requestingUser) {
+    // Extract and validate the Bearer token manually
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Missing or invalid authorization header')
       return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
+        JSON.stringify({ error: 'Missing or invalid authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    // Extract the token from the header
+    const token = authHeader.replace('Bearer ', '')
+
+    // Create client for user verification
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+    })
+
+    // CRITICAL: Pass token explicitly for manual JWT verification (required when verify_jwt=false)
+    const { data: { user: requestingUser }, error: userError } = await supabaseClient.auth.getUser(token)
+    
+    if (userError || !requestingUser) {
+      console.error('JWT validation failed:', userError?.message || 'No user found')
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired authentication token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('User authenticated:', requestingUser.id, requestingUser.email)
 
     // Check if requesting user is super_admin
     const { data: roleData, error: roleError } = await supabaseAdmin
