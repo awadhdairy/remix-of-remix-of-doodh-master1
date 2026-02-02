@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
 serve(async (req) => {
@@ -25,15 +25,20 @@ serve(async (req) => {
       },
     })
 
-    // Create client with user's token to verify they're authenticated
+    // Extract and validate the Bearer token manually
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Missing or invalid authorization header')
       return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
+        JSON.stringify({ error: 'Missing or invalid authorization header' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    // Extract the token from the header
+    const token = authHeader.replace('Bearer ', '')
+
+    // Create client for user verification
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
         autoRefreshToken: false,
@@ -46,15 +51,18 @@ serve(async (req) => {
       },
     })
 
-    // Get the current user
-    const { data: { user: requestingUser }, error: userError } = await supabaseClient.auth.getUser()
+    // CRITICAL: Pass token explicitly for manual JWT verification (required when verify_jwt=false)
+    const { data: { user: requestingUser }, error: userError } = await supabaseClient.auth.getUser(token)
     
     if (userError || !requestingUser) {
+      console.error('JWT validation failed:', userError?.message || 'No user found')
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ error: 'Invalid or expired authentication token' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    
+    console.log('User authenticated:', requestingUser.id, requestingUser.email)
 
     // Check if the requesting user is a super_admin
     const { data: roleData, error: roleError } = await supabaseAdmin
