@@ -1,215 +1,153 @@
 
-# Deploying Edge Functions to External Supabase
 
-## Overview
+# Fix Plan: Delete User Edge Function
 
-You CAN deploy the edge functions from this project to your external Supabase instance. This would make everything work exactly as designed, with full `auth.admin` API access for user management.
+## Problem Summary
 
----
+The `delete-user` Edge Function fails with `AuthApiError: User not found` because:
+- Staff users are created via `admin_create_staff()` function which inserts ONLY into `profiles` table
+- The Edge Function tries to delete from `auth.users` first, but user doesn't exist there
+- The `profiles` table has NO foreign key to `auth.users`, so it's completely standalone
 
-## What's Required
-
-### 1. One-Time Setup (Your Computer)
-
-| Step | Action |
-|------|--------|
-| 1 | Install **Supabase CLI** on your computer |
-| 2 | Login to CLI with your Supabase account |
-| 3 | Link to your external project (`htsfxnuttobkdquxwvjj`) |
-| 4 | Set the required secrets |
-| 5 | Deploy all 9 edge functions |
-
-### 2. Required Secrets to Configure
-
-These secrets must be set in your external Supabase project:
+## Current Flow (Broken)
 
 ```text
-EXTERNAL_SUPABASE_URL = https://htsfxnuttobkdquxwvjj.supabase.co
-EXTERNAL_SUPABASE_ANON_KEY = (your anon key - already known)
-EXTERNAL_SUPABASE_SERVICE_ROLE_KEY = (you said you can provide this)
+delete-user called with userId
+        │
+        ▼
+supabaseAdmin.auth.admin.deleteUser(userId)
+        │
+        ▼
+ERROR: User not found in auth.users  ← Fails here!
+(profiles and user_roles never cleaned up)
 ```
 
-### 3. Functions to Deploy
+## Solution: Hybrid Deletion Logic
 
-| Function | Purpose |
-|----------|---------|
-| `create-user` | Create new staff users with auth.admin.createUser |
-| `delete-user` | Delete users from auth.users + cleanup orphaned users |
-| `reset-user-pin` | Admin resets another user's PIN |
-| `change-pin` | User changes their own PIN |
-| `update-user-status` | Activate/deactivate users |
-| `customer-auth` | Customer login/register/change-pin |
-| `auto-deliver-daily` | Automatic daily delivery processing |
-| `health-check` | System health verification |
-| `setup-external-db` | Database initialization (one-time use) |
+The Edge Function must handle two types of users:
+1. **Auth-based users**: Exist in `auth.users` (like super_admin created via bootstrap)
+2. **Profile-only users**: Exist only in `profiles` table (created via `admin_create_staff`)
 
----
+## Fixed Flow
 
-## Deployment Commands
-
-After installing Supabase CLI, run these commands:
-
-```bash
-# 1. Login to Supabase
-npx supabase login
-
-# 2. Link to your external project
-npx supabase link --project-ref htsfxnuttobkdquxwvjj
-
-# 3. Set required secrets
-npx supabase secrets set EXTERNAL_SUPABASE_URL=https://htsfxnuttobkdquxwvjj.supabase.co
-npx supabase secrets set EXTERNAL_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-npx supabase secrets set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
-
-# 4. Deploy all functions
-npx supabase functions deploy create-user
-npx supabase functions deploy delete-user
-npx supabase functions deploy reset-user-pin
-npx supabase functions deploy change-pin
-npx supabase functions deploy update-user-status
-npx supabase functions deploy customer-auth
-npx supabase functions deploy auto-deliver-daily
-npx supabase functions deploy health-check
+```text
+delete-user called with userId
+        │
+        ▼
+Check if user exists in auth.users
+        │
+   ┌────┴────┐
+   │         │
+   ▼         ▼
+EXISTS    DOESN'T EXIST
+   │         │
+   ▼         ▼
+Delete     Delete directly from:
+from       1. user_roles
+auth.users 2. profiles
+(cascade)  (manual cleanup)
+   │         │
+   └────┬────┘
+        ▼
+   SUCCESS
 ```
 
----
+## Changes Required
 
-## Pros of Keeping Edge Functions
+### 1. Update delete-user Edge Function
 
-| Benefit | Explanation |
-|---------|-------------|
-| **Native Supabase Auth** | Users exist in `auth.users` table - visible in Supabase dashboard |
-| **No code changes** | Frontend works as-is with `supabase.functions.invoke()` |
-| **Admin API access** | Full `auth.admin` capabilities (createUser, deleteUser, updateUser) |
-| **Password sync** | Both `profiles.pin_hash` AND `auth.users.password` stay synchronized |
-| **Existing features** | All current functionality preserved without modification |
+The key changes:
+- Try to delete from `auth.users` first
+- If "User not found" error (404), fall back to manual deletion from `profiles` and `user_roles`
+- Always ensure both tables are cleaned up
 
----
+### Code Changes (for External Supabase Dashboard)
 
-## Cons / Considerations
-
-| Consideration | Impact |
-|---------------|--------|
-| **Manual deployment** | Every code change to edge functions requires re-running CLI commands |
-| **CLI dependency** | Must install Supabase CLI locally (Node.js required) |
-| **Secret management** | Must manually set secrets in external Supabase |
-| **Cold starts** | Edge functions have ~500ms cold start on first call after idle |
-| **Free tier limits** | 500,000 invocations/month on free tier (usually plenty) |
-| **Maintenance** | Two places to manage (Lovable for frontend, CLI for functions) |
-
----
-
-## Frontend Code Change Required
-
-Currently, `supabase.functions.invoke()` calls go to external Supabase, but the URL configuration needs verification.
-
-Looking at `src/lib/external-supabase.ts`:
+Replace the standard deletion section (around line 180-210) with this logic:
 
 ```typescript
-// Current: Client is configured for external Supabase
-export const externalSupabase = createClient<Database>(EXTERNAL_URL, EXTERNAL_ANON_KEY, {...});
+// Attempt to delete from auth.users first
+const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
+
+if (authDeleteError) {
+  // Check if it's a "User not found" error (user only exists in profiles)
+  if (authDeleteError.status === 404 || authDeleteError.message?.includes('not found')) {
+    console.log('User not in auth.users, deleting from profiles/user_roles directly')
+    
+    // Delete from user_roles first
+    const { error: rolesError } = await supabaseAdmin
+      .from('user_roles')
+      .delete()
+      .eq('user_id', userId)
+    
+    if (rolesError) {
+      console.error('Error deleting user_roles:', rolesError)
+    }
+    
+    // Delete from profiles
+    const { error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .delete()
+      .eq('id', userId)
+    
+    if (profileError) {
+      console.error('Error deleting profile:', profileError)
+      return new Response(
+        JSON.stringify({ error: 'Failed to delete user profile' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+  } else {
+    // Some other auth error
+    console.error('Error deleting user from auth:', authDeleteError)
+    return new Response(
+      JSON.stringify({ error: 'Failed to delete user' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+} else {
+  // Auth user deleted successfully, also clean up profiles/user_roles just in case
+  // (cascade may not work since there's no FK)
+  await supabaseAdmin.from('user_roles').delete().eq('user_id', userId)
+  await supabaseAdmin.from('profiles').delete().eq('id', userId)
+}
 ```
 
-**Good news**: The code already points to external Supabase! Once you deploy edge functions there, the existing `supabase.functions.invoke()` calls will work automatically.
+### 2. Complete Updated Edge Function
 
----
+I will provide the complete updated code that needs to be pasted into the External Supabase dashboard.
 
-## Auto-Delivery Scheduling
+## Technical Summary
 
-The `auto-deliver-daily` function needs a trigger to run daily. Options:
+| Component | Current State | Fix Required |
+|-----------|--------------|--------------|
+| JWT Verification | Working correctly | No change |
+| Auth user deletion | Fails if user not in auth.users | Add fallback logic |
+| Profile deletion | Never executed | Add explicit deletion |
+| user_roles deletion | Never executed | Add explicit deletion |
 
-### Option A: Supabase Cron (pg_cron extension)
+## Implementation Steps
 
-Add to your database:
+1. Go to External Supabase Dashboard → Edge Functions → delete-user → Code
+2. Replace the entire code with the fixed version (I will provide after approval)
+3. Save/Deploy
+4. Test deleting a user
+
+## Optional Future Improvement
+
+Consider adding foreign keys to prevent orphaned records:
+
 ```sql
--- Enable pg_cron if not already enabled
-CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- Add FK from profiles to auth.users (optional, for new users)
+ALTER TABLE public.profiles
+ADD CONSTRAINT profiles_id_fkey 
+FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
--- Schedule daily at 10:00 AM IST (4:30 AM UTC)
-SELECT cron.schedule(
-  'auto-deliver-daily',
-  '30 4 * * *',
-  $$SELECT net.http_post(
-    url := 'https://htsfxnuttobkdquxwvjj.supabase.co/functions/v1/auto-deliver-daily',
-    headers := '{"Authorization": "Bearer your_service_role_key"}'::jsonb
-  )$$
-);
+-- Add FK from user_roles to profiles
+ALTER TABLE public.user_roles
+ADD CONSTRAINT user_roles_user_id_fkey 
+FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
 ```
 
-### Option B: External Cron (Free)
+Note: This would only work for users created in auth.users first. Your current staff creation flow creates profiles-only users, so the FK may not be suitable unless you change the user creation flow.
 
-Use GitHub Actions, cron-job.org, or similar free service to call the edge function daily.
-
----
-
-## Step-by-Step Instructions for You
-
-### Prerequisites
-1. Install Node.js if not already installed
-2. Have your Supabase account credentials ready
-3. Have the `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` ready
-
-### Deployment Steps
-
-**Step 1: Install Supabase CLI**
-```bash
-npm install -g supabase
-```
-
-**Step 2: Login**
-```bash
-supabase login
-```
-This opens a browser to authenticate.
-
-**Step 3: Link Project**
-```bash
-cd /path/to/your/project
-supabase link --project-ref htsfxnuttobkdquxwvjj
-```
-
-**Step 4: Set Secrets**
-```bash
-supabase secrets set EXTERNAL_SUPABASE_URL="https://htsfxnuttobkdquxwvjj.supabase.co"
-supabase secrets set EXTERNAL_SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh0c2Z4bnV0dG9ia2RxdXh3dmpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk1ODQ1ODgsImV4cCI6MjA4NTE2MDU4OH0.kM-uVIvO_bGqBeBQgoXBLlzTbTyQGVRgL6aVYMG2OcM"
-supabase secrets set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY="your_service_role_key"
-```
-
-**Step 5: Deploy Functions**
-```bash
-supabase functions deploy create-user
-supabase functions deploy delete-user
-supabase functions deploy reset-user-pin
-supabase functions deploy change-pin
-supabase functions deploy update-user-status
-supabase functions deploy customer-auth
-supabase functions deploy auto-deliver-daily
-supabase functions deploy health-check
-```
-
-**Step 6: Verify**
-- Go to your Supabase dashboard → Edge Functions
-- You should see all deployed functions listed
-- Test by creating a new user in the app
-
----
-
-## Alternative: I Can Help You Remove Edge Functions
-
-If the CLI deployment seems complex, I can implement the alternative approach:
-
-1. Remove all edge function dependencies
-2. Use existing SQL RPC functions (`admin_create_staff`, `staff_login`, etc.)
-3. Switch to session-based authentication (already exists in your schema)
-4. Zero external dependencies - pure Vercel + Supabase free tier
-
----
-
-## Recommendation
-
-| If... | Then... |
-|-------|---------|
-| You're comfortable with CLI and want native Supabase Auth | Deploy edge functions to external Supabase |
-| You want simpler setup with zero CLI dependency | Remove edge functions and use SQL RPC |
-
-Both approaches will result in a fully functional application. The edge function approach preserves the current architecture, while the RPC approach simplifies deployment.
