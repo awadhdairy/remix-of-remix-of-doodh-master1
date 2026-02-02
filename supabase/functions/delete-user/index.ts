@@ -259,15 +259,62 @@ serve(async (req) => {
       .eq('id', userId)
       .single()
 
-    // Delete the user from auth.users (this will cascade to profiles and user_roles due to ON DELETE CASCADE)
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
+    // HYBRID DELETION: Handle both auth-based users and profile-only users
+    // Try to delete from auth.users first
+    const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
 
-    if (deleteError) {
-      console.error('Error deleting user:', deleteError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to delete user' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (authDeleteError) {
+      // Check if it's a "User not found" error (user only exists in profiles table)
+      const isUserNotFound = authDeleteError.status === 404 || 
+                             authDeleteError.message?.includes('not found') ||
+                             authDeleteError.message?.includes('User not found')
+      
+      if (isUserNotFound) {
+        console.log('User not in auth.users, deleting from profiles/user_roles directly')
+        
+        // Delete from user_roles first (child table)
+        const { error: rolesError } = await supabaseAdmin
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId)
+        
+        if (rolesError) {
+          console.error('Error deleting user_roles:', rolesError)
+          // Continue anyway - user_roles might not exist
+        }
+        
+        // Delete from profiles (main table)
+        const { error: profileError } = await supabaseAdmin
+          .from('profiles')
+          .delete()
+          .eq('id', userId)
+        
+        if (profileError) {
+          console.error('Error deleting profile:', profileError)
+          return new Response(
+            JSON.stringify({ error: 'Failed to delete user profile' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        
+        console.log('Successfully deleted profile-only user:', userId)
+      } else {
+        // Some other auth error - fail the request
+        console.error('Error deleting user from auth:', authDeleteError)
+        return new Response(
+          JSON.stringify({ error: 'Failed to delete user' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    } else {
+      // Auth user deleted successfully, also clean up profiles/user_roles
+      // (explicit cleanup since there's no FK cascade from auth.users)
+      console.log('Auth user deleted, cleaning up profiles/user_roles...')
+      
+      await supabaseAdmin.from('user_roles').delete().eq('user_id', userId)
+      await supabaseAdmin.from('profiles').delete().eq('id', userId)
+      
+      console.log('Successfully deleted auth user and cleaned up:', userId)
     }
 
     // Log the deletion
