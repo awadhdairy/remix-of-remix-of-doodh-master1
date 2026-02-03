@@ -38,7 +38,7 @@ This document contains a complete specification to recreate the **Awadh Dairy** 
 - **Date Handling:** date-fns
 - **Font:** Outfit (Google Fonts)
 
-### Backend (Supabase/Lovable Cloud)
+### Backend (Supabase)
 - **Database:** PostgreSQL with Row Level Security (RLS)
 - **Authentication:** Supabase Auth with PIN-based login
 - **Edge Functions:** Deno-based serverless functions
