@@ -2,7 +2,7 @@
 -- AWADH DAIRY - COMPLETE EXTERNAL SUPABASE SCHEMA
 -- ============================================================================
 -- Run this script in your external Supabase SQL Editor:
--- https://supabase.com/dashboard/project/htsfxnuttobkdquxwvjj/sql
+-- https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql
 -- ============================================================================
 
 -- Enable required extensions
@@ -269,8 +269,8 @@ CREATE TABLE IF NOT EXISTS public.products (
 
 CREATE TABLE IF NOT EXISTS public.customer_products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
-  product_id UUID NOT NULL REFERENCES public.products(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
   quantity NUMERIC NOT NULL,
   custom_price NUMERIC,
   is_active BOOLEAN DEFAULT true,
@@ -320,7 +320,7 @@ CREATE TABLE IF NOT EXISTS public.deliveries (
 CREATE TABLE IF NOT EXISTS public.delivery_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   delivery_id UUID NOT NULL REFERENCES public.deliveries(id) ON DELETE CASCADE,
-  product_id UUID NOT NULL REFERENCES public.products(id),
+  product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
   quantity NUMERIC NOT NULL,
   unit_price NUMERIC NOT NULL,
   total_amount NUMERIC NOT NULL,
@@ -377,7 +377,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
 CREATE TABLE IF NOT EXISTS public.price_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
-  product_id UUID REFERENCES public.products(id),
+  product_id UUID REFERENCES public.products(id) ON DELETE SET NULL,
   min_fat_percentage NUMERIC,
   max_fat_percentage NUMERIC,
   min_snf_percentage NUMERIC,
