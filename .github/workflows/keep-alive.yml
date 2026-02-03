@@ -14,7 +14,7 @@ jobs:
         run: |
           # Ping the health-check edge function to keep the database active
           response=$(curl -s -w "\n%{http_code}" \
-            "https://eqedibnoatuxczjwkbbx.supabase.co/functions/v1/health-check")
+            "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check")
           
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
