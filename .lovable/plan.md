@@ -1,176 +1,305 @@
 
 
-# Implementation Plan: Contact Information Updates & Consistency Fixes
+# Comprehensive Fix: Add-on Delivery Orders & Billing Integration
 
-## Analysis Summary
+## Executive Summary
 
-### Screenshots Verification
-The screenshots confirm that your external Supabase project (`ohrytohcbbkorivsuukm`) has:
-- All 9 edge functions deployed and functioning
-- All required database functions present (customer_login, customer_register, staff_login, bootstrap_super_admin, etc.)
-- Proper infrastructure for authentication and PIN management
-
-### Issues Identified
-
-| File | Line | Current Value | Required Value |
-|------|------|---------------|----------------|
-| `CustomerAuth.tsx` | 306 | `support@doodhwallah.app` | `contact@awadhdairy.com` |
-| `CustomerProfile.tsx` | 118 | `support@awadhdairy.com` | `contact@awadhdairy.com` |
-| `CustomerProfile.tsx` | 119 | `+91 XXXXXXXXXX` | `+91 78977 16792` |
-| `AWADH_DAIRY_COMPLETE_BLUEPRINT.md` | Multiple | `doodhwallah.app` references | `awadhdairy.com` |
+After thorough analysis of the codebase, I've identified **4 key issues** that prevent addon delivery orders from being created properly and integrating with the billing system. The fixes are minimal and targeted to avoid breaking existing functionality.
 
 ---
 
-## Technical Approach
+## Issues Identified
 
-### Philosophy: Minimal Changes, Maximum Safety
-- Only modify the exact strings that need updating
-- No logic changes, no structural changes
-- All integrations remain untouched
-- Edge function calls continue to work exactly as before
+### Issue 1: Missing `running_balance` Calculation in QuickAddOnOrderDialog
 
----
+**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
+**Problem:** When inserting a ledger entry for add-on orders, the code doesn't calculate the `running_balance` field. The ledger entry is inserted without this value, causing:
+- Incorrect balance display in customer ledger
+- Inconsistent financial tracking
 
-## Phase 1: Customer Authentication Page
-
-**File:** `src/pages/customer/CustomerAuth.tsx`
-
-**Change (Line 306):**
+**Current code (lines 179-188):**
 ```tsx
-// FROM:
-<p>Need help? Contact us at support@doodhwallah.app</p>
-
-// TO:
-<p>Need help? Contact us at contact@awadhdairy.com</p>
+const { error: ledgerError } = await supabase
+  .from("customer_ledger")
+  .insert({
+    customer_id: customerId,
+    transaction_date: format(deliveryDate, "yyyy-MM-dd"),
+    transaction_type: "delivery",
+    description: `Add-on Order: ${orderItems.map((i) => `${i.product_name} × ${i.quantity}`).join(", ")}`,
+    debit_amount: totalAmount,
+    reference_id: delivery.id,
+    // Missing: running_balance
+  });
 ```
 
-**Impact Assessment:**
-- Pure text change in footer
-- No logic affected
-- No Supabase integration affected
-- Customer login/register functions unchanged
-
----
-
-## Phase 2: Customer Profile Page
-
-**File:** `src/pages/customer/CustomerProfile.tsx`
-
-**Change 1 (Line 118):**
+**The `useLedgerAutomation` hook correctly calculates this (line 48-65):**
 ```tsx
-// FROM:
-<span>Contact: support@awadhdairy.com</span>
-
-// TO:
-<span>Contact: contact@awadhdairy.com</span>
+const currentBalance = await getRunningBalance(entry.customer_id);
+const newBalance = currentBalance + debit - credit;
+// Then includes running_balance: newBalance in insert
 ```
 
-**Change 2 (Line 119):**
+---
+
+### Issue 2: Duplicate Deliveries When Same-Day Addon Order
+
+**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
+**Problem:** When an add-on order is placed on a day that already has a delivery (subscription or previous addon), it creates a NEW delivery record instead of appending items to the existing one. This causes:
+- Multiple delivery records for the same customer on the same day
+- Confusing delivery history
+- Items appearing in separate delivery rows in the UI
+
+**Current behavior:**
+- Customer already has a delivery for 2024-02-03 (subscription)
+- User creates an add-on order for the same day
+- System creates a SECOND delivery record for 2024-02-03
+- Customer now has 2 deliveries on the same date
+
+**Expected behavior:**
+- If a delivery already exists for the customer on that date, add items to it
+- Only create new delivery if none exists
+
+---
+
+### Issue 3: Error Handling Doesn't Distinguish RLS Failures
+
+**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
+**Problem:** The catch block shows a generic "Failed to create order" message. If RLS policies block the insert, users don't get helpful feedback about why the operation failed.
+
+**Current code (lines 195-198):**
 ```tsx
-// FROM:
-<span>Call: +91 XXXXXXXXXX</span>
-
-// TO:
-<span>Call: +91 78977 16792</span>
+} catch (error) {
+  console.error("Error creating add-on order:", error);
+  toast.error("Failed to create order");
+}
 ```
 
-**Impact Assessment:**
-- Pure text changes in support section
-- Profile editing functionality unchanged
-- PIN change functionality unchanged
-- Logout functionality unchanged
-- All Supabase integrations intact
+---
+
+### Issue 4: DeliveryItemsEditor Doesn't Update Ledger
+
+**File:** `src/components/deliveries/DeliveryItemsEditor.tsx`
+**Problem:** When items are added/modified via the DeliveryItemsEditor (from the Deliveries page), no ledger entry is created. This means:
+- Add-ons added through the Deliveries page bypass the ledger
+- Financial tracking is inconsistent
+
+**Current behavior:**
+- User edits delivery items via "Items" button in Deliveries page
+- Items are saved to `delivery_items` table
+- No entry is added to `customer_ledger`
 
 ---
 
-## Phase 3: Documentation Update
+## Implementation Plan
 
-**File:** `AWADH_DAIRY_COMPLETE_BLUEPRINT.md`
+### Change 1: Fix QuickAddOnOrderDialog - Add Running Balance & Check for Existing Delivery
 
-Update all `doodhwallah.app` references to `awadhdairy.com`:
-- Line ~973: `{phone}@doodhwallah.app` → `{phone}@awadhdairy.com`
-- Line ~985: `customer_{phone}@doodhwallah.app` → `customer_{phone}@awadhdairy.com`
-- Line ~995: `{phone}@doodhwallah.app` → `{phone}@awadhdairy.com`
-- Line ~1040: `{phone}@doodhwallah.app` → `{phone}@awadhdairy.com`
-- Lines ~1862-1863: Email pattern documentation
+**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
 
-**Note:** This is documentation only - the actual code in edge functions already uses `@awadhdairy.com` (verified in customer-auth/index.ts and create-user/index.ts)
+**Modifications:**
 
----
+1. **Check for existing delivery** before creating a new one:
+   - Query for delivery with same `customer_id` and `delivery_date`
+   - If exists, use that delivery ID; otherwise create new
 
-## Integration Verification Checklist
+2. **Calculate running_balance** before inserting ledger entry:
+   - Fetch the latest running_balance for the customer
+   - Add debit amount to get new balance
+   - Include in the insert
 
-### What Remains Unchanged (Verified):
+**Updated logic (handleSaveOrder function):**
 
-| Component | Status |
-|-----------|--------|
-| Customer login via edge function | Unchanged - uses `customer-auth` function |
-| Customer registration | Unchanged - calls `customer-auth` with action='register' |
-| PIN verification via `verify_customer_pin` RPC | Unchanged |
-| Session management | Unchanged - `supabase.auth.setSession()` works as before |
-| Profile editing via `customers` table | Unchanged |
-| PIN change via `useCustomerAuth.changePin()` | Unchanged |
-| Logout functionality | Unchanged |
+```tsx
+const handleSaveOrder = async () => {
+  if (orderItems.length === 0) {
+    toast.error("Please select at least one product");
+    return;
+  }
 
-### Code Flow Verification:
+  setSaving(true);
+  try {
+    const formattedDate = format(deliveryDate, "yyyy-MM-dd");
+    
+    // Step 1: Check for existing delivery on this date
+    const { data: existingDelivery } = await supabase
+      .from("deliveries")
+      .select("id")
+      .eq("customer_id", customerId)
+      .eq("delivery_date", formattedDate)
+      .maybeSingle();
+    
+    let deliveryId: string;
+    
+    if (existingDelivery) {
+      // Use existing delivery
+      deliveryId = existingDelivery.id;
+    } else {
+      // Create new delivery
+      const currentTime = new Date().toLocaleTimeString("en-IN", {...});
+      const { data: newDelivery, error: deliveryError } = await supabase
+        .from("deliveries")
+        .insert({
+          customer_id: customerId,
+          delivery_date: formattedDate,
+          status: "delivered",
+          delivery_time: currentTime,
+          notes: "Add-on order",
+        })
+        .select("id")
+        .single();
+      if (deliveryError) throw deliveryError;
+      deliveryId = newDelivery.id;
+    }
 
+    // Step 2: Insert delivery items
+    const deliveryItems = orderItems.map((item) => ({...}));
+    const { error: itemsError } = await supabase
+      .from("delivery_items")
+      .insert(deliveryItems);
+    if (itemsError) throw itemsError;
+
+    // Step 3: Calculate running balance before ledger insert
+    const { data: lastEntry } = await supabase
+      .from("customer_ledger")
+      .select("running_balance")
+      .eq("customer_id", customerId)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const previousBalance = lastEntry?.running_balance || 0;
+    const newBalance = previousBalance + totalAmount;
+
+    // Step 4: Insert ledger entry with running_balance
+    const { error: ledgerError } = await supabase
+      .from("customer_ledger")
+      .insert({
+        customer_id: customerId,
+        transaction_date: formattedDate,
+        transaction_type: "delivery",
+        description: `Add-on Order: ${orderItems.map(...)...}`,
+        debit_amount: totalAmount,
+        credit_amount: 0,
+        running_balance: newBalance,
+        reference_id: deliveryId,
+      });
+    if (ledgerError) throw ledgerError;
+
+    toast.success("Add-on order created successfully!");
+    onOpenChange(false);
+    onSuccess?.();
+  } catch (error: any) {
+    console.error("Error creating add-on order:", error);
+    // Better error message
+    if (error.message?.includes("policy")) {
+      toast.error("Permission denied. Please check your access rights.");
+    } else {
+      toast.error(`Failed to create order: ${error.message || "Unknown error"}`);
+    }
+  } finally {
+    setSaving(false);
+  }
+};
 ```
-CustomerAuth.tsx Flow:
-┌─────────────────────────────────────────────────────────────┐
-│  User enters phone + PIN                                     │
-│       ↓                                                      │
-│  supabase.functions.invoke('customer-auth', {body})         │
-│       ↓                                                      │
-│  Edge function calls verify_customer_pin RPC                 │
-│       ↓                                                      │
-│  Returns session tokens                                      │
-│       ↓                                                      │
-│  supabase.auth.setSession() - stores in localStorage         │
-│       ↓                                                      │
-│  Navigate to /customer/dashboard                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-This flow is completely untouched by our changes.
 
 ---
 
-## Files Modified
+### Change 2: Add Ledger Entry Support to DeliveryItemsEditor (Optional Enhancement)
 
-| File | Type of Change | Risk Level |
-|------|---------------|------------|
-| `src/pages/customer/CustomerAuth.tsx` | Text only | None |
-| `src/pages/customer/CustomerProfile.tsx` | Text only | None |
-| `AWADH_DAIRY_COMPLETE_BLUEPRINT.md` | Documentation | None |
+**File:** `src/components/deliveries/DeliveryItemsEditor.tsx`
+
+This is a lower-priority enhancement. The current implementation doesn't track delivery item changes in the ledger. For now, this is acceptable because:
+- SmartInvoiceCreator fetches actual delivery_items data
+- Invoices will reflect correct totals regardless
+
+However, if precise ledger tracking is needed, we can add this in a future update.
 
 ---
 
-## What We Are NOT Changing
+## Files to Modify
+
+| File | Changes | Impact |
+|------|---------|--------|
+| `src/components/customers/QuickAddOnOrderDialog.tsx` | Add existing delivery check, calculate running_balance | Fixes addon order creation |
+
+---
+
+## What Remains Unchanged
 
 To ensure no functionality is lost:
 
-1. **Edge Functions** - All 9 functions remain exactly as deployed
-2. **Database Functions** - All RPCs remain unchanged
-3. **Authentication Logic** - No changes to login/register handlers
-4. **Supabase Client** - `external-supabase.ts` unchanged
-5. **useCustomerAuth Hook** - All methods remain identical
-6. **Invoice PDF Generator** - Already uses `contact@awadhdairy.com`
-7. **Form Validation** - Zod schemas unchanged
-8. **Error Handling** - Toast notifications unchanged
+| Component | Status | Reason |
+|-----------|--------|--------|
+| `useAutoInvoiceGenerator.ts` | Unchanged | Already fetches all delivered items correctly |
+| `SmartInvoiceCreator.tsx` | Unchanged | Already distinguishes addons vs subscriptions |
+| `useLedgerAutomation.ts` | Unchanged | Can be used as reference but not modified |
+| `DeliveryItemsEditor.tsx` | Unchanged | Works correctly for its purpose |
+| `auto-deliver-daily` edge function | Unchanged | Handles subscription deliveries |
+| All billing/invoice flows | Unchanged | Already work with delivery_items |
 
 ---
 
-## Post-Implementation Verification
+## Integration Flow After Fix
 
-After changes are applied, verify:
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ADD-ON ORDER FLOW (FIXED)                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  User clicks "Add Order" in CustomerDetailDialog                │
+│       ↓                                                         │
+│  QuickAddOnOrderDialog opens                                    │
+│       ↓                                                         │
+│  User selects products & date → clicks "Add Order"              │
+│       ↓                                                         │
+│  [NEW] Check: Does delivery exist for this date?                │
+│       ├─ YES → Use existing delivery ID                         │
+│       └─ NO → Create new delivery record                        │
+│       ↓                                                         │
+│  Insert delivery_items for the delivery                         │
+│       ↓                                                         │
+│  [NEW] Calculate running_balance from last ledger entry         │
+│       ↓                                                         │
+│  Insert customer_ledger entry WITH running_balance              │
+│       ↓                                                         │
+│  Success! Items now appear in:                                  │
+│    - Deliveries page (under single delivery)                    │
+│    - Customer ledger (with correct balance)                     │
+│    - Invoice creation (fetched from delivery_items)             │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-1. Customer Auth page loads correctly
-2. Login/Register tabs function
-3. Form submission works
-4. Error messages display properly
-5. Customer Profile page loads
-6. Edit profile works
-7. PIN change dialog functions
-8. Logout works
-9. Support contact shows correct email and phone
+---
+
+## Invoice Auto-Fetch Verification
+
+The existing invoice generation correctly handles addon orders:
+
+1. **SmartInvoiceCreator** (lines 124-185):
+   - Fetches all deliveries with status `delivered` in the billing period
+   - Iterates through `delivery_items` and aggregates by product
+   - Marks items as `is_addon` if not in customer subscriptions
+   - Shows addons separately in the invoice UI
+
+2. **useAutoInvoiceGenerator** (lines 70-113):
+   - Same pattern: fetches deliveries → aggregates delivery_items
+   - All items from both subscription and addon deliveries are included
+   - No changes needed
+
+The fix ensures addon orders create proper `delivery_items` entries, which are then automatically picked up by invoice generation.
+
+---
+
+## Testing Checklist
+
+After implementation, verify:
+
+1. [ ] Create an add-on order for a day WITH existing delivery → items should be added to existing delivery
+2. [ ] Create an add-on order for a day WITHOUT existing delivery → new delivery should be created
+3. [ ] Check customer ledger shows correct running_balance after addon order
+4. [ ] Create invoice for period containing addon orders → addon items should appear
+5. [ ] Verify delivery appears once per day in Deliveries page (not duplicated)
+6. [ ] Check CustomerDetailDialog shows addon orders correctly in history
 
