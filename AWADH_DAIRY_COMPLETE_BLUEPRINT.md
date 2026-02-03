@@ -970,7 +970,7 @@ $$ LANGUAGE plpgsql SET search_path TO 'public';
 
 ```typescript
 // Validates specific credentials (phone: 7897716792, PIN: 101101)
-// Creates auth user with email pattern: {phone}@doodhwallah.app
+// Creates auth user with email pattern: {phone}@awadhdairy.com
 // Sets role to super_admin in profiles and user_roles tables
 // Uses SUPABASE_SERVICE_ROLE_KEY for admin operations
 ```
@@ -982,7 +982,7 @@ $$ LANGUAGE plpgsql SET search_path TO 'public';
 ```typescript
 // Actions: register, login, change-pin
 // Uses database functions for PIN verification
-// Creates auth users with email: customer_{phone}@doodhwallah.app
+// Creates auth users with email: customer_{phone}@awadhdairy.com
 // Auto-approves if customer phone exists in customers table
 // Rate limiting via customer_auth_attempts table
 ```
@@ -992,7 +992,7 @@ $$ LANGUAGE plpgsql SET search_path TO 'public';
 **Location**: `supabase/functions/create-user/index.ts`
 
 ```typescript
-// Creates auth user with email: {phone}@doodhwallah.app
+// Creates auth user with email: {phone}@awadhdairy.com
 // Sets profile and role
 // Uses service role key for admin.createUser
 ```
@@ -1037,7 +1037,7 @@ serve(async (req) => {
 
 ### 6.1 Staff Authentication Flow
 1. User enters phone number and 6-digit PIN at `/auth`
-2. Frontend converts phone to email: `{phone}@doodhwallah.app`
+2. Frontend converts phone to email: `{phone}@awadhdairy.com`
 3. Supabase `signInWithPassword(email, pin)` is called
 4. On success, redirect to `/dashboard`
 5. `useUserRole` hook fetches role from `user_roles` table
@@ -1859,8 +1859,8 @@ USING (has_any_role(auth.uid(), ARRAY['super_admin', 'manager']::user_role[]));
 - Used for admin operations (user creation, role updates)
 
 ### 18.4 Email Pattern
-- Staff: `{phone}@doodhwallah.app`
-- Customer: `customer_{phone}@doodhwallah.app`
+- Staff: `{phone}@awadhdairy.com`
+- Customer: `customer_{phone}@awadhdairy.com`
 - Satisfies Supabase auth requirements
 - Auto-confirmed (no email verification)
 

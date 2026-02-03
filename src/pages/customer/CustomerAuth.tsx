@@ -303,7 +303,7 @@ export default function CustomerAuth() {
 
       {/* Footer */}
       <div className="text-center py-4 text-sm text-muted-foreground">
-        <p>Need help? Contact us at support@doodhwallah.app</p>
+        <p>Need help? Contact us at contact@awadhdairy.com</p>
       </div>
     </div>
   );
