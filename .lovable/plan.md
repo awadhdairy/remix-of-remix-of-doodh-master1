@@ -1,162 +1,183 @@
 
+# Comprehensive Fix: Remove Bootstrap Dependency & Fix Create-User Error
 
-# Fix: 401 Missing Authorization Header Error
+## Problem Summary
 
-## Problem Identified
+### 1. Create-User Edge Function Error
+The `create-user` edge function is failing because it uses `SUPABASE_SERVICE_ROLE_KEY` (Lovable Cloud's internal variable) instead of `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` (your external Supabase project's service role key).
 
-When you run:
-```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
+**Current code (line 20 of create-user/index.ts):**
+```typescript
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')  // WRONG
 ```
 
-You get:
-```json
-{"code":401,"message":"Missing authorization header"}
+**All other functions use:**
+```typescript
+const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')  // CORRECT
 ```
 
-This happens because:
-1. Supabase Edge Functions **require JWT authentication by default**
-2. The `setup-external-db` function is designed to be a one-time setup function that should be callable without authentication
-3. The `supabase/config.toml` file is missing the `verify_jwt = false` setting for this function
+### 2. Bootstrap Dependency Issues
+The project has several places that depend on bootstrap logic:
+- `setup-external-db` function reads `BOOTSTRAP_ADMIN_PHONE` and `BOOTSTRAP_ADMIN_PIN` from environment
+- `bootstrap_super_admin()` SQL function in the schema
+- Documentation files reference bootstrap process
+
+### 3. Missing Permanent Admin
+The admin account (phone: `7897716792`, PIN: `101101`) needs to be hardcoded directly into the setup function so it works without environment variables.
 
 ---
 
-## Solution: Two Options
+## Solution Overview
 
-### Option 1: Update config.toml (Recommended)
+| Component | Change Required |
+|-----------|-----------------|
+| `create-user/index.ts` | Fix environment variable from `SUPABASE_SERVICE_ROLE_KEY` to `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` |
+| `setup-external-db/index.ts` | Hardcode permanent admin credentials, remove `BOOTSTRAP_ADMIN_PHONE` and `BOOTSTRAP_ADMIN_PIN` dependencies |
+| Secrets cleanup | Remove unused `BOOTSTRAP_ADMIN_PHONE` and `BOOTSTRAP_ADMIN_PIN` secrets |
 
-Update `supabase/config.toml` to disable JWT verification for the setup function:
+---
 
-```toml
-project_id = "ohrytohcbbkorivsuukm"
+## Technical Implementation Details
 
-[functions.setup-external-db]
-verify_jwt = false
+### Fix 1: Update create-user/index.ts
 
-[functions.health-check]
-verify_jwt = false
+**File:** `supabase/functions/create-user/index.ts`
+
+**Changes:**
+1. Replace `SUPABASE_SERVICE_ROLE_KEY` with `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY`
+2. Add `EXTERNAL_SUPABASE_URL` usage for consistency with other functions
+3. Fix the role check to use the safe query pattern (avoid `.single()` errors)
+
+```typescript
+// BEFORE (broken):
+const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+const supabaseAdmin = createClient(EXTERNAL_URL, serviceRoleKey)
+
+// AFTER (fixed):
+const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
+const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
+const supabaseAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY')!
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 ```
 
-Then redeploy the functions:
-```bash
-supabase functions deploy setup-external-db --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
-supabase functions deploy health-check --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+### Fix 2: Update setup-external-db/index.ts
+
+**File:** `supabase/functions/setup-external-db/index.ts`
+
+**Changes:**
+1. Hardcode permanent admin credentials directly in code:
+   - Phone: `7897716792`
+   - PIN: `101101`
+2. Remove dependency on `BOOTSTRAP_ADMIN_PHONE` and `BOOTSTRAP_ADMIN_PIN` environment variables
+3. Make the function truly idempotent (safe to run multiple times)
+
+```typescript
+// BEFORE (reads from env):
+const adminPhone = Deno.env.get('BOOTSTRAP_ADMIN_PHONE')!
+const adminPin = Deno.env.get('BOOTSTRAP_ADMIN_PIN')!
+
+// AFTER (hardcoded permanent admin):
+const PERMANENT_ADMIN_PHONE = '7897716792'
+const PERMANENT_ADMIN_PIN = '101101'
 ```
 
-After redeployment, run the curl command again:
-```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
+### Fix 3: Align Role Check Pattern
+
+All edge functions will use the safe role-check pattern to prevent `.single()` errors when checking admin permissions:
+
+```typescript
+// Safe pattern (handles duplicate roles gracefully):
+const { data: roleRows, error: roleError } = await supabaseAdmin
+  .from('user_roles')
+  .select('role')
+  .eq('user_id', requestingUser.id)
+  .eq('role', 'super_admin')
+  .limit(1)
+
+const isSuperAdmin = !roleError && roleRows && roleRows.length > 0
 ```
 
 ---
 
-### Option 2: Include Authorization Header in curl
+## Files to Modify
 
-If you don't want to modify the config, you can pass the anon key as a Bearer token:
+### 1. supabase/functions/create-user/index.ts
+- Replace hardcoded `EXTERNAL_URL` constant with `EXTERNAL_SUPABASE_URL` env variable
+- Replace `SUPABASE_SERVICE_ROLE_KEY` with `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY`
+- Update role check to use safe query pattern
+- Add better error logging
 
+### 2. supabase/functions/setup-external-db/index.ts
+- Remove `BOOTSTRAP_ADMIN_PHONE` and `BOOTSTRAP_ADMIN_PIN` env variable reads
+- Hardcode permanent admin credentials
+- Keep the seed data functionality intact
+
+---
+
+## Verification After Implementation
+
+### Test 1: Health Check
+```bash
+curl "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check"
+```
+Expected: `{"status": "healthy"}`
+
+### Test 2: Setup External DB (Bootstrap Permanent Admin)
 ```bash
 curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg" \
   -H "Content-Type: application/json"
 ```
+Expected: `{"success": true, "admin_phone": "7897716792", ...}`
 
-This uses the anon key from your external Supabase project (found in `src/lib/external-supabase.ts`).
+### Test 3: Admin Login
+- Go to `/auth`
+- Enter phone: `7897716792`
+- Enter PIN: `101101`
+- Should successfully log in as super_admin
 
----
-
-### Option 3: Use apikey Header Instead
-
-Supabase also accepts the anon key via `apikey` header:
-
-```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db" \
-  -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg" \
-  -H "Content-Type: application/json"
-```
-
----
-
-## Complete config.toml Update
-
-To properly configure all functions, the `supabase/config.toml` should be updated to:
-
-```toml
-project_id = "ohrytohcbbkorivsuukm"
-
-[functions.auto-deliver-daily]
-verify_jwt = false
-
-[functions.change-pin]
-verify_jwt = false
-
-[functions.create-user]
-verify_jwt = false
-
-[functions.customer-auth]
-verify_jwt = false
-
-[functions.delete-user]
-verify_jwt = false
-
-[functions.health-check]
-verify_jwt = false
-
-[functions.reset-user-pin]
-verify_jwt = false
-
-[functions.setup-external-db]
-verify_jwt = false
-
-[functions.update-user-status]
-verify_jwt = false
-```
+### Test 4: Create New User (via Admin)
+- Log in as admin
+- Go to User Management
+- Click "Add New User"
+- Fill in details and submit
+- Should successfully create the user
 
 ---
 
-## Quick Fix: Run This Command Now
+## Environment Variables Status
 
-Use this command immediately (includes the authorization header):
-
-```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db" \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg" \
-  -H "Content-Type: application/json"
-```
-
----
-
-## Expected Response
-
-If successful, you should see:
-```json
-{
-  "success": true,
-  "message": "External database setup complete",
-  "admin_id": "uuid-here",
-  "admin_phone": "7897716792",
-  "data_seeded": true
-}
-```
+| Variable | Status | Purpose |
+|----------|--------|---------|
+| `EXTERNAL_SUPABASE_URL` | Keep | Required for all functions |
+| `EXTERNAL_SUPABASE_ANON_KEY` | Keep | Required for all functions |
+| `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` | Keep | Required for admin operations |
+| `BOOTSTRAP_ADMIN_PHONE` | Can Remove | No longer needed (hardcoded) |
+| `BOOTSTRAP_ADMIN_PIN` | Can Remove | No longer needed (hardcoded) |
 
 ---
 
-## Implementation Plan
+## Security Considerations
 
-| Step | Action | Where |
-|------|--------|-------|
-| 1 | Update `supabase/config.toml` with `verify_jwt = false` for all functions | Lovable |
-| 2 | Push changes to GitHub | Lovable |
-| 3 | Pull changes locally | Terminal |
-| 4 | Redeploy functions with `--no-verify-jwt` flag | Terminal |
-| 5 | Run the setup curl command | Terminal |
-| 6 | Verify admin login works at `/auth` | Browser |
+1. **Hardcoded Admin Credentials**: The permanent admin phone/PIN is hardcoded in the edge function code. This is acceptable because:
+   - Edge function code is server-side only (not exposed to clients)
+   - The admin can change their PIN after first login
+   - This is a standard pattern for initial system setup
+
+2. **Service Role Key**: Still stored as a secret (never hardcoded)
+
+3. **PIN Storage**: PINs are still hashed using bcrypt in the database
 
 ---
 
-## Summary
+## Summary of Changes
 
-The 401 error occurs because Supabase enforces JWT verification by default. You have two immediate options:
+| File | Lines Changed | Description |
+|------|---------------|-------------|
+| `create-user/index.ts` | ~30 lines | Fix env variables, use safe role check |
+| `setup-external-db/index.ts` | ~10 lines | Hardcode permanent admin, remove bootstrap env deps |
 
-1. **Quick fix**: Add the `Authorization: Bearer <anon_key>` header to your curl command (command provided above)
-2. **Permanent fix**: Update `config.toml` to set `verify_jwt = false` for the functions and redeploy
-
+This fix will:
+- Allow the admin to create new users successfully
+- Remove all bootstrap environment variable dependencies
+- Make the permanent admin (7897716792/101101) work reliably
+- Align all edge functions to use the same environment variable pattern
