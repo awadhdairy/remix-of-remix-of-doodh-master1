@@ -5,6 +5,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// PERMANENT ADMIN CREDENTIALS - hardcoded for reliability
+// No bootstrap environment variables needed
+const PERMANENT_ADMIN_PHONE = '7897716792'
+const PERMANENT_ADMIN_PIN = '101101'
+const PERMANENT_ADMIN_NAME = 'Super Admin'
+
 /**
  * One-time setup function for external Supabase database
  * Creates permanent super admin and seeds all dummy data
@@ -20,10 +26,6 @@ Deno.serve(async (req) => {
     // Use EXTERNAL Supabase variables
     const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
-    
-    // Get admin credentials from environment
-    const adminPhone = Deno.env.get('BOOTSTRAP_ADMIN_PHONE')!
-    const adminPin = Deno.env.get('BOOTSTRAP_ADMIN_PIN')!
 
     if (!supabaseUrl || !supabaseServiceKey) {
       return new Response(
@@ -32,19 +34,13 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (!adminPhone || !adminPin) {
-      return new Response(
-        JSON.stringify({ error: 'Admin credentials not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
     console.log('[SETUP] Starting external database setup...')
+    console.log('[SETUP] Using permanent admin phone:', PERMANENT_ADMIN_PHONE)
 
     // Check if admin already exists
-    const email = `${adminPhone}@awadhdairy.com`
+    const email = `${PERMANENT_ADMIN_PHONE}@awadhdairy.com`
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers()
     const existingAdmin = existingUsers?.users?.find(u => u.email === email)
 
@@ -56,7 +52,7 @@ Deno.serve(async (req) => {
 
       // Ensure admin has correct password
       await supabaseAdmin.auth.admin.updateUserById(adminUserId, {
-        password: adminPin,
+        password: PERMANENT_ADMIN_PIN,
         email_confirm: true
       })
 
@@ -65,8 +61,8 @@ Deno.serve(async (req) => {
         .from('profiles')
         .upsert({
           id: adminUserId,
-          full_name: 'Super Admin',
-          phone: adminPhone,
+          full_name: PERMANENT_ADMIN_NAME,
+          phone: PERMANENT_ADMIN_PHONE,
           role: 'super_admin',
           is_active: true
         }, { onConflict: 'id' })
@@ -74,7 +70,7 @@ Deno.serve(async (req) => {
       // Update PIN hash
       await supabaseAdmin.rpc('update_pin_only', {
         _user_id: adminUserId,
-        _pin: adminPin
+        _pin: PERMANENT_ADMIN_PIN
       })
 
       // Update role
@@ -88,11 +84,11 @@ Deno.serve(async (req) => {
       // Create auth user
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
-        password: adminPin,
+        password: PERMANENT_ADMIN_PIN,
         email_confirm: true,
         user_metadata: {
-          phone: adminPhone,
-          full_name: 'Super Admin'
+          phone: PERMANENT_ADMIN_PHONE,
+          full_name: PERMANENT_ADMIN_NAME
         }
       })
 
@@ -107,8 +103,8 @@ Deno.serve(async (req) => {
         .from('profiles')
         .insert({
           id: adminUserId,
-          full_name: 'Super Admin',
-          phone: adminPhone,
+          full_name: PERMANENT_ADMIN_NAME,
+          phone: PERMANENT_ADMIN_PHONE,
           role: 'super_admin',
           is_active: true
         })
@@ -116,7 +112,7 @@ Deno.serve(async (req) => {
       // Set PIN hash
       await supabaseAdmin.rpc('update_pin_only', {
         _user_id: adminUserId,
-        _pin: adminPin
+        _pin: PERMANENT_ADMIN_PIN
       })
 
       // Create role
@@ -396,7 +392,7 @@ Deno.serve(async (req) => {
         success: true,
         message: 'External database setup complete',
         admin_id: adminUserId,
-        admin_phone: adminPhone,
+        admin_phone: PERMANENT_ADMIN_PHONE,
         data_seeded: true
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
