@@ -1,11 +1,11 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.lovable.c9769607a09245ff825744be40434034',
+  appId: 'com.awadhdairy.app',
   appName: 'Awadh Dairy',
   webDir: 'dist',
   server: {
-    url: 'https://c9769607-a092-45ff-8257-44be40434034.lovableproject.com?forceHideBadge=true',
+    url: 'https://awadhdairy-remix.vercel.app',
     cleartext: true
   },
   plugins: {
@@ -34,7 +34,7 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
     captureInput: true,
-    webContentsDebuggingEnabled: true,
+    webContentsDebuggingEnabled: false,
   },
   ios: {
     contentInset: 'automatic',
