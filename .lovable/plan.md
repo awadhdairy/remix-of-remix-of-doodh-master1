@@ -1,153 +1,144 @@
 
+## What’s most likely happening (why BOTH delete + deactivate fail)
+Since **both** `delete-user` and `update-user-status` are failing with the same generic “Edge Function returned a non-2xx status code”, the most probable cause is **one shared gate that both functions use**:
 
-# Fix Plan: Delete User Edge Function
+### Shared gate = “is requesting user a super_admin?”
+Both functions do this pattern:
 
-## Problem Summary
+- verify JWT (`getUser(token)`)
+- then:
+  ```ts
+  const { data: roleData, error: roleError } = await supabaseAdmin
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', requestingUser.id)
+    .single()
 
-The `delete-user` Edge Function fails with `AuthApiError: User not found` because:
-- Staff users are created via `admin_create_staff()` function which inserts ONLY into `profiles` table
-- The Edge Function tries to delete from `auth.users` first, but user doesn't exist there
-- The `profiles` table has NO foreign key to `auth.users`, so it's completely standalone
+  if (roleError || roleData?.role !== 'super_admin') return 403
+  ```
 
-## Current Flow (Broken)
+This will hard-fail (non-2xx) not only when the role is not super_admin, but also when `.single()` errors.
 
-```text
-delete-user called with userId
-        │
-        ▼
-supabaseAdmin.auth.admin.deleteUser(userId)
-        │
-        ▼
-ERROR: User not found in auth.users  ← Fails here!
-(profiles and user_roles never cleaned up)
-```
+### The critical edge case: `.single()` errors if there are 0 rows OR multiple rows
+In Supabase/PostgREST, `.single()` throws an error if:
+- there’s **no** matching row (0 rows), OR
+- there are **multiple** matching rows (duplicates)
 
-## Solution: Hybrid Deletion Logic
+So if your `user_roles` accidentally has:
+- **no** row for the logged-in super admin, OR
+- **more than one** row for the super admin (duplicate rows),
+then both functions return a non-2xx (commonly 403) and the frontend only shows the generic message.
 
-The Edge Function must handle two types of users:
-1. **Auth-based users**: Exist in `auth.users` (like super_admin created via bootstrap)
-2. **Profile-only users**: Exist only in `profiles` table (created via `admin_create_staff`)
+Given your project history (multiple setup iterations), **duplicates in `user_roles` for the super admin is a very plausible cause** and would explain why both actions fail consistently.
 
-## Fixed Flow
+---
 
-```text
-delete-user called with userId
-        │
-        ▼
-Check if user exists in auth.users
-        │
-   ┌────┴────┐
-   │         │
-   ▼         ▼
-EXISTS    DOESN'T EXIST
-   │         │
-   ▼         ▼
-Delete     Delete directly from:
-from       1. user_roles
-auth.users 2. profiles
-(cascade)  (manual cleanup)
-   │         │
-   └────┬────┘
-        ▼
-   SUCCESS
-```
+## Phase 1 — Confirm with 100% certainty (fast checks)
+### A) Check the `update-user-status` function logs in the external backend
+1. Open external backend → Functions → `update-user-status` → Logs
+2. Trigger one deactivate toggle from User Management
+3. Copy/paste the log lines here (at least the lines around):
+   - `User authenticated: ...`
+   - any `roleError` / `Only super admin...` response
 
-## Changes Required
+This tells us if the failure is:
+- 401 (JWT validation failed)
+- 403 (role check failed)
+- 500 (DB update failed)
 
-### 1. Update delete-user Edge Function
-
-The key changes:
-- Try to delete from `auth.users` first
-- If "User not found" error (404), fall back to manual deletion from `profiles` and `user_roles`
-- Always ensure both tables are cleaned up
-
-### Code Changes (for External Supabase Dashboard)
-
-Replace the standard deletion section (around line 180-210) with this logic:
-
-```typescript
-// Attempt to delete from auth.users first
-const { error: authDeleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
-
-if (authDeleteError) {
-  // Check if it's a "User not found" error (user only exists in profiles)
-  if (authDeleteError.status === 404 || authDeleteError.message?.includes('not found')) {
-    console.log('User not in auth.users, deleting from profiles/user_roles directly')
-    
-    // Delete from user_roles first
-    const { error: rolesError } = await supabaseAdmin
-      .from('user_roles')
-      .delete()
-      .eq('user_id', userId)
-    
-    if (rolesError) {
-      console.error('Error deleting user_roles:', rolesError)
-    }
-    
-    // Delete from profiles
-    const { error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .delete()
-      .eq('id', userId)
-    
-    if (profileError) {
-      console.error('Error deleting profile:', profileError)
-      return new Response(
-        JSON.stringify({ error: 'Failed to delete user profile' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-  } else {
-    // Some other auth error
-    console.error('Error deleting user from auth:', authDeleteError)
-    return new Response(
-      JSON.stringify({ error: 'Failed to delete user' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
-  }
-} else {
-  // Auth user deleted successfully, also clean up profiles/user_roles just in case
-  // (cascade may not work since there's no FK)
-  await supabaseAdmin.from('user_roles').delete().eq('user_id', userId)
-  await supabaseAdmin.from('profiles').delete().eq('id', userId)
-}
-```
-
-### 2. Complete Updated Edge Function
-
-I will provide the complete updated code that needs to be pasted into the External Supabase dashboard.
-
-## Technical Summary
-
-| Component | Current State | Fix Required |
-|-----------|--------------|--------------|
-| JWT Verification | Working correctly | No change |
-| Auth user deletion | Fails if user not in auth.users | Add fallback logic |
-| Profile deletion | Never executed | Add explicit deletion |
-| user_roles deletion | Never executed | Add explicit deletion |
-
-## Implementation Steps
-
-1. Go to External Supabase Dashboard → Edge Functions → delete-user → Code
-2. Replace the entire code with the fixed version (I will provide after approval)
-3. Save/Deploy
-4. Test deleting a user
-
-## Optional Future Improvement
-
-Consider adding foreign keys to prevent orphaned records:
+### B) Check if `user_roles` has duplicates or missing row (external backend SQL)
+Run this in your external backend SQL runner (or equivalent):
 
 ```sql
--- Add FK from profiles to auth.users (optional, for new users)
-ALTER TABLE public.profiles
-ADD CONSTRAINT profiles_id_fkey 
-FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
+-- 1) What roles exist for the currently logged-in super admin?
+-- Replace with the authenticated user's UUID if needed (from logs)
+select user_id, role, count(*)
+from public.user_roles
+group by user_id, role
+having count(*) > 1;
 
--- Add FK from user_roles to profiles
-ALTER TABLE public.user_roles
-ADD CONSTRAINT user_roles_user_id_fkey 
-FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE;
+-- 2) Show all roles for super admin user id (replace UUID)
+select *
+from public.user_roles
+where user_id = 'YOUR_SUPER_ADMIN_UUID';
 ```
 
-Note: This would only work for users created in auth.users first. Your current staff creation flow creates profiles-only users, so the FK may not be suitable unless you change the user creation flow.
+Expected:
+- exactly 1 row: role = `super_admin`
 
+If you see duplicates, that is the root cause.
+
+---
+
+## Phase 2 — Make the backend functions robust (so duplicates can’t break admin actions)
+### Change 1: Replace `.single()` with a safe role check
+In **both** functions (`delete-user` and `update-user-status`), change role check from:
+
+- `.single()` + `roleData?.role !== 'super_admin'`
+
+to a safer pattern:
+
+Option A (best): use the existing DB function `public.has_role(requestingUser.id, 'super_admin')` via RPC
+- This avoids `.single()` errors entirely.
+- Even if duplicates exist, the check still returns true.
+
+Option B: query `user_roles` but avoid `.single()`:
+- use `.select('role').eq(...).limit(1).maybeSingle()`
+- and treat “no row found” as not authorized
+
+### Change 2: Return better error details (debug-friendly)
+Right now the frontend shows generic error text.
+Backend should return structured JSON like:
+```json
+{ "error": "Only super admin can update user status", "debug": { "roleError": "..."} }
+```
+(Only in test/dev; can be removed later.)
+
+---
+
+## Phase 3 — Fix the data problem (recommended)
+Even if we harden the function, duplicates are a data integrity bug that will cause other issues.
+
+### Add / enforce uniqueness in `user_roles`
+Ensure the table enforces:
+- exactly 1 role per user, OR
+- if multi-role system: unique(user_id, role)
+
+Then delete duplicates with a one-time cleanup SQL:
+- Keep one row per (user_id, role)
+- Remove extras
+
+---
+
+## Phase 4 — Frontend: stop hiding the real error
+In `UserManagement.tsx`, improve error handling so it shows:
+- HTTP status code
+- returned JSON `error` message
+- any returned `debug` fields
+
+This prevents “blind debugging” in the future.
+
+---
+
+## Deliverables I will implement once you approve (code changes)
+1. Update `supabase/functions/update-user-status/index.ts`
+   - robust super_admin check (no `.single()` failure)
+   - improved error responses
+2. Update `supabase/functions/delete-user/index.ts`
+   - keep hybrid deletion
+   - robust super_admin check (no `.single()` failure)
+   - improved error responses
+3. Update `src/pages/UserManagement.tsx`
+   - display full backend error details (not just generic)
+4. Provide you a **copy/paste checklist** for updating the external backend function editors (since your app calls external backend functions)
+
+---
+
+## What I still need from you (1 item)
+Please paste the **latest logs for `update-user-status`** right after you try to deactivate a user once. That single log output will tell us whether this is:
+- role check failing due to `.single()` (most likely)
+- token invalid
+- DB update error
+- CORS / preflight issue
+
+(Once we confirm, we’ll apply the hardened role check and you’ll be able to delete/deactivate reliably.)
