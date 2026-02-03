@@ -1,205 +1,194 @@
-# Awadh Dairy - Free Deployment Guide (Vercel + Supabase)
+# Awadh Dairy - Deployment Guide (Vercel + External Supabase)
 
-This guide will help you deploy Awadh Dairy completely free on Vercel (frontend) and Supabase (backend).
-
-## Prerequisites
-
-- GitHub account (free)
-- Vercel account (free) - https://vercel.com
-- Supabase account (free) - https://supabase.com
+Complete guide to deploy Awadh Dairy on Vercel (frontend) with External Supabase (backend).
 
 ---
 
-## Part 1: Supabase Setup
+## Your Project Credentials
 
-### Step 1: Create Supabase Project
-
-1. Go to https://supabase.com and sign up/login
-2. Click "New Project"
-3. Fill in:
-   - **Project name**: `awadh-dairy`
-   - **Database password**: Create a strong password (save it!)
-   - **Region**: Choose closest to your users
-4. Wait for project to be created (2-3 minutes)
-
-### Step 2: Get API Credentials
-
-1. In your Supabase project, go to **Settings** → **API**
-2. Copy these values (you'll need them for Vercel):
-   - **Project URL** (e.g., `https://xxxxx.supabase.co`)
-   - **anon public key** (starts with `eyJ...`)
-   - **Project Reference ID** (the `xxxxx` part from URL)
-
-### Step 3: Run Database Migrations
-
-1. Go to **SQL Editor** in Supabase dashboard
-2. Copy and run each migration file from `supabase/migrations/` folder in order (by date)
-3. Each file creates tables, functions, and policies
-
-### Step 4: Deploy Edge Functions
-
-1. Install Supabase CLI: https://supabase.com/docs/guides/cli
-2. Login to CLI:
-   ```bash
-   supabase login
-   ```
-3. Link to your project:
-   ```bash
-   supabase link --project-ref your-project-id
-   ```
-4. Deploy all functions:
-   ```bash
-   supabase functions deploy bootstrap-admin
-   supabase functions deploy create-user
-   supabase functions deploy update-user-status
-   supabase functions deploy reset-user-pin
-   supabase functions deploy change-pin
-   supabase functions deploy customer-auth
-   supabase functions deploy delete-user
-   ```
-
-### Step 5: Configure Authentication
-
-1. Go to **Authentication** → **Settings** in Supabase
-2. Enable **Email Auth** (disable email confirmations for ease of use)
-3. Under **Auth Providers**, keep Email enabled
+| Credential | Value |
+|------------|-------|
+| **Project URL** | `https://ohrytohcbbkorivsuukm.supabase.co` |
+| **Project ID** | `ohrytohcbbkorivsuukm` |
+| **Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
+| **Vercel Domain** | `awadhdairy-remix.vercel.app` |
+| **Admin Phone** | `7897716792` |
+| **Admin PIN** | `101101` |
 
 ---
 
-## Part 2: Vercel Deployment
+## Quick Start
 
-### Step 1: Push Code to GitHub
+### 1. Apply Database Schema
 
-1. Create a new GitHub repository
-2. Push this codebase:
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git branch -M main
-   git remote add origin https://github.com/YOUR_USERNAME/awadh-dairy.git
-   git push -u origin main
-   ```
+Run in Supabase SQL Editor: `https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql`
 
-### Step 2: Deploy to Vercel
+Copy the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql` and execute.
 
-1. Go to https://vercel.com and login with GitHub
-2. Click "Add New Project"
-3. Import your `awadh-dairy` repository
-4. Configure:
-   - **Framework Preset**: Vite
-   - **Build Command**: `npm run build` (default)
-   - **Output Directory**: `dist` (default)
+### 2. Set Edge Function Secrets
 
-### Step 3: Add Environment Variables
+```bash
+# Install & login
+npm install -g supabase
+supabase login
+supabase link --project-ref ohrytohcbbkorivsuukm
 
-In Vercel project settings → **Environment Variables**, add:
+# Set secrets
+supabase secrets set EXTERNAL_SUPABASE_URL=https://ohrytohcbbkorivsuukm.supabase.co
+supabase secrets set EXTERNAL_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
+supabase secrets set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY=sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b
+supabase secrets set BOOTSTRAP_ADMIN_PHONE=7897716792
+supabase secrets set BOOTSTRAP_ADMIN_PIN=101101
+```
+
+### 3. Deploy Edge Functions
+
+```bash
+supabase functions deploy --project-ref ohrytohcbbkorivsuukm
+```
+
+Or individually:
+```bash
+supabase functions deploy auto-deliver-daily --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy change-pin --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy create-user --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy customer-auth --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy delete-user --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy health-check --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy reset-user-pin --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy setup-external-db --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy update-user-status --project-ref ohrytohcbbkorivsuukm
+```
+
+### 4. Bootstrap Admin
+
+Option A - Via Edge Function:
+```bash
+curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
+```
+
+Option B - Via SQL:
+```sql
+SELECT bootstrap_super_admin('7897716792', '101101');
+```
+
+### 5. Configure Authentication
+
+In Supabase Dashboard → Authentication → Settings:
+
+- **Site URL**: `https://awadhdairy-remix.vercel.app`
+- **Redirect URLs**:
+  - `https://awadhdairy-remix.vercel.app/auth`
+  - `https://awadhdairy-remix.vercel.app/customer/auth`
+  - `https://awadhdairy-remix.vercel.app/customer/dashboard`
+
+---
+
+## Vercel Deployment
+
+### Environment Variables
 
 | Variable | Value |
 |----------|-------|
-| `VITE_SUPABASE_URL` | Your Supabase Project URL |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | Your Supabase anon key |
-| `VITE_SUPABASE_PROJECT_ID` | Your Supabase project ID |
+| `VITE_SUPABASE_URL` | `https://ohrytohcbbkorivsuukm.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
+| `VITE_SUPABASE_PROJECT_ID` | `ohrytohcbbkorivsuukm` |
 
-5. Click "Deploy"
+### Build Settings
 
----
-
-## Part 3: Post-Deployment Setup
-
-### Bootstrap Admin Account
-
-1. Visit your deployed app (e.g., `https://your-app.vercel.app/auth`)
-2. Enter admin credentials:
-   - **Phone**: `7897716792`
-   - **PIN**: `101101`
-3. Click "Setup Admin Account"
-4. Now login with same credentials
-
-### Create Your First User
-
-1. Login as admin
-2. Go to **User Management**
-3. Create users with different roles as needed
+- **Framework**: Vite
+- **Build Command**: `npm run build`
+- **Output Directory**: `dist`
 
 ---
 
-## Free Tier Limits
+## Daily Automation (Optional)
 
-### Supabase Free Tier
-- **Database**: 500MB storage
-- **Auth**: 50,000 monthly active users
-- **Storage**: 1GB file storage
-- **Edge Functions**: 500,000 invocations/month
-- **Bandwidth**: 2GB transfer
+### Option A: pg_cron in Supabase
 
-### Vercel Free Tier (Hobby)
-- **Bandwidth**: 100GB/month
-- **Builds**: 6000 minutes/month
-- **Serverless Functions**: 100GB-hours
-- **Deployments**: Unlimited
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+SELECT cron.schedule(
+  'auto-deliver-daily',
+  '30 4 * * *',
+  $$SELECT extensions.http_post(
+    'https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/auto-deliver-daily',
+    '{}',
+    'application/json'
+  )$$
+);
+```
+
+### Option B: Manual Trigger
+
+```bash
+curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/auto-deliver-daily"
+```
 
 ---
 
-## Custom Domain (Optional)
+## Test Your Deployment
 
-### Vercel
-1. Go to project **Settings** → **Domains**
-2. Add your domain
-3. Update DNS records as shown
+### Health Check
+```bash
+curl "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check"
+```
 
-### Supabase
-Edge functions will work with your Vercel domain automatically.
+### Admin Login
+1. Visit: `https://awadhdairy-remix.vercel.app/auth`
+2. Enter: Phone `7897716792`, PIN `101101`
+3. Dashboard should load
+
+---
+
+## Edge Function URLs
+
+Base URL: `https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/`
+
+| Function | URL |
+|----------|-----|
+| auto-deliver-daily | `/functions/v1/auto-deliver-daily` |
+| change-pin | `/functions/v1/change-pin` |
+| create-user | `/functions/v1/create-user` |
+| customer-auth | `/functions/v1/customer-auth` |
+| delete-user | `/functions/v1/delete-user` |
+| health-check | `/functions/v1/health-check` |
+| reset-user-pin | `/functions/v1/reset-user-pin` |
+| setup-external-db | `/functions/v1/setup-external-db` |
+| update-user-status | `/functions/v1/update-user-status` |
 
 ---
 
 ## Troubleshooting
 
 ### "Invalid API key" Error
-- Verify environment variables are correctly set in Vercel
+- Verify environment variables in Vercel
 - Redeploy after adding variables
 
 ### Edge Functions Not Working
-- Ensure all functions are deployed via CLI
-- Check function logs in Supabase dashboard
+- Ensure secrets are set via `supabase secrets set`
+- Check function logs: `supabase functions logs <function-name>`
 
-### Database Migration Errors
-- Run migrations in chronological order
-- Check for existing tables before re-running
-
----
-
-## Updating the App
-
-1. Make changes locally
-2. Push to GitHub:
-   ```bash
-   git add .
-   git commit -m "Your changes"
-   git push
-   ```
-3. Vercel auto-deploys on push
+### CORS Errors
+- Verify `awadhdairy-remix.vercel.app` is in ALLOWED_ORIGINS in `customer-auth/index.ts`
 
 ---
 
-## Backup Your Data
+## Backup & Restore
 
 ### Export Database
 ```bash
-supabase db dump -f backup.sql --project-ref your-project-id
+supabase db dump -f backup.sql --project-ref ohrytohcbbkorivsuukm
 ```
 
 ### Restore Database
 ```bash
-supabase db push --project-ref your-project-id < backup.sql
+supabase db push --project-ref ohrytohcbbkorivsuukm < backup.sql
 ```
 
 ---
 
-## Support
+## Supabase Dashboard
 
-For issues, create a GitHub issue in your repository.
-
-## License
-
-This project is open source and free to use.
+https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm
