@@ -1,259 +1,294 @@
 
-# Comprehensive Fix: Products Section Issues
+# Complete Migration Plan: Lovable Cloud to External Supabase
 
-## Problem Analysis
+## Your Credentials (Confirmed)
 
-Based on my investigation, there are **three interconnected issues** in the Products section:
+| Credential | Value |
+|------------|-------|
+| **Project URL** | `https://ohrytohcbbkorivsuukm.supabase.co` |
+| **Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
+| **Service Role Key** | `sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b` |
+| **Admin Phone** | `7897716792` |
+| **Admin PIN** | `101101` |
+| **Vercel Domain** | `awadhdairy-remix.vercel.app` |
 
-### Issue 1: Cannot Delete Products (Foreign Key Constraint)
-**Error Message:** `"update or delete on table 'products' violates foreign key constraint 'customer_products_product_id_fkey' on table 'customer_products'"`
+---
 
-**Root Cause:** 
-The `customer_products` table has a foreign key to `products`, but it lacks `ON DELETE CASCADE` or `ON DELETE SET NULL`. When trying to delete a product that customers have subscribed to, the database blocks the operation.
+## Phase 1: Apply Database Schema
 
-**Current Schema (line 273):**
+Run this in your **External Supabase SQL Editor**:
+`https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql`
+
+Copy the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql` and execute it.
+
+---
+
+## Phase 2: Set Edge Function Secrets (CLI Commands)
+
+Open terminal and run these commands exactly:
+
+```bash
+# Install Supabase CLI (if not installed)
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link to your external project
+supabase link --project-ref ohrytohcbbkorivsuukm
+
+# Set all required secrets
+supabase secrets set EXTERNAL_SUPABASE_URL=https://ohrytohcbbkorivsuukm.supabase.co
+
+supabase secrets set EXTERNAL_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
+
+supabase secrets set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY=sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b
+
+supabase secrets set BOOTSTRAP_ADMIN_PHONE=7897716792
+
+supabase secrets set BOOTSTRAP_ADMIN_PIN=101101
+```
+
+---
+
+## Phase 3: Deploy All 9 Edge Functions
+
+Run these commands to deploy each function to your external Supabase:
+
+```bash
+# Deploy all edge functions
+supabase functions deploy auto-deliver-daily --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy change-pin --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy create-user --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy customer-auth --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy delete-user --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy health-check --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy reset-user-pin --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy setup-external-db --project-ref ohrytohcbbkorivsuukm
+supabase functions deploy update-user-status --project-ref ohrytohcbbkorivsuukm
+```
+
+Or deploy all at once:
+```bash
+supabase functions deploy --project-ref ohrytohcbbkorivsuukm
+```
+
+---
+
+## Phase 4: Code Changes Required
+
+### File 1: `.env.example` (Update with your credentials)
+
+```env
+# External Supabase Configuration (Production Database)
+VITE_SUPABASE_URL=https://ohrytohcbbkorivsuukm.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
+VITE_SUPABASE_PROJECT_ID=ohrytohcbbkorivsuukm
+```
+
+### File 2: `supabase/functions/customer-auth/index.ts` (Add Vercel domain)
+
+Update lines 10-16 to include your Vercel domain:
+
+```typescript
+const ALLOWED_ORIGINS = [
+  'https://awadhdairy-remix.vercel.app',
+  'https://awadhd.lovable.app',
+  'https://id-preview--0e2105bf-7600-40c7-b696-88cb152c3e30.lovable.app',
+  'https://id-preview--c9769607-a092-45ff-8257-44be40434034.lovable.app',
+  'http://localhost:5173',
+  'http://localhost:3000',
+];
+```
+
+### File 3: `DEPLOYMENT_GUIDE.md` (Update with your credentials)
+
+Update the deployment guide with your specific credentials for future reference.
+
+---
+
+## Phase 5: Vercel Deployment
+
+### Step 1: Push to GitHub
+```bash
+git add .
+git commit -m "Complete migration to external Supabase"
+git push origin main
+```
+
+### Step 2: Create Vercel Project
+1. Go to https://vercel.com
+2. Import your GitHub repository
+3. Configure:
+   - **Framework**: Vite
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+
+### Step 3: Set Environment Variables in Vercel
+
+| Variable | Value |
+|----------|-------|
+| `VITE_SUPABASE_URL` | `https://ohrytohcbbkorivsuukm.supabase.co` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
+| `VITE_SUPABASE_PROJECT_ID` | `ohrytohcbbkorivsuukm` |
+
+---
+
+## Phase 6: Bootstrap Admin & Seed Data
+
+### Option A: Run Setup Edge Function
+
+```bash
+curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
+```
+
+This will:
+- Create super admin with phone `7897716792` and PIN `101101`
+- Seed dummy data (products, customers, cattle, etc.)
+
+### Option B: Bootstrap via SQL
+
+Run in Supabase SQL Editor:
 ```sql
-CREATE TABLE IF NOT EXISTS public.customer_products (
-  ...
-  product_id UUID NOT NULL REFERENCES public.products(id), -- No ON DELETE clause
-  ...
+SELECT bootstrap_super_admin('7897716792', '101101');
+```
+
+---
+
+## Phase 7: Configure Authentication
+
+In Supabase Dashboard → Authentication → Settings:
+
+1. **Site URL**: `https://awadhdairy-remix.vercel.app`
+2. **Redirect URLs**: Add:
+   - `https://awadhdairy-remix.vercel.app/auth`
+   - `https://awadhdairy-remix.vercel.app/customer/auth`
+   - `https://awadhdairy-remix.vercel.app/customer/dashboard`
+
+---
+
+## Phase 8: Setup Daily Automation (Optional)
+
+For `auto-deliver-daily` function to run automatically:
+
+### Option A: pg_cron in Supabase
+
+Run in SQL Editor:
+```sql
+-- Enable pg_cron extension (if not enabled)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Schedule auto-deliver at 10:00 AM IST (4:30 AM UTC)
+SELECT cron.schedule(
+  'auto-deliver-daily',
+  '30 4 * * *',
+  $$SELECT extensions.http_post(
+    'https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/auto-deliver-daily',
+    '{}',
+    'application/json'
+  )$$
 );
 ```
 
-**Also affected tables:**
-- `delivery_items.product_id` references `products.id`
-- `price_rules.product_id` references `products.id`
+### Option B: Vercel Cron
 
----
-
-### Issue 2: Cannot Add/Edit Products (RLS Policy Issue)
-**Root Cause:**
-The RLS policy for INSERT/UPDATE on `products` requires the user to be a manager or admin:
-
-```sql
-CREATE POLICY "Managers and admins can manage products" ON public.products
-  FOR ALL USING (public.is_manager_or_admin(auth.uid()));
-```
-
-This depends on:
-1. `auth.uid()` returning a valid user ID (user must be authenticated via Supabase Auth)
-2. That user ID must exist in the `user_roles` table with role `super_admin` or `manager`
-
-**Potential Issues:**
-- User may not be properly authenticated (Supabase Auth session)
-- User's role may not be set correctly in `user_roles` table
-- The `is_manager_or_admin` function may not be working correctly
-
----
-
-### Issue 3: Wrong Database Connection (Migration Issue)
-**Root Cause:**
-The code in `src/lib/external-supabase.ts` is still pointing to the OLD Supabase project:
-
-```typescript
-const EXTERNAL_URL = 'https://htsfxnuttobkdquxwvjj.supabase.co';  // OLD PROJECT
-```
-
-But you wanted to migrate to the NEW project:
-```
-https://ohrytohcbbkorivsuukm.supabase.co
+Create/update `vercel.json`:
+```json
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ],
+  "crons": [{
+    "path": "/api/trigger-auto-deliver",
+    "schedule": "30 4 * * *"
+  }]
+}
 ```
 
 ---
 
-## Solution Plan
+## Test Your Migration
 
-### Step 1: Update Database Foreign Keys (SQL Migration)
-
-Add `ON DELETE` behavior to foreign keys that reference products:
-
-```sql
--- First, drop existing foreign key constraints
-ALTER TABLE public.customer_products
-DROP CONSTRAINT IF EXISTS customer_products_product_id_fkey;
-
-ALTER TABLE public.delivery_items
-DROP CONSTRAINT IF EXISTS delivery_items_product_id_fkey;
-
-ALTER TABLE public.price_rules
-DROP CONSTRAINT IF EXISTS price_rules_product_id_fkey;
-
--- Recreate with proper ON DELETE behavior
-ALTER TABLE public.customer_products
-ADD CONSTRAINT customer_products_product_id_fkey 
-FOREIGN KEY (product_id) REFERENCES public.products(id) 
-ON DELETE CASCADE;
-
-ALTER TABLE public.delivery_items
-ADD CONSTRAINT delivery_items_product_id_fkey 
-FOREIGN KEY (product_id) REFERENCES public.products(id) 
-ON DELETE CASCADE;
-
-ALTER TABLE public.price_rules
-ADD CONSTRAINT price_rules_product_id_fkey 
-FOREIGN KEY (product_id) REFERENCES public.products(id) 
-ON DELETE SET NULL;
+### Test 1: Health Check
+```bash
+curl "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check"
 ```
+Expected: `{"status":"healthy",...}`
 
-**Business Logic:**
-- When a product is deleted, all customer subscriptions for that product are automatically removed (`CASCADE`)
-- Delivery items for that product are removed (`CASCADE`)
-- Price rules become unlinked but preserved (`SET NULL`)
+### Test 2: Login
+1. Visit: `https://awadhdairy-remix.vercel.app/auth`
+2. Enter: Phone `7897716792`, PIN `101101`
+3. Click Login
+4. Dashboard should load
 
----
-
-### Step 2: Improve Products Page with Soft Delete + Checks
-
-Update `src/pages/Products.tsx` to:
-
-1. **Check for dependencies before deleting** - Show warning if product has active subscriptions
-2. **Add soft delete option** - Set `is_active = false` instead of hard delete
-3. **Show better error messages** - Parse foreign key errors and show user-friendly messages
-
-```typescript
-// Before deleting, check if product has active subscriptions
-const checkProductDependencies = async (productId: string) => {
-  const { count } = await supabase
-    .from('customer_products')
-    .select('id', { count: 'exact', head: true })
-    .eq('product_id', productId);
-  
-  return count || 0;
-};
-
-// Offer soft delete as alternative
-const handleSoftDelete = async (product: Product) => {
-  const { error } = await supabase
-    .from('products')
-    .update({ is_active: false })
-    .eq('id', product.id);
-  // ...
-};
+### Test 3: Customer Auth
+```bash
+curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/customer-auth" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"login","phone":"9999000001","pin":"123456"}'
 ```
 
 ---
 
-### Step 3: Add RLS Policy for INSERT (WITH CHECK)
+## Summary of Files to Modify
 
-The current RLS policy uses `USING` which works for SELECT/UPDATE/DELETE but INSERT requires `WITH CHECK`:
+| File | Action |
+|------|--------|
+| `.env.example` | Update with external Supabase credentials |
+| `supabase/functions/customer-auth/index.ts` | Add `awadhdairy-remix.vercel.app` to ALLOWED_ORIGINS |
+| `DEPLOYMENT_GUIDE.md` | Update with specific credentials and URLs |
 
-```sql
--- Drop the FOR ALL policy and create specific ones
-DROP POLICY IF EXISTS "Managers and admins can manage products" ON public.products;
+---
 
--- SELECT policy for all authenticated users
-CREATE POLICY "Staff can read products" ON public.products
-  FOR SELECT USING (public.is_authenticated());
+## Complete Credentials Reference
 
--- INSERT/UPDATE/DELETE for managers and admins
-CREATE POLICY "Managers and admins can insert products" ON public.products
-  FOR INSERT WITH CHECK (public.is_manager_or_admin(auth.uid()));
+```text
+# Supabase Project
+URL: https://ohrytohcbbkorivsuukm.supabase.co
+Project ID: ohrytohcbbkorivsuukm
+Anon Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
+Service Role Key: sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b
 
-CREATE POLICY "Managers and admins can update products" ON public.products
-  FOR UPDATE USING (public.is_manager_or_admin(auth.uid()));
+# Admin Credentials
+Phone: 7897716792
+PIN: 101101
 
-CREATE POLICY "Managers and admins can delete products" ON public.products
-  FOR DELETE USING (public.is_manager_or_admin(auth.uid()));
+# Vercel
+Domain: awadhdairy-remix.vercel.app
+
+# Edge Function URLs
+Base: https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/
+- auto-deliver-daily
+- change-pin
+- create-user
+- customer-auth
+- delete-user
+- health-check
+- reset-user-pin
+- setup-external-db
+- update-user-status
+
+# Supabase Dashboard
+https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm
 ```
 
 ---
 
-### Step 4: Update External Supabase URL
+## Post-Migration Checklist
 
-Update `src/lib/external-supabase.ts` to use the new Supabase project:
-
-```typescript
-// Old
-const EXTERNAL_URL = 'https://htsfxnuttobkdquxwvjj.supabase.co';
-
-// New
-const EXTERNAL_URL = 'https://ohrytohcbbkorivsuukm.supabase.co';
-const EXTERNAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg';
-```
-
----
-
-### Step 5: Update EXTERNAL_SUPABASE_SCHEMA.sql
-
-Update the schema file to include:
-1. New foreign key constraints with `ON DELETE CASCADE`
-2. Separate RLS policies for INSERT/UPDATE/DELETE
-3. Update the dashboard URL comment
+- [ ] Schema applied to external Supabase
+- [ ] All 5 secrets set via CLI
+- [ ] All 9 edge functions deployed
+- [ ] `.env.example` updated
+- [ ] `customer-auth` ALLOWED_ORIGINS updated
+- [ ] Code pushed to GitHub
+- [ ] Vercel project created
+- [ ] Vercel environment variables set
+- [ ] Authentication settings configured
+- [ ] Admin bootstrap completed
+- [ ] Login tested successfully
+- [ ] Daily automation configured
 
 ---
 
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/lib/external-supabase.ts` | Update URL and anon key to new project |
-| `src/pages/Products.tsx` | Add dependency check before delete, improve error handling, add soft delete option |
-| `EXTERNAL_SUPABASE_SCHEMA.sql` | Update foreign key constraints, update RLS policies, update dashboard URL |
-
----
-
-## SQL Changes Required (Run in External Supabase)
-
-```sql
--- 1. Fix foreign key constraints
-ALTER TABLE public.customer_products
-DROP CONSTRAINT IF EXISTS customer_products_product_id_fkey;
-
-ALTER TABLE public.customer_products
-ADD CONSTRAINT customer_products_product_id_fkey 
-FOREIGN KEY (product_id) REFERENCES public.products(id) 
-ON DELETE CASCADE;
-
-ALTER TABLE public.delivery_items
-DROP CONSTRAINT IF EXISTS delivery_items_product_id_fkey;
-
-ALTER TABLE public.delivery_items
-ADD CONSTRAINT delivery_items_product_id_fkey 
-FOREIGN KEY (product_id) REFERENCES public.products(id) 
-ON DELETE CASCADE;
-
--- 2. Verify RLS is enabled
-ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
-
--- 3. Fix RLS policies (drop old, create specific ones)
-DROP POLICY IF EXISTS "Managers and admins can manage products" ON public.products;
-DROP POLICY IF EXISTS "Staff can read products" ON public.products;
-
-CREATE POLICY "Authenticated users can read products" ON public.products
-  FOR SELECT USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Managers can insert products" ON public.products
-  FOR INSERT WITH CHECK (public.is_manager_or_admin(auth.uid()));
-
-CREATE POLICY "Managers can update products" ON public.products
-  FOR UPDATE USING (public.is_manager_or_admin(auth.uid()));
-
-CREATE POLICY "Managers can delete products" ON public.products
-  FOR DELETE USING (public.is_manager_or_admin(auth.uid()));
-```
-
----
-
-## Manual Steps Required
-
-1. **Run SQL in External Supabase SQL Editor:**
-   - Go to: `https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql`
-   - Run the SQL commands above
-
-2. **Verify User Role:**
-   - Check if your logged-in user has a record in `user_roles` table with `role = 'super_admin'` or `role = 'manager'`
-   - If not, add one:
-   ```sql
-   INSERT INTO public.user_roles (user_id, role)
-   VALUES ('your-user-uuid', 'super_admin');
-   ```
-
----
-
-## Summary
-
-| Issue | Root Cause | Solution |
-|-------|------------|----------|
-| Cannot delete products | Foreign key without `ON DELETE CASCADE` | Add `ON DELETE CASCADE` to foreign keys |
-| Cannot add/edit products | RLS policy missing `WITH CHECK` for INSERT | Create separate INSERT policy with `WITH CHECK` |
-| Wrong database | Old Supabase URL hardcoded | Update to new project URL and anon key |
+## Estimated Time: ~1-2 hours
