@@ -181,16 +181,19 @@ export default function UserManagement() {
       });
 
       if (response.error) {
+        console.error("Toggle status error:", response.error);
         throw new Error(response.error.message || "Failed to update status");
       }
 
       if (response.data?.error) {
-        throw new Error(response.data.error);
+        console.error("Toggle status data error:", response.data);
+        throw new Error(response.data.error + (response.data.debug ? ` (${JSON.stringify(response.data.debug)})` : ""));
       }
 
       toast.success(response.data.message);
       fetchUsers();
     } catch (error: any) {
+      console.error("Toggle status exception:", error);
       toast.error(error.message || "Failed to update user status");
     } finally {
       setTogglingUser(null);
@@ -257,11 +260,13 @@ export default function UserManagement() {
       });
 
       if (response.error) {
+        console.error("Delete user error:", response.error);
         throw new Error(response.error.message || "Failed to delete user");
       }
 
       if (response.data?.error) {
-        throw new Error(response.data.error);
+        console.error("Delete user data error:", response.data);
+        throw new Error(response.data.error + (response.data.debug ? ` (${JSON.stringify(response.data.debug)})` : ""));
       }
 
       toast.success(response.data.message);
@@ -269,6 +274,7 @@ export default function UserManagement() {
       setSelectedUser(null);
       fetchUsers();
     } catch (error: any) {
+      console.error("Delete user exception:", error);
       toast.error(error.message || "Failed to delete user");
     } finally {
       setDeleting(false);
