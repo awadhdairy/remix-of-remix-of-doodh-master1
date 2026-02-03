@@ -139,30 +139,48 @@ export function QuickAddOnOrderDialog({
 
     setSaving(true);
     try {
-      // Create delivery record with delivery_time since it's marked as delivered
-      const currentTime = new Date().toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
+      const formattedDate = format(deliveryDate, "yyyy-MM-dd");
       
-      const { data: delivery, error: deliveryError } = await supabase
+      // Step 1: Check for existing delivery on this date
+      const { data: existingDelivery } = await supabase
         .from("deliveries")
-        .insert({
-          customer_id: customerId,
-          delivery_date: format(deliveryDate, "yyyy-MM-dd"),
-          status: "delivered",
-          delivery_time: currentTime,
-          notes: "Add-on order",
-        })
         .select("id")
-        .single();
+        .eq("customer_id", customerId)
+        .eq("delivery_date", formattedDate)
+        .maybeSingle();
+      
+      let deliveryId: string;
+      
+      if (existingDelivery) {
+        // Use existing delivery - add items to it
+        deliveryId = existingDelivery.id;
+      } else {
+        // Create new delivery record with delivery_time since it's marked as delivered
+        const currentTime = new Date().toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+        
+        const { data: newDelivery, error: deliveryError } = await supabase
+          .from("deliveries")
+          .insert({
+            customer_id: customerId,
+            delivery_date: formattedDate,
+            status: "delivered",
+            delivery_time: currentTime,
+            notes: "Add-on order",
+          })
+          .select("id")
+          .single();
 
-      if (deliveryError) throw deliveryError;
+        if (deliveryError) throw deliveryError;
+        deliveryId = newDelivery.id;
+      }
 
-      // Create delivery items
+      // Step 2: Create delivery items
       const deliveryItems = orderItems.map((item) => ({
-        delivery_id: delivery.id,
+        delivery_id: deliveryId,
         product_id: item.product_id,
         quantity: item.quantity,
         unit_price: item.unit_price,
@@ -175,16 +193,31 @@ export function QuickAddOnOrderDialog({
 
       if (itemsError) throw itemsError;
 
-      // Add to customer ledger
+      // Step 3: Calculate running balance before ledger insert
+      const { data: lastEntry } = await supabase
+        .from("customer_ledger")
+        .select("running_balance")
+        .eq("customer_id", customerId)
+        .order("transaction_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      const previousBalance = lastEntry?.running_balance || 0;
+      const newBalance = previousBalance + totalAmount;
+
+      // Step 4: Add to customer ledger with running_balance
       const { error: ledgerError } = await supabase
         .from("customer_ledger")
         .insert({
           customer_id: customerId,
-          transaction_date: format(deliveryDate, "yyyy-MM-dd"),
+          transaction_date: formattedDate,
           transaction_type: "delivery",
           description: `Add-on Order: ${orderItems.map((i) => `${i.product_name} × ${i.quantity}`).join(", ")}`,
           debit_amount: totalAmount,
-          reference_id: delivery.id,
+          credit_amount: 0,
+          running_balance: newBalance,
+          reference_id: deliveryId,
         });
 
       if (ledgerError) throw ledgerError;
@@ -192,9 +225,16 @@ export function QuickAddOnOrderDialog({
       toast.success("Add-on order created successfully!");
       onOpenChange(false);
       onSuccess?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating add-on order:", error);
-      toast.error("Failed to create order");
+      // Better error handling with specific messages
+      if (error.message?.includes("policy") || error.code === "42501") {
+        toast.error("Permission denied. Please check your access rights.");
+      } else if (error.message?.includes("duplicate")) {
+        toast.error("This order already exists.");
+      } else {
+        toast.error(`Failed to create order: ${error.message || "Unknown error"}`);
+      }
     } finally {
       setSaving(false);
     }
