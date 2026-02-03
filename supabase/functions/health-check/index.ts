@@ -13,9 +13,9 @@ Deno.serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    // Use EXTERNAL Supabase variables
-    const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY")!;
+    // Use Supabase's built-in environment variables (auto-provided by Supabase)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

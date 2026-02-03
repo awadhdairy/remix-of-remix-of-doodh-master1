@@ -2,6 +2,8 @@
 
 Complete guide to deploy Awadh Dairy on Vercel (frontend) with External Supabase (backend).
 
+**This project is 100% independent from Lovable Cloud after deployment.**
+
 ---
 
 ## Your Project Credentials
@@ -17,6 +19,32 @@ Complete guide to deploy Awadh Dairy on Vercel (frontend) with External Supabase
 
 ---
 
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                 INDEPENDENT ARCHITECTURE                     │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Frontend (Vercel)                                           │
+│       │                                                      │
+│       ├──► Direct DB queries ──► YOUR Supabase               │
+│       │                              ohrytohcbbkorivsuukm    │
+│       │                                                      │
+│       └──► Edge function calls ──► YOUR Supabase             │
+│            (via EXTERNAL_FUNCTIONS_URL)                      │
+│                      │                                       │
+│                      ▼                                       │
+│            Functions use built-in SUPABASE_* vars            │
+│            (auto-provided by Supabase - no secrets needed)   │
+│                                                              │
+│  Lovable = NOT INVOLVED                                      │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## Quick Start
 
 ### 1. Apply Database Schema
@@ -25,54 +53,48 @@ Run in Supabase SQL Editor: `https://supabase.com/dashboard/project/ohrytohcbbko
 
 Copy the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql` and execute.
 
-### 2. Set Edge Function Secrets
+### 2. Deploy Edge Functions
 
 ```bash
-# Install & login
+# Install Supabase CLI
 npm install -g supabase
+
+# Login and link to YOUR project
 supabase login
 supabase link --project-ref ohrytohcbbkorivsuukm
 
-# Set secrets
-supabase secrets set EXTERNAL_SUPABASE_URL=https://ohrytohcbbkorivsuukm.supabase.co
-supabase secrets set EXTERNAL_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
-supabase secrets set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY=sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b
-supabase secrets set BOOTSTRAP_ADMIN_PHONE=7897716792
-supabase secrets set BOOTSTRAP_ADMIN_PIN=101101
+# Deploy all functions (they use built-in Supabase env vars)
+supabase functions deploy auto-deliver-daily --no-verify-jwt
+supabase functions deploy change-pin --no-verify-jwt
+supabase functions deploy create-user --no-verify-jwt
+supabase functions deploy customer-auth --no-verify-jwt
+supabase functions deploy delete-user --no-verify-jwt
+supabase functions deploy health-check --no-verify-jwt
+supabase functions deploy reset-user-pin --no-verify-jwt
+supabase functions deploy setup-external-db --no-verify-jwt
+supabase functions deploy update-user-status --no-verify-jwt
 ```
 
-### 3. Deploy Edge Functions
+### 3. Bootstrap Admin
 
-```bash
-supabase functions deploy --project-ref ohrytohcbbkorivsuukm
-```
+After deploying functions, run:
 
-Or individually:
-```bash
-supabase functions deploy auto-deliver-daily --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy change-pin --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy create-user --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy customer-auth --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy delete-user --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy health-check --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy reset-user-pin --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy setup-external-db --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy update-user-status --project-ref ohrytohcbbkorivsuukm
-```
-
-### 4. Bootstrap Admin
-
-Option A - Via Edge Function:
 ```bash
 curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
 ```
 
-Option B - Via SQL:
-```sql
-SELECT bootstrap_super_admin('7897716792', '101101');
+Expected response:
+```json
+{
+  "success": true,
+  "message": "Database setup complete",
+  "admin_id": "uuid-here",
+  "admin_phone": "7897716792",
+  "data_seeded": true
+}
 ```
 
-### 5. Configure Authentication
+### 4. Configure Authentication
 
 In Supabase Dashboard → Authentication → Settings:
 
@@ -91,7 +113,7 @@ In Supabase Dashboard → Authentication → Settings:
 | Variable | Value |
 |----------|-------|
 | `VITE_SUPABASE_URL` | `https://ohrytohcbbkorivsuukm.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
+| `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
 | `VITE_SUPABASE_PROJECT_ID` | `ohrytohcbbkorivsuukm` |
 
 ### Build Settings
@@ -99,6 +121,20 @@ In Supabase Dashboard → Authentication → Settings:
 - **Framework**: Vite
 - **Build Command**: `npm run build`
 - **Output Directory**: `dist`
+
+---
+
+## Edge Functions - No Secrets Required!
+
+Edge functions now use Supabase's **built-in environment variables** which are automatically available:
+
+| Variable | Description |
+|----------|-------------|
+| `SUPABASE_URL` | Your project URL (auto-provided) |
+| `SUPABASE_ANON_KEY` | Anonymous key (auto-provided) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (auto-provided) |
+
+**No manual secret configuration needed!** When you deploy functions to your Supabase project, these variables are automatically available.
 
 ---
 
@@ -166,12 +202,12 @@ Base URL: `https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/`
 - Verify environment variables in Vercel
 - Redeploy after adding variables
 
-### Edge Functions Not Working
-- Ensure secrets are set via `supabase secrets set`
-- Check function logs: `supabase functions logs <function-name>`
+### Edge Functions Return 500
+- Check function logs: `supabase functions logs <function-name> --project-ref ohrytohcbbkorivsuukm`
+- Ensure database schema is applied
 
 ### CORS Errors
-- Verify `awadhdairy-remix.vercel.app` is in ALLOWED_ORIGINS in `customer-auth/index.ts`
+- Verify your domain is in ALLOWED_ORIGINS in `customer-auth/index.ts`
 
 ---
 
@@ -186,6 +222,18 @@ supabase db dump -f backup.sql --project-ref ohrytohcbbkorivsuukm
 ```bash
 supabase db push --project-ref ohrytohcbbkorivsuukm < backup.sql
 ```
+
+---
+
+## Key Differences from Previous Setup
+
+| Aspect | Before | After |
+|--------|--------|-------|
+| Edge functions | Ran on Lovable Cloud | Run on YOUR Supabase |
+| Secrets | Stored in Lovable | Auto-provided by Supabase |
+| Service role key | Manual secret management | Automatic via `SUPABASE_SERVICE_ROLE_KEY` |
+| Deployment | Lovable deployer | `supabase functions deploy` |
+| Independence | Required Lovable | 100% independent |
 
 ---
 
