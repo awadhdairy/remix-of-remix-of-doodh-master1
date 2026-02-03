@@ -5,10 +5,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 }
 
-// Use environment variables for external Supabase credentials
-const EXTERNAL_URL = Deno.env.get('EXTERNAL_SUPABASE_URL') || 'https://ohrytohcbbkorivsuukm.supabase.co'
-const EXTERNAL_ANON_KEY = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg'
-
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -16,19 +12,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Get the service role key from environment (set via CLI)
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    
-    if (!serviceRoleKey) {
-      console.error('Missing SUPABASE_SERVICE_ROLE_KEY environment variable')
+    // Use EXTERNAL Supabase variables (same pattern as all other functions)
+    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseAnonKey = Deno.env.get('EXTERNAL_SUPABASE_ANON_KEY')!
+
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+      console.error('Missing external Supabase configuration')
       return new Response(
-        JSON.stringify({ error: 'Server configuration error' }),
+        JSON.stringify({ error: 'Server configuration error - missing external Supabase credentials' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     // Create admin client with service role key
-    const supabaseAdmin = createClient(EXTERNAL_URL, serviceRoleKey)
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
     // Get the JWT token from Authorization header
     const authHeader = req.headers.get('Authorization')
@@ -42,7 +40,7 @@ Deno.serve(async (req) => {
     const token = authHeader.replace('Bearer ', '')
 
     // Create a client with the user's token to verify their identity
-    const supabaseClient = createClient(EXTERNAL_URL, EXTERNAL_ANON_KEY, {
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } }
     })
 
@@ -59,12 +57,13 @@ Deno.serve(async (req) => {
 
     console.log('Authenticated user:', requestingUser.id, requestingUser.email)
 
-    // Check if requesting user is super_admin using service role client
-    const { data: roleData, error: roleError } = await supabaseAdmin
+    // Check if requesting user is super_admin using safe query pattern
+    const { data: roleRows, error: roleError } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', requestingUser.id)
-      .single()
+      .eq('role', 'super_admin')
+      .limit(1)
 
     if (roleError) {
       console.error('Role lookup error:', roleError)
@@ -74,7 +73,8 @@ Deno.serve(async (req) => {
       )
     }
 
-    if (roleData?.role !== 'super_admin') {
+    const isSuperAdmin = roleRows && roleRows.length > 0
+    if (!isSuperAdmin) {
       return new Response(
         JSON.stringify({ error: 'Only super admin can create users' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       .from('profiles')
       .select('id, is_active')
       .eq('phone', phone)
-      .single()
+      .maybeSingle()
 
     if (existingProfile) {
       if (existingProfile.is_active) {
