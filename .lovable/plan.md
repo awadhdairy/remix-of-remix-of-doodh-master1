@@ -1,294 +1,216 @@
 
-# Complete Migration Plan: Lovable Cloud to External Supabase
+# Comprehensive Fix: Edge Function Deployment Failures
 
-## Your Credentials (Confirmed)
+## Problem Summary
 
-| Credential | Value |
-|------------|-------|
-| **Project URL** | `https://ohrytohcbbkorivsuukm.supabase.co` |
-| **Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
-| **Service Role Key** | `sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b` |
-| **Admin Phone** | `7897716792` |
-| **Admin PIN** | `101101` |
-| **Vercel Domain** | `awadhdairy-remix.vercel.app` |
+Your edge functions fail to deploy with "Exit 1" / "function folder is empty" error when running `supabase functions deploy --project-ref ohrytohcbbkorivsuukm`.
+
+## Root Causes Identified
+
+### 1. Inconsistent Import Patterns
+Some functions use the modern `Deno.serve()` pattern (correct), while others use the deprecated `serve()` wrapper from `https://deno.land/std@0.168.0/http/server.ts` (outdated).
+
+| Function | Pattern Used | Status |
+|----------|--------------|--------|
+| `auto-deliver-daily` | `Deno.serve()` | Correct |
+| `health-check` | `Deno.serve()` | Correct |
+| `create-user` | `Deno.serve()` | Correct |
+| `change-pin` | `serve()` wrapper | Needs Update |
+| `customer-auth` | `serve()` wrapper | Needs Update |
+| `delete-user` | `serve()` wrapper | Needs Update |
+| `reset-user-pin` | `serve()` wrapper | Needs Update |
+| `setup-external-db` | `serve()` wrapper | Needs Update |
+| `update-user-status` | `serve()` wrapper | Needs Update |
+
+### 2. config.toml Project ID Mismatch
+Current `supabase/config.toml`:
+```toml
+project_id = "oqekytjbenurwiwhivra"  # Lovable Cloud project
+```
+
+When deploying to external project `ohrytohcbbkorivsuukm`, this mismatch can cause issues.
+
+### 3. Outdated std Library
+The `https://deno.land/std@0.168.0/http/server.ts` version is deprecated. The modern Supabase Edge Runtime uses `Deno.serve()` natively without importing the serve function.
 
 ---
 
-## Phase 1: Apply Database Schema
+## Comprehensive Solution
 
-Run this in your **External Supabase SQL Editor**:
-`https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql`
+### Phase 1: Update All Edge Functions to Modern Deno.serve() Pattern
 
-Copy the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql` and execute it.
+Convert all 6 functions that use the old `serve()` pattern to use `Deno.serve()` directly.
 
----
+**Pattern Change:**
+```typescript
+// OLD (deprecated - causes deployment failures)
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+serve(async (req) => { ... })
 
-## Phase 2: Set Edge Function Secrets (CLI Commands)
+// NEW (correct - works with current Supabase Edge Runtime)
+Deno.serve(async (req) => { ... })
+```
 
-Open terminal and run these commands exactly:
+#### Files to Update:
+
+1. **`supabase/functions/change-pin/index.ts`**
+   - Remove: `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"`
+   - Change: `serve(async (req) => {` to `Deno.serve(async (req) => {`
+
+2. **`supabase/functions/customer-auth/index.ts`**
+   - Remove: `import { serve } from "https://deno.land/std@0.168.0/http/server.ts";`
+   - Change: `serve(async (req) => {` to `Deno.serve(async (req) => {`
+
+3. **`supabase/functions/delete-user/index.ts`**
+   - Remove: `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"`
+   - Change: `serve(async (req) => {` to `Deno.serve(async (req) => {`
+
+4. **`supabase/functions/reset-user-pin/index.ts`**
+   - Remove: `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"`
+   - Change: `serve(async (req) => {` to `Deno.serve(async (req) => {`
+
+5. **`supabase/functions/setup-external-db/index.ts`**
+   - Remove: `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"`
+   - Change: `serve(async (req) => {` to `Deno.serve(async (req) => {`
+
+6. **`supabase/functions/update-user-status/index.ts`**
+   - Remove: `import { serve } from "https://deno.land/std@0.168.0/http/server.ts"`
+   - Change: `serve(async (req) => {` to `Deno.serve(async (req) => {`
+
+### Phase 2: Update supabase/config.toml
+
+Update the project_id to match your external Supabase project:
+
+```toml
+project_id = "ohrytohcbbkorivsuukm"
+```
+
+### Phase 3: Updated Deployment Commands
+
+After the code changes, run these commands in sequence:
 
 ```bash
-# Install Supabase CLI (if not installed)
-npm install -g supabase
+# Step 1: Navigate to your project root
+cd /path/to/your/project
 
-# Login to Supabase
-supabase login
-
-# Link to your external project
+# Step 2: Link to external project (only needed once)
 supabase link --project-ref ohrytohcbbkorivsuukm
 
-# Set all required secrets
-supabase secrets set EXTERNAL_SUPABASE_URL=https://ohrytohcbbkorivsuukm.supabase.co
+# Step 3: Verify secrets are set
+supabase secrets list --project-ref ohrytohcbbkorivsuukm
 
-supabase secrets set EXTERNAL_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
-
-supabase secrets set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY=sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b
-
-supabase secrets set BOOTSTRAP_ADMIN_PHONE=7897716792
-
-supabase secrets set BOOTSTRAP_ADMIN_PIN=101101
-```
-
----
-
-## Phase 3: Deploy All 9 Edge Functions
-
-Run these commands to deploy each function to your external Supabase:
-
-```bash
-# Deploy all edge functions
-supabase functions deploy auto-deliver-daily --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy change-pin --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy create-user --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy customer-auth --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy delete-user --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy health-check --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy reset-user-pin --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy setup-external-db --project-ref ohrytohcbbkorivsuukm
-supabase functions deploy update-user-status --project-ref ohrytohcbbkorivsuukm
-```
-
-Or deploy all at once:
-```bash
+# Step 4: Deploy all functions
 supabase functions deploy --project-ref ohrytohcbbkorivsuukm
 ```
 
----
-
-## Phase 4: Code Changes Required
-
-### File 1: `.env.example` (Update with your credentials)
-
-```env
-# External Supabase Configuration (Production Database)
-VITE_SUPABASE_URL=https://ohrytohcbbkorivsuukm.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
-VITE_SUPABASE_PROJECT_ID=ohrytohcbbkorivsuukm
-```
-
-### File 2: `supabase/functions/customer-auth/index.ts` (Add Vercel domain)
-
-Update lines 10-16 to include your Vercel domain:
-
-```typescript
-const ALLOWED_ORIGINS = [
-  'https://awadhdairy-remix.vercel.app',
-  'https://awadhd.lovable.app',
-  'https://id-preview--0e2105bf-7600-40c7-b696-88cb152c3e30.lovable.app',
-  'https://id-preview--c9769607-a092-45ff-8257-44be40434034.lovable.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-];
-```
-
-### File 3: `DEPLOYMENT_GUIDE.md` (Update with your credentials)
-
-Update the deployment guide with your specific credentials for future reference.
-
----
-
-## Phase 5: Vercel Deployment
-
-### Step 1: Push to GitHub
-```bash
-git add .
-git commit -m "Complete migration to external Supabase"
-git push origin main
-```
-
-### Step 2: Create Vercel Project
-1. Go to https://vercel.com
-2. Import your GitHub repository
-3. Configure:
-   - **Framework**: Vite
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-
-### Step 3: Set Environment Variables in Vercel
-
-| Variable | Value |
-|----------|-------|
-| `VITE_SUPABASE_URL` | `https://ohrytohcbbkorivsuukm.supabase.co` |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
-| `VITE_SUPABASE_PROJECT_ID` | `ohrytohcbbkorivsuukm` |
-
----
-
-## Phase 6: Bootstrap Admin & Seed Data
-
-### Option A: Run Setup Edge Function
+If batch deploy fails, deploy individually:
 
 ```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
-```
-
-This will:
-- Create super admin with phone `7897716792` and PIN `101101`
-- Seed dummy data (products, customers, cattle, etc.)
-
-### Option B: Bootstrap via SQL
-
-Run in Supabase SQL Editor:
-```sql
-SELECT bootstrap_super_admin('7897716792', '101101');
+supabase functions deploy auto-deliver-daily --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy change-pin --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy create-user --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy customer-auth --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy delete-user --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy health-check --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy reset-user-pin --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy setup-external-db --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
+supabase functions deploy update-user-status --project-ref ohrytohcbbkorivsuukm --no-verify-jwt
 ```
 
 ---
 
-## Phase 7: Configure Authentication
+## Complete File Changes
 
-In Supabase Dashboard → Authentication → Settings:
+### File 1: `supabase/config.toml`
+```toml
+project_id = "ohrytohcbbkorivsuukm"
+```
 
-1. **Site URL**: `https://awadhdairy-remix.vercel.app`
-2. **Redirect URLs**: Add:
-   - `https://awadhdairy-remix.vercel.app/auth`
-   - `https://awadhdairy-remix.vercel.app/customer/auth`
-   - `https://awadhdairy-remix.vercel.app/customer/dashboard`
+### File 2: `supabase/functions/change-pin/index.ts`
+Remove the serve import and use Deno.serve directly.
+
+### File 3: `supabase/functions/customer-auth/index.ts`
+Remove the serve import and use Deno.serve directly.
+
+### File 4: `supabase/functions/delete-user/index.ts`
+Remove the serve import and use Deno.serve directly.
+
+### File 5: `supabase/functions/reset-user-pin/index.ts`
+Remove the serve import and use Deno.serve directly.
+
+### File 6: `supabase/functions/setup-external-db/index.ts`
+Remove the serve import and use Deno.serve directly.
+
+### File 7: `supabase/functions/update-user-status/index.ts`
+Remove the serve import and use Deno.serve directly.
 
 ---
 
-## Phase 8: Setup Daily Automation (Optional)
+## Verification Steps After Deployment
 
-For `auto-deliver-daily` function to run automatically:
-
-### Option A: pg_cron in Supabase
-
-Run in SQL Editor:
-```sql
--- Enable pg_cron extension (if not enabled)
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- Schedule auto-deliver at 10:00 AM IST (4:30 AM UTC)
-SELECT cron.schedule(
-  'auto-deliver-daily',
-  '30 4 * * *',
-  $$SELECT extensions.http_post(
-    'https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/auto-deliver-daily',
-    '{}',
-    'application/json'
-  )$$
-);
-```
-
-### Option B: Vercel Cron
-
-Create/update `vercel.json`:
-```json
-{
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
-  ],
-  "crons": [{
-    "path": "/api/trigger-auto-deliver",
-    "schedule": "30 4 * * *"
-  }]
-}
-```
-
----
-
-## Test Your Migration
-
-### Test 1: Health Check
+### 1. Test Health Check
 ```bash
 curl "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check"
 ```
 Expected: `{"status":"healthy",...}`
 
-### Test 2: Login
-1. Visit: `https://awadhdairy-remix.vercel.app/auth`
-2. Enter: Phone `7897716792`, PIN `101101`
-3. Click Login
-4. Dashboard should load
-
-### Test 3: Customer Auth
+### 2. List Deployed Functions
 ```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/customer-auth" \
-  -H "Content-Type: application/json" \
-  -d '{"action":"login","phone":"9999000001","pin":"123456"}'
+supabase functions list --project-ref ohrytohcbbkorivsuukm
+```
+Should show all 9 functions.
+
+### 3. Check Function Logs
+```bash
+supabase functions logs health-check --project-ref ohrytohcbbkorivsuukm
 ```
 
 ---
 
-## Summary of Files to Modify
+## Troubleshooting: If Still Failing
 
-| File | Action |
-|------|--------|
-| `.env.example` | Update with external Supabase credentials |
-| `supabase/functions/customer-auth/index.ts` | Add `awadhdairy-remix.vercel.app` to ALLOWED_ORIGINS |
-| `DEPLOYMENT_GUIDE.md` | Update with specific credentials and URLs |
+If deployment still fails after these changes, try:
 
----
+1. **Clear Supabase CLI cache:**
+```bash
+rm -rf ~/.supabase
+supabase login
+supabase link --project-ref ohrytohcbbkorivsuukm
+```
 
-## Complete Credentials Reference
+2. **Update Supabase CLI:**
+```bash
+npm update -g supabase
+# or
+brew upgrade supabase
+```
 
+3. **Check for deno.lock conflicts:**
+```bash
+rm -f deno.lock
+rm -rf node_modules/.deno
+```
+
+4. **Verify function structure:**
+Each function folder must have:
 ```text
-# Supabase Project
-URL: https://ohrytohcbbkorivsuukm.supabase.co
-Project ID: ohrytohcbbkorivsuukm
-Anon Key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg
-Service Role Key: sb_secret_r02XtTsjUcW-D5-MgiYyzg_gIP6ra8b
-
-# Admin Credentials
-Phone: 7897716792
-PIN: 101101
-
-# Vercel
-Domain: awadhdairy-remix.vercel.app
-
-# Edge Function URLs
-Base: https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/
-- auto-deliver-daily
-- change-pin
-- create-user
-- customer-auth
-- delete-user
-- health-check
-- reset-user-pin
-- setup-external-db
-- update-user-status
-
-# Supabase Dashboard
-https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm
+supabase/functions/
+  function-name/
+    index.ts   # Required entry point
 ```
 
 ---
 
-## Post-Migration Checklist
+## Summary of Changes
 
-- [ ] Schema applied to external Supabase
-- [ ] All 5 secrets set via CLI
-- [ ] All 9 edge functions deployed
-- [ ] `.env.example` updated
-- [ ] `customer-auth` ALLOWED_ORIGINS updated
-- [ ] Code pushed to GitHub
-- [ ] Vercel project created
-- [ ] Vercel environment variables set
-- [ ] Authentication settings configured
-- [ ] Admin bootstrap completed
-- [ ] Login tested successfully
-- [ ] Daily automation configured
+| File | Change |
+|------|--------|
+| `supabase/config.toml` | Update project_id to external Supabase |
+| `change-pin/index.ts` | Remove `serve` import, use `Deno.serve()` |
+| `customer-auth/index.ts` | Remove `serve` import, use `Deno.serve()` |
+| `delete-user/index.ts` | Remove `serve` import, use `Deno.serve()` |
+| `reset-user-pin/index.ts` | Remove `serve` import, use `Deno.serve()` |
+| `setup-external-db/index.ts` | Remove `serve` import, use `Deno.serve()` |
+| `update-user-status/index.ts` | Remove `serve` import, use `Deno.serve()` |
 
----
-
-## Estimated Time: ~1-2 hours
+Total: 7 files to update
