@@ -64,16 +64,23 @@ serve(async (req) => {
     
     console.log('User authenticated:', requestingUser.id, requestingUser.email)
 
-    // Check if the requesting user is a super_admin
-    const { data: roleData, error: roleError } = await supabaseAdmin
+    // Check if the requesting user is a super_admin using safe query (avoids .single() errors)
+    const { data: roleRows, error: roleError } = await supabaseAdmin
       .from('user_roles')
       .select('role')
       .eq('user_id', requestingUser.id)
-      .single()
+      .eq('role', 'super_admin')
+      .limit(1)
 
-    if (roleError || roleData?.role !== 'super_admin') {
+    const isSuperAdmin = !roleError && roleRows && roleRows.length > 0
+
+    if (!isSuperAdmin) {
+      console.error('Authorization failed:', { roleError, roleRows, userId: requestingUser.id })
       return new Response(
-        JSON.stringify({ error: 'Only super_admin can delete users' }),
+        JSON.stringify({ 
+          error: 'Only super_admin can delete users',
+          debug: { roleError: roleError?.message, hasRoles: !!roleRows?.length }
+        }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
