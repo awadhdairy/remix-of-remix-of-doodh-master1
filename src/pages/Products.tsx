@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Milk, Edit, Trash2, Plus, Loader2, IndianRupee } from "lucide-react";
+import { Milk, Edit, Trash2, Plus, Loader2, IndianRupee, AlertTriangle, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Product {
@@ -36,6 +36,13 @@ interface Product {
   is_active: boolean;
   description: string | null;
   created_at: string;
+}
+
+interface DeleteDialogState {
+  open: boolean;
+  product: Product | null;
+  hasSubscriptions: boolean;
+  subscriptionCount: number;
 }
 
 const emptyFormData = {
@@ -60,10 +67,16 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteDialogState, setDeleteDialogState] = useState<DeleteDialogState>({
+    open: false,
+    product: null,
+    hasSubscriptions: false,
+    subscriptionCount: 0,
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [formData, setFormData] = useState(emptyFormData);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -79,15 +92,42 @@ export default function ProductsPage() {
       .order("name");
 
     if (error) {
+      console.error("Error fetching products:", error);
       toast({
         title: "Error fetching products",
-        description: error.message,
+        description: parseErrorMessage(error.message),
         variant: "destructive",
       });
     } else {
       setProducts(data || []);
     }
     setLoading(false);
+  };
+
+  const parseErrorMessage = (errorMessage: string): string => {
+    if (errorMessage.includes("violates row-level security policy")) {
+      return "You don't have permission to perform this action. Please contact an administrator.";
+    }
+    if (errorMessage.includes("violates foreign key constraint")) {
+      return "This product is linked to other records and cannot be deleted directly.";
+    }
+    if (errorMessage.includes("duplicate key")) {
+      return "A product with this name already exists.";
+    }
+    return errorMessage;
+  };
+
+  const checkProductDependencies = async (productId: string): Promise<number> => {
+    const { count, error } = await supabase
+      .from("customer_products")
+      .select("id", { count: "exact", head: true })
+      .eq("product_id", productId);
+    
+    if (error) {
+      console.error("Error checking dependencies:", error);
+      return 0;
+    }
+    return count || 0;
   };
 
   const handleOpenDialog = (product?: Product) => {
@@ -135,9 +175,10 @@ export default function ProductsPage() {
     setSaving(false);
 
     if (error) {
+      console.error("Error saving product:", error);
       toast({
         title: "Error saving product",
-        description: error.message,
+        description: parseErrorMessage(error.message),
         variant: "destructive",
       });
     } else {
@@ -150,24 +191,92 @@ export default function ProductsPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!selectedProduct) return;
+  const handleDeleteClick = async (product: Product) => {
+    // Check for active subscriptions before showing delete dialog
+    const subscriptionCount = await checkProductDependencies(product.id);
+    
+    setDeleteDialogState({
+      open: true,
+      product,
+      hasSubscriptions: subscriptionCount > 0,
+      subscriptionCount,
+    });
+  };
 
-    const { error } = await supabase.from("products").delete().eq("id", selectedProduct.id);
+  const handleDelete = async () => {
+    if (!deleteDialogState.product) return;
+    
+    setDeleting(true);
+    const { error } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", deleteDialogState.product.id);
+
+    setDeleting(false);
 
     if (error) {
+      console.error("Error deleting product:", error);
       toast({
         title: "Error deleting product",
-        description: error.message,
+        description: parseErrorMessage(error.message),
         variant: "destructive",
       });
     } else {
       toast({
         title: "Product deleted",
-        description: `${selectedProduct.name} has been removed`,
+        description: `${deleteDialogState.product.name} has been removed`,
       });
-      setDeleteDialogOpen(false);
-      setSelectedProduct(null);
+      setDeleteDialogState({ open: false, product: null, hasSubscriptions: false, subscriptionCount: 0 });
+      fetchProducts();
+    }
+  };
+
+  const handleSoftDelete = async () => {
+    if (!deleteDialogState.product) return;
+    
+    setDeleting(true);
+    const { error } = await supabase
+      .from("products")
+      .update({ is_active: false })
+      .eq("id", deleteDialogState.product.id);
+
+    setDeleting(false);
+
+    if (error) {
+      console.error("Error deactivating product:", error);
+      toast({
+        title: "Error deactivating product",
+        description: parseErrorMessage(error.message),
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Product deactivated",
+        description: `${deleteDialogState.product.name} has been marked as inactive`,
+      });
+      setDeleteDialogState({ open: false, product: null, hasSubscriptions: false, subscriptionCount: 0 });
+      fetchProducts();
+    }
+  };
+
+  const handleReactivate = async (product: Product) => {
+    const { error } = await supabase
+      .from("products")
+      .update({ is_active: true })
+      .eq("id", product.id);
+
+    if (error) {
+      console.error("Error reactivating product:", error);
+      toast({
+        title: "Error reactivating product",
+        description: parseErrorMessage(error.message),
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Product reactivated",
+        description: `${product.name} is now active`,
+      });
       fetchProducts();
     }
   };
@@ -244,17 +353,26 @@ export default function ProductsPage() {
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => {
-                              setSelectedProduct(product);
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {!product.is_active ? (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleReactivate(product)}
+                              title="Reactivate product"
+                            >
+                              <Plus className="h-4 w-4 text-success" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleDeleteClick(product)}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardHeader>
@@ -416,16 +534,74 @@ export default function ProductsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation */}
-      <ConfirmDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        title="Delete Product"
-        description={`Are you sure you want to delete ${selectedProduct?.name}? This action cannot be undone.`}
-        confirmText="Delete"
-        onConfirm={handleDelete}
-        variant="destructive"
-      />
+      {/* Enhanced Delete Confirmation */}
+      <Dialog 
+        open={deleteDialogState.open} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteDialogState({ open: false, product: null, hasSubscriptions: false, subscriptionCount: 0 });
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {deleteDialogState.hasSubscriptions && (
+                <AlertTriangle className="h-5 w-5 text-warning" />
+              )}
+              Delete Product
+            </DialogTitle>
+            <DialogDescription>
+              {deleteDialogState.hasSubscriptions ? (
+                <span className="text-warning">
+                  This product has {deleteDialogState.subscriptionCount} active customer subscription(s). 
+                  Deleting it will remove all related subscriptions and delivery history.
+                </span>
+              ) : (
+                `Are you sure you want to delete ${deleteDialogState.product?.name}? This action cannot be undone.`
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3 pt-4">
+            {deleteDialogState.hasSubscriptions && (
+              <Button 
+                variant="outline" 
+                onClick={handleSoftDelete}
+                disabled={deleting}
+                className="w-full"
+              >
+                {deleting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <EyeOff className="mr-2 h-4 w-4" />
+                )}
+                Deactivate Instead (Recommended)
+              </Button>
+            )}
+            
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setDeleteDialogState({ open: false, product: null, hasSubscriptions: false, subscriptionCount: 0 })}
+                className="flex-1"
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1"
+              >
+                {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {deleteDialogState.hasSubscriptions ? "Delete Anyway" : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
