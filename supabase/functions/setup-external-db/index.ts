@@ -12,7 +12,7 @@ const PERMANENT_ADMIN_PIN = '101101'
 const PERMANENT_ADMIN_NAME = 'Super Admin'
 
 /**
- * One-time setup function for external Supabase database
+ * One-time setup function for Supabase database
  * Creates permanent super admin and seeds all dummy data
  * 
  * This function is idempotent - running it multiple times is safe
@@ -23,20 +23,20 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Use EXTERNAL Supabase variables
-    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY')!
+    // Use Supabase's built-in environment variables (auto-provided by Supabase)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
     if (!supabaseUrl || !supabaseServiceKey) {
       return new Response(
-        JSON.stringify({ error: 'External Supabase not configured' }),
+        JSON.stringify({ error: 'Supabase not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
 
-    console.log('[SETUP] Starting external database setup...')
+    console.log('[SETUP] Starting database setup...')
     console.log('[SETUP] Using permanent admin phone:', PERMANENT_ADMIN_PHONE)
 
     // Check if admin already exists
@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'External database setup complete',
+        message: 'Database setup complete',
         admin_id: adminUserId,
         admin_phone: PERMANENT_ADMIN_PHONE,
         data_seeded: true
