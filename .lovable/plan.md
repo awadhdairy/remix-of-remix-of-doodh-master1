@@ -1,144 +1,259 @@
 
-## What’s most likely happening (why BOTH delete + deactivate fail)
-Since **both** `delete-user` and `update-user-status` are failing with the same generic “Edge Function returned a non-2xx status code”, the most probable cause is **one shared gate that both functions use**:
+# Comprehensive Fix: Products Section Issues
 
-### Shared gate = “is requesting user a super_admin?”
-Both functions do this pattern:
+## Problem Analysis
 
-- verify JWT (`getUser(token)`)
-- then:
-  ```ts
-  const { data: roleData, error: roleError } = await supabaseAdmin
-    .from('user_roles')
-    .select('role')
-    .eq('user_id', requestingUser.id)
-    .single()
+Based on my investigation, there are **three interconnected issues** in the Products section:
 
-  if (roleError || roleData?.role !== 'super_admin') return 403
-  ```
+### Issue 1: Cannot Delete Products (Foreign Key Constraint)
+**Error Message:** `"update or delete on table 'products' violates foreign key constraint 'customer_products_product_id_fkey' on table 'customer_products'"`
 
-This will hard-fail (non-2xx) not only when the role is not super_admin, but also when `.single()` errors.
+**Root Cause:** 
+The `customer_products` table has a foreign key to `products`, but it lacks `ON DELETE CASCADE` or `ON DELETE SET NULL`. When trying to delete a product that customers have subscribed to, the database blocks the operation.
 
-### The critical edge case: `.single()` errors if there are 0 rows OR multiple rows
-In Supabase/PostgREST, `.single()` throws an error if:
-- there’s **no** matching row (0 rows), OR
-- there are **multiple** matching rows (duplicates)
+**Current Schema (line 273):**
+```sql
+CREATE TABLE IF NOT EXISTS public.customer_products (
+  ...
+  product_id UUID NOT NULL REFERENCES public.products(id), -- No ON DELETE clause
+  ...
+);
+```
 
-So if your `user_roles` accidentally has:
-- **no** row for the logged-in super admin, OR
-- **more than one** row for the super admin (duplicate rows),
-then both functions return a non-2xx (commonly 403) and the frontend only shows the generic message.
-
-Given your project history (multiple setup iterations), **duplicates in `user_roles` for the super admin is a very plausible cause** and would explain why both actions fail consistently.
+**Also affected tables:**
+- `delivery_items.product_id` references `products.id`
+- `price_rules.product_id` references `products.id`
 
 ---
 
-## Phase 1 — Confirm with 100% certainty (fast checks)
-### A) Check the `update-user-status` function logs in the external backend
-1. Open external backend → Functions → `update-user-status` → Logs
-2. Trigger one deactivate toggle from User Management
-3. Copy/paste the log lines here (at least the lines around):
-   - `User authenticated: ...`
-   - any `roleError` / `Only super admin...` response
-
-This tells us if the failure is:
-- 401 (JWT validation failed)
-- 403 (role check failed)
-- 500 (DB update failed)
-
-### B) Check if `user_roles` has duplicates or missing row (external backend SQL)
-Run this in your external backend SQL runner (or equivalent):
+### Issue 2: Cannot Add/Edit Products (RLS Policy Issue)
+**Root Cause:**
+The RLS policy for INSERT/UPDATE on `products` requires the user to be a manager or admin:
 
 ```sql
--- 1) What roles exist for the currently logged-in super admin?
--- Replace with the authenticated user's UUID if needed (from logs)
-select user_id, role, count(*)
-from public.user_roles
-group by user_id, role
-having count(*) > 1;
-
--- 2) Show all roles for super admin user id (replace UUID)
-select *
-from public.user_roles
-where user_id = 'YOUR_SUPER_ADMIN_UUID';
+CREATE POLICY "Managers and admins can manage products" ON public.products
+  FOR ALL USING (public.is_manager_or_admin(auth.uid()));
 ```
 
-Expected:
-- exactly 1 row: role = `super_admin`
+This depends on:
+1. `auth.uid()` returning a valid user ID (user must be authenticated via Supabase Auth)
+2. That user ID must exist in the `user_roles` table with role `super_admin` or `manager`
 
-If you see duplicates, that is the root cause.
+**Potential Issues:**
+- User may not be properly authenticated (Supabase Auth session)
+- User's role may not be set correctly in `user_roles` table
+- The `is_manager_or_admin` function may not be working correctly
 
 ---
 
-## Phase 2 — Make the backend functions robust (so duplicates can’t break admin actions)
-### Change 1: Replace `.single()` with a safe role check
-In **both** functions (`delete-user` and `update-user-status`), change role check from:
+### Issue 3: Wrong Database Connection (Migration Issue)
+**Root Cause:**
+The code in `src/lib/external-supabase.ts` is still pointing to the OLD Supabase project:
 
-- `.single()` + `roleData?.role !== 'super_admin'`
-
-to a safer pattern:
-
-Option A (best): use the existing DB function `public.has_role(requestingUser.id, 'super_admin')` via RPC
-- This avoids `.single()` errors entirely.
-- Even if duplicates exist, the check still returns true.
-
-Option B: query `user_roles` but avoid `.single()`:
-- use `.select('role').eq(...).limit(1).maybeSingle()`
-- and treat “no row found” as not authorized
-
-### Change 2: Return better error details (debug-friendly)
-Right now the frontend shows generic error text.
-Backend should return structured JSON like:
-```json
-{ "error": "Only super admin can update user status", "debug": { "roleError": "..."} }
+```typescript
+const EXTERNAL_URL = 'https://htsfxnuttobkdquxwvjj.supabase.co';  // OLD PROJECT
 ```
-(Only in test/dev; can be removed later.)
+
+But you wanted to migrate to the NEW project:
+```
+https://ohrytohcbbkorivsuukm.supabase.co
+```
 
 ---
 
-## Phase 3 — Fix the data problem (recommended)
-Even if we harden the function, duplicates are a data integrity bug that will cause other issues.
+## Solution Plan
 
-### Add / enforce uniqueness in `user_roles`
-Ensure the table enforces:
-- exactly 1 role per user, OR
-- if multi-role system: unique(user_id, role)
+### Step 1: Update Database Foreign Keys (SQL Migration)
 
-Then delete duplicates with a one-time cleanup SQL:
-- Keep one row per (user_id, role)
-- Remove extras
+Add `ON DELETE` behavior to foreign keys that reference products:
+
+```sql
+-- First, drop existing foreign key constraints
+ALTER TABLE public.customer_products
+DROP CONSTRAINT IF EXISTS customer_products_product_id_fkey;
+
+ALTER TABLE public.delivery_items
+DROP CONSTRAINT IF EXISTS delivery_items_product_id_fkey;
+
+ALTER TABLE public.price_rules
+DROP CONSTRAINT IF EXISTS price_rules_product_id_fkey;
+
+-- Recreate with proper ON DELETE behavior
+ALTER TABLE public.customer_products
+ADD CONSTRAINT customer_products_product_id_fkey 
+FOREIGN KEY (product_id) REFERENCES public.products(id) 
+ON DELETE CASCADE;
+
+ALTER TABLE public.delivery_items
+ADD CONSTRAINT delivery_items_product_id_fkey 
+FOREIGN KEY (product_id) REFERENCES public.products(id) 
+ON DELETE CASCADE;
+
+ALTER TABLE public.price_rules
+ADD CONSTRAINT price_rules_product_id_fkey 
+FOREIGN KEY (product_id) REFERENCES public.products(id) 
+ON DELETE SET NULL;
+```
+
+**Business Logic:**
+- When a product is deleted, all customer subscriptions for that product are automatically removed (`CASCADE`)
+- Delivery items for that product are removed (`CASCADE`)
+- Price rules become unlinked but preserved (`SET NULL`)
 
 ---
 
-## Phase 4 — Frontend: stop hiding the real error
-In `UserManagement.tsx`, improve error handling so it shows:
-- HTTP status code
-- returned JSON `error` message
-- any returned `debug` fields
+### Step 2: Improve Products Page with Soft Delete + Checks
 
-This prevents “blind debugging” in the future.
+Update `src/pages/Products.tsx` to:
+
+1. **Check for dependencies before deleting** - Show warning if product has active subscriptions
+2. **Add soft delete option** - Set `is_active = false` instead of hard delete
+3. **Show better error messages** - Parse foreign key errors and show user-friendly messages
+
+```typescript
+// Before deleting, check if product has active subscriptions
+const checkProductDependencies = async (productId: string) => {
+  const { count } = await supabase
+    .from('customer_products')
+    .select('id', { count: 'exact', head: true })
+    .eq('product_id', productId);
+  
+  return count || 0;
+};
+
+// Offer soft delete as alternative
+const handleSoftDelete = async (product: Product) => {
+  const { error } = await supabase
+    .from('products')
+    .update({ is_active: false })
+    .eq('id', product.id);
+  // ...
+};
+```
 
 ---
 
-## Deliverables I will implement once you approve (code changes)
-1. Update `supabase/functions/update-user-status/index.ts`
-   - robust super_admin check (no `.single()` failure)
-   - improved error responses
-2. Update `supabase/functions/delete-user/index.ts`
-   - keep hybrid deletion
-   - robust super_admin check (no `.single()` failure)
-   - improved error responses
-3. Update `src/pages/UserManagement.tsx`
-   - display full backend error details (not just generic)
-4. Provide you a **copy/paste checklist** for updating the external backend function editors (since your app calls external backend functions)
+### Step 3: Add RLS Policy for INSERT (WITH CHECK)
+
+The current RLS policy uses `USING` which works for SELECT/UPDATE/DELETE but INSERT requires `WITH CHECK`:
+
+```sql
+-- Drop the FOR ALL policy and create specific ones
+DROP POLICY IF EXISTS "Managers and admins can manage products" ON public.products;
+
+-- SELECT policy for all authenticated users
+CREATE POLICY "Staff can read products" ON public.products
+  FOR SELECT USING (public.is_authenticated());
+
+-- INSERT/UPDATE/DELETE for managers and admins
+CREATE POLICY "Managers and admins can insert products" ON public.products
+  FOR INSERT WITH CHECK (public.is_manager_or_admin(auth.uid()));
+
+CREATE POLICY "Managers and admins can update products" ON public.products
+  FOR UPDATE USING (public.is_manager_or_admin(auth.uid()));
+
+CREATE POLICY "Managers and admins can delete products" ON public.products
+  FOR DELETE USING (public.is_manager_or_admin(auth.uid()));
+```
 
 ---
 
-## What I still need from you (1 item)
-Please paste the **latest logs for `update-user-status`** right after you try to deactivate a user once. That single log output will tell us whether this is:
-- role check failing due to `.single()` (most likely)
-- token invalid
-- DB update error
-- CORS / preflight issue
+### Step 4: Update External Supabase URL
 
-(Once we confirm, we’ll apply the hardened role check and you’ll be able to delete/deactivate reliably.)
+Update `src/lib/external-supabase.ts` to use the new Supabase project:
+
+```typescript
+// Old
+const EXTERNAL_URL = 'https://htsfxnuttobkdquxwvjj.supabase.co';
+
+// New
+const EXTERNAL_URL = 'https://ohrytohcbbkorivsuukm.supabase.co';
+const EXTERNAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg';
+```
+
+---
+
+### Step 5: Update EXTERNAL_SUPABASE_SCHEMA.sql
+
+Update the schema file to include:
+1. New foreign key constraints with `ON DELETE CASCADE`
+2. Separate RLS policies for INSERT/UPDATE/DELETE
+3. Update the dashboard URL comment
+
+---
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/lib/external-supabase.ts` | Update URL and anon key to new project |
+| `src/pages/Products.tsx` | Add dependency check before delete, improve error handling, add soft delete option |
+| `EXTERNAL_SUPABASE_SCHEMA.sql` | Update foreign key constraints, update RLS policies, update dashboard URL |
+
+---
+
+## SQL Changes Required (Run in External Supabase)
+
+```sql
+-- 1. Fix foreign key constraints
+ALTER TABLE public.customer_products
+DROP CONSTRAINT IF EXISTS customer_products_product_id_fkey;
+
+ALTER TABLE public.customer_products
+ADD CONSTRAINT customer_products_product_id_fkey 
+FOREIGN KEY (product_id) REFERENCES public.products(id) 
+ON DELETE CASCADE;
+
+ALTER TABLE public.delivery_items
+DROP CONSTRAINT IF EXISTS delivery_items_product_id_fkey;
+
+ALTER TABLE public.delivery_items
+ADD CONSTRAINT delivery_items_product_id_fkey 
+FOREIGN KEY (product_id) REFERENCES public.products(id) 
+ON DELETE CASCADE;
+
+-- 2. Verify RLS is enabled
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+
+-- 3. Fix RLS policies (drop old, create specific ones)
+DROP POLICY IF EXISTS "Managers and admins can manage products" ON public.products;
+DROP POLICY IF EXISTS "Staff can read products" ON public.products;
+
+CREATE POLICY "Authenticated users can read products" ON public.products
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Managers can insert products" ON public.products
+  FOR INSERT WITH CHECK (public.is_manager_or_admin(auth.uid()));
+
+CREATE POLICY "Managers can update products" ON public.products
+  FOR UPDATE USING (public.is_manager_or_admin(auth.uid()));
+
+CREATE POLICY "Managers can delete products" ON public.products
+  FOR DELETE USING (public.is_manager_or_admin(auth.uid()));
+```
+
+---
+
+## Manual Steps Required
+
+1. **Run SQL in External Supabase SQL Editor:**
+   - Go to: `https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql`
+   - Run the SQL commands above
+
+2. **Verify User Role:**
+   - Check if your logged-in user has a record in `user_roles` table with `role = 'super_admin'` or `role = 'manager'`
+   - If not, add one:
+   ```sql
+   INSERT INTO public.user_roles (user_id, role)
+   VALUES ('your-user-uuid', 'super_admin');
+   ```
+
+---
+
+## Summary
+
+| Issue | Root Cause | Solution |
+|-------|------------|----------|
+| Cannot delete products | Foreign key without `ON DELETE CASCADE` | Add `ON DELETE CASCADE` to foreign keys |
+| Cannot add/edit products | RLS policy missing `WITH CHECK` for INSERT | Create separate INSERT policy with `WITH CHECK` |
+| Wrong database | Old Supabase URL hardcoded | Update to new project URL and anon key |
