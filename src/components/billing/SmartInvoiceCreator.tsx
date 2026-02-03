@@ -373,7 +373,20 @@ export function SmartInvoiceCreator({
       return;
     }
 
-    // Add ledger entry
+    // Calculate running balance before ledger insert
+    const { data: lastLedgerEntry } = await supabase
+      .from("customer_ledger")
+      .select("running_balance")
+      .eq("customer_id", customerId)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const previousBalance = lastLedgerEntry?.running_balance || 0;
+    const newBalance = previousBalance + grandTotal;
+
+    // Add ledger entry with running_balance
     await supabase.from("customer_ledger").insert({
       customer_id: customerId,
       transaction_date: new Date().toISOString().split("T")[0],
@@ -381,6 +394,7 @@ export function SmartInvoiceCreator({
       description: `Invoice ${invoiceNumber} (${format(new Date(periodStart), "dd MMM")} - ${format(new Date(periodEnd), "dd MMM")})`,
       debit_amount: grandTotal,
       credit_amount: 0,
+      running_balance: newBalance,
     });
 
     setSaving(false);
