@@ -8,9 +8,6 @@ const corsHeaders = {
 // Allowed origins for redirect validation (prevents open redirect attacks)
 const ALLOWED_ORIGINS = [
   'https://awadhdairy-remix.vercel.app',
-  'https://awadhd.lovable.app',
-  'https://id-preview--0e2105bf-7600-40c7-b696-88cb152c3e30.lovable.app',
-  'https://id-preview--c9769607-a092-45ff-8257-44be40434034.lovable.app',
   'http://localhost:5173',
   'http://localhost:3000',
 ];
