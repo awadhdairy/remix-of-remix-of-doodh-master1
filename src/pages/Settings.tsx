@@ -10,7 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { DataArchiveManager } from "@/components/settings/DataArchiveManager";
-import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound, Database } from "lucide-react";
+import { DataIntegrityManager } from "@/components/settings/DataIntegrityManager";
+import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound, Database, ShieldCheck } from "lucide-react";
 
 interface DairySettings {
   id: string;
@@ -255,9 +256,14 @@ export default function SettingsPage() {
             <Bell className="h-4 w-4" /> Notifications
           </TabsTrigger>
           {isSuperAdmin && (
-            <TabsTrigger value="data-management" className="gap-2">
-              <Database className="h-4 w-4" /> Data Management
-            </TabsTrigger>
+            <>
+              <TabsTrigger value="data-management" className="gap-2">
+                <Database className="h-4 w-4" /> Data Management
+              </TabsTrigger>
+              <TabsTrigger value="data-integrity" className="gap-2">
+                <ShieldCheck className="h-4 w-4" /> Data Integrity
+              </TabsTrigger>
+            </>
           )}
         </TabsList>
 
@@ -519,6 +525,13 @@ export default function SettingsPage() {
         {isSuperAdmin && (
           <TabsContent value="data-management">
             <DataArchiveManager />
+          </TabsContent>
+        )}
+
+        {/* Data Integrity Tab - Super Admin Only */}
+        {isSuperAdmin && (
+          <TabsContent value="data-integrity">
+            <DataIntegrityManager />
           </TabsContent>
         )}
       </Tabs>

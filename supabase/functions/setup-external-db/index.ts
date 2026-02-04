@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,6 +10,102 @@ const corsHeaders = {
 const PERMANENT_ADMIN_PHONE = '7897716792'
 const PERMANENT_ADMIN_PIN = '101101'
 const PERMANENT_ADMIN_NAME = 'Super Admin'
+
+/**
+ * Clean up orphaned data before any setup operations
+ * This ensures phone uniqueness constraints don't block admin creation
+ */
+async function cleanupOrphanedData(supabaseAdmin: SupabaseClient, targetPhone: string, targetAuthUserId?: string) {
+  console.log('[SETUP] Running orphan cleanup for phone:', targetPhone)
+  
+  const cleanupResults = {
+    orphanedProfiles: 0,
+    orphanedRoles: 0,
+    orphanedAuthUsers: 0
+  }
+
+  try {
+    // 1. Clean up any profile with the admin phone that doesn't belong to the auth user
+    if (targetAuthUserId) {
+      const { data: conflictingProfiles } = await supabaseAdmin
+        .from('profiles')
+        .select('id, phone, full_name')
+        .eq('phone', targetPhone)
+        .neq('id', targetAuthUserId)
+
+      for (const orphan of (conflictingProfiles || [])) {
+        console.log('[SETUP] Found conflicting profile:', orphan.id, orphan.full_name)
+        
+        // Delete user_roles first (child)
+        await supabaseAdmin.from('user_roles').delete().eq('user_id', orphan.id)
+        
+        // Delete sessions
+        await supabaseAdmin.from('auth_sessions').delete().eq('user_id', orphan.id)
+        
+        // Delete profile
+        const { error: deleteError } = await supabaseAdmin.from('profiles').delete().eq('id', orphan.id)
+        if (!deleteError) {
+          cleanupResults.orphanedProfiles++
+          console.log('[SETUP] Deleted orphaned profile:', orphan.id)
+        }
+        
+        // Try to delete from auth.users if exists
+        try {
+          await supabaseAdmin.auth.admin.deleteUser(orphan.id)
+          cleanupResults.orphanedAuthUsers++
+          console.log('[SETUP] Deleted orphaned auth user:', orphan.id)
+        } catch {
+          // Auth user may not exist - that's fine
+        }
+      }
+    }
+
+    // 2. Clean up profiles that have no matching auth user
+    const { data: allProfiles } = await supabaseAdmin.from('profiles').select('id, phone')
+    const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers()
+    
+    const authUserIds = new Set(authUsers?.users?.map(u => u.id) || [])
+    
+    for (const profile of (allProfiles || [])) {
+      if (!authUserIds.has(profile.id)) {
+        console.log('[SETUP] Found orphaned profile (no auth user):', profile.id)
+        
+        // Delete user_roles first
+        await supabaseAdmin.from('user_roles').delete().eq('user_id', profile.id)
+        
+        // Delete sessions
+        await supabaseAdmin.from('auth_sessions').delete().eq('user_id', profile.id)
+        
+        // Delete profile
+        const { error: deleteError } = await supabaseAdmin.from('profiles').delete().eq('id', profile.id)
+        if (!deleteError) {
+          cleanupResults.orphanedProfiles++
+          console.log('[SETUP] Deleted orphaned profile:', profile.id)
+        }
+      }
+    }
+
+    // 3. Clean up user_roles that have no matching profile
+    const { data: allRoles } = await supabaseAdmin.from('user_roles').select('user_id')
+    const profileIds = new Set((allProfiles || []).map(p => p.id))
+    
+    for (const role of (allRoles || [])) {
+      if (!profileIds.has(role.user_id) && !authUserIds.has(role.user_id)) {
+        const { error: deleteError } = await supabaseAdmin.from('user_roles').delete().eq('user_id', role.user_id)
+        if (!deleteError) {
+          cleanupResults.orphanedRoles++
+          console.log('[SETUP] Deleted orphaned user_role:', role.user_id)
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error('[SETUP] Error during orphan cleanup:', error)
+  }
+
+  console.log('[SETUP] Orphan cleanup complete:', cleanupResults)
+  return cleanupResults
+}
 
 /**
  * One-time setup function for Supabase database
@@ -50,14 +146,17 @@ Deno.serve(async (req) => {
       console.log('[SETUP] Admin already exists, updating...')
       adminUserId = existingAdmin.id
 
+      // CRITICAL: Clean up orphaned data BEFORE attempting profile upsert
+      await cleanupOrphanedData(supabaseAdmin, PERMANENT_ADMIN_PHONE, adminUserId)
+
       // Ensure admin has correct password
       await supabaseAdmin.auth.admin.updateUserById(adminUserId, {
         password: PERMANENT_ADMIN_PIN,
         email_confirm: true
       })
 
-      // Update profile
-      await supabaseAdmin
+      // Update profile with proper error handling
+      const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .upsert({
           id: adminUserId,
@@ -67,6 +166,39 @@ Deno.serve(async (req) => {
           is_active: true
         }, { onConflict: 'id' })
 
+      if (profileError) {
+        console.error('[SETUP] Profile upsert failed:', profileError)
+        
+        // If still failing due to phone constraint, try direct update
+        if (profileError.message?.includes('phone') || profileError.code === '23505') {
+          console.log('[SETUP] Retrying with direct insert after cleanup...')
+          
+          // Force delete any remaining conflicts
+          await supabaseAdmin
+            .from('profiles')
+            .delete()
+            .eq('phone', PERMANENT_ADMIN_PHONE)
+            .neq('id', adminUserId)
+          
+          // Now insert fresh
+          const { error: insertError } = await supabaseAdmin
+            .from('profiles')
+            .upsert({
+              id: adminUserId,
+              full_name: PERMANENT_ADMIN_NAME,
+              phone: PERMANENT_ADMIN_PHONE,
+              role: 'super_admin',
+              is_active: true
+            }, { onConflict: 'id' })
+          
+          if (insertError) {
+            throw new Error(`Profile creation failed after retry: ${insertError.message}`)
+          }
+        } else {
+          throw new Error(`Profile creation failed: ${profileError.message}`)
+        }
+      }
+
       // Update PIN hash
       await supabaseAdmin.rpc('update_pin_only', {
         _user_id: adminUserId,
@@ -74,12 +206,20 @@ Deno.serve(async (req) => {
       })
 
       // Update role
-      await supabaseAdmin
+      const { error: roleError } = await supabaseAdmin
         .from('user_roles')
         .upsert({ user_id: adminUserId, role: 'super_admin' }, { onConflict: 'user_id' })
+      
+      if (roleError) {
+        console.error('[SETUP] Role upsert failed:', roleError)
+      }
 
     } else {
       console.log('[SETUP] Creating new admin...')
+
+      // CRITICAL: Clean up orphaned data BEFORE attempting to create new admin
+      // This will remove any conflicting profiles with the same phone
+      await cleanupOrphanedData(supabaseAdmin, PERMANENT_ADMIN_PHONE)
 
       // Create auth user
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -98,8 +238,11 @@ Deno.serve(async (req) => {
 
       adminUserId = authData.user.id
 
-      // Create profile
-      await supabaseAdmin
+      // Run cleanup again with the new ID to handle any edge cases
+      await cleanupOrphanedData(supabaseAdmin, PERMANENT_ADMIN_PHONE, adminUserId)
+
+      // Create profile with proper error handling
+      const { error: profileError } = await supabaseAdmin
         .from('profiles')
         .insert({
           id: adminUserId,
@@ -109,6 +252,11 @@ Deno.serve(async (req) => {
           is_active: true
         })
 
+      if (profileError) {
+        console.error('[SETUP] Profile insert failed:', profileError)
+        throw new Error(`Profile creation failed: ${profileError.message}`)
+      }
+
       // Set PIN hash
       await supabaseAdmin.rpc('update_pin_only', {
         _user_id: adminUserId,
@@ -116,9 +264,13 @@ Deno.serve(async (req) => {
       })
 
       // Create role
-      await supabaseAdmin
+      const { error: roleError } = await supabaseAdmin
         .from('user_roles')
         .insert({ user_id: adminUserId, role: 'super_admin' })
+
+      if (roleError) {
+        console.error('[SETUP] Role insert failed:', roleError)
+      }
 
       console.log('[SETUP] Admin created with ID:', adminUserId)
     }

@@ -2097,8 +2097,105 @@ INSERT INTO public.products (name, category, base_price, unit, description) VALU
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================
+-- SECTION 21: DATA INTEGRITY FUNCTIONS
+-- ============================================================================
+
+-- Cleanup orphaned data function - removes profiles without auth users, roles without profiles
+CREATE OR REPLACE FUNCTION public.cleanup_orphaned_data()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _orphaned_profiles INT := 0;
+  _orphaned_roles INT := 0;
+BEGIN
+  -- Find and delete profiles with no matching auth user
+  WITH deleted_profiles AS (
+    DELETE FROM public.profiles p
+    WHERE NOT EXISTS (
+      SELECT 1 FROM auth.users au WHERE au.id = p.id
+    )
+    RETURNING id
+  )
+  SELECT COUNT(*) INTO _orphaned_profiles FROM deleted_profiles;
+
+  -- Find and delete user_roles with no matching profile
+  WITH deleted_roles AS (
+    DELETE FROM public.user_roles ur
+    WHERE NOT EXISTS (
+      SELECT 1 FROM public.profiles p WHERE p.id = ur.user_id
+    )
+    RETURNING user_id
+  )
+  SELECT COUNT(*) INTO _orphaned_roles FROM deleted_roles;
+
+  -- Delete orphaned sessions
+  DELETE FROM public.auth_sessions s
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = s.user_id
+  );
+
+  RETURN json_build_object(
+    'success', true,
+    'orphaned_profiles_deleted', _orphaned_profiles,
+    'orphaned_roles_deleted', _orphaned_roles
+  );
+END;
+$$;
+
+-- Function to check for orphaned data without deleting
+CREATE OR REPLACE FUNCTION public.check_orphaned_data()
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _orphaned_profiles INT := 0;
+  _orphaned_roles INT := 0;
+  _orphaned_sessions INT := 0;
+BEGIN
+  -- Count profiles without auth users
+  SELECT COUNT(*) INTO _orphaned_profiles
+  FROM public.profiles p
+  WHERE NOT EXISTS (
+    SELECT 1 FROM auth.users au WHERE au.id = p.id
+  );
+
+  -- Count user_roles without profiles
+  SELECT COUNT(*) INTO _orphaned_roles
+  FROM public.user_roles ur
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = ur.user_id
+  );
+
+  -- Count sessions without profiles
+  SELECT COUNT(*) INTO _orphaned_sessions
+  FROM public.auth_sessions s
+  WHERE NOT EXISTS (
+    SELECT 1 FROM public.profiles p WHERE p.id = s.user_id
+  );
+
+  RETURN json_build_object(
+    'orphaned_profiles', _orphaned_profiles,
+    'orphaned_roles', _orphaned_roles,
+    'orphaned_sessions', _orphaned_sessions,
+    'has_issues', (_orphaned_profiles > 0 OR _orphaned_roles > 0 OR _orphaned_sessions > 0)
+  );
+END;
+$$;
+
+-- ============================================================================
 -- SCHEMA CREATION COMPLETE
 -- ============================================================================
 -- Now run the bootstrap_super_admin function with your credentials:
 -- SELECT public.bootstrap_super_admin('7897716792', '101101');
+-- 
+-- Or run the cleanup function to fix orphaned data:
+-- SELECT public.cleanup_orphaned_data();
+-- 
+-- To check for orphaned data without cleaning:
+-- SELECT public.check_orphaned_data();
 -- ============================================================================
