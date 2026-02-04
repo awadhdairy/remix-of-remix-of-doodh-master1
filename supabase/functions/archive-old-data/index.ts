@@ -36,48 +36,50 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL");
     const supabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseAnonKey = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
 
-    if (!supabaseUrl || !supabaseServiceKey) {
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
       throw new Error("Missing Supabase configuration");
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Admin client for database operations
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get authorization header
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return new Response(
         JSON.stringify({ error: "Authorization required" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Validate session and get user
+    // Validate via Supabase Auth JWT (same pattern as create-user, change-pin, etc.)
     const token = authHeader.replace("Bearer ", "");
-    const { data: sessionData } = await supabase
-      .from("auth_sessions")
-      .select("user_id, user_type")
-      .eq("session_token", token)
-      .gt("expires_at", new Date().toISOString())
-      .limit(1);
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
 
-    if (!sessionData || sessionData.length === 0) {
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) {
+      console.log(`[ARCHIVE] Auth failed: ${userError?.message}`);
       return new Response(
         JSON.stringify({ error: "Invalid or expired session" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const userId = sessionData[0].user_id;
+    const userId = user.id;
 
-    // Verify super_admin role (server-side check)
-    const { data: roleData } = await supabase
+    // Verify super_admin role (server-side check using admin client)
+    const { data: roleData } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", userId)
+      .eq("role", "super_admin")
       .limit(1);
 
-    if (!roleData || roleData.length === 0 || roleData[0].role !== "super_admin") {
+    if (!roleData || roleData.length === 0) {
       console.log(`[ARCHIVE] Unauthorized access attempt by user ${userId}`);
       return new Response(
         JSON.stringify({ error: "Only super admin can perform data archival" }),
@@ -128,7 +130,7 @@ Deno.serve(async (req) => {
         if (!tableConfig.dateColumn) continue; // Skip FK-only tables
         
         try {
-          let query = supabase
+          let query = supabaseAdmin
             .from(tableConfig.table)
             .select("id", { count: "exact", head: true })
             .lt(tableConfig.dateColumn, cutoffDateStr);
@@ -166,7 +168,7 @@ Deno.serve(async (req) => {
         if (!tableConfig.dateColumn) continue;
         
         try {
-          let query = supabase
+          let query = supabaseAdmin
             .from(tableConfig.table)
             .select("*")
             .lt(tableConfig.dateColumn, cutoffDateStr)
@@ -202,42 +204,22 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Verify PIN against database
-      const { data: profileData } = await supabase
+      // Get user's phone for PIN verification
+      const { data: userProfile } = await supabaseAdmin
         .from("profiles")
-        .select("id")
+        .select("phone")
         .eq("id", userId)
         .single();
 
-      if (!profileData) {
+      if (!userProfile?.phone) {
         return new Response(
           JSON.stringify({ error: "User profile not found" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-      // Use RPC to verify PIN (since we can't read pin_hash directly)
-      const { data: pinVerifyData } = await supabase.rpc("verify_pin", {
-        _phone: null, // We need to get phone first
-        _pin: pin,
-      });
-
-      // Alternative: Get phone and verify
-      const { data: userPhone } = await supabase
-        .from("profiles")
-        .select("phone")
-        .eq("id", userId)
-        .single();
-
-      if (!userPhone?.phone) {
-        return new Response(
-          JSON.stringify({ error: "Could not verify user" }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      const { data: verifiedUserId } = await supabase.rpc("verify_pin", {
-        _phone: userPhone.phone,
+      const { data: verifiedUserId } = await supabaseAdmin.rpc("verify_pin", {
+        _phone: userProfile.phone,
         _pin: pin,
       });
 
@@ -255,7 +237,7 @@ Deno.serve(async (req) => {
       let totalDeleted = 0;
 
       // Step 1: Get delivery IDs to delete (for FK cascade)
-      const { data: deliveryIds } = await supabase
+      const { data: deliveryIds } = await supabaseAdmin
         .from("deliveries")
         .select("id")
         .lt("delivery_date", cutoffDateStr);
@@ -271,7 +253,7 @@ Deno.serve(async (req) => {
           
           for (let i = 0; i < idsToDelete.length; i += batchSize) {
             const batch = idsToDelete.slice(i, i + batchSize);
-            const { error } = await supabase
+            const { error } = await supabaseAdmin
               .from("delivery_items")
               .delete()
               .in("delivery_id", batch);
@@ -282,7 +264,7 @@ Deno.serve(async (req) => {
           }
           
           // Count what we deleted
-          const { count } = await supabase
+          const { count } = await supabaseAdmin
             .from("delivery_items")
             .select("id", { count: "exact", head: true })
             .in("delivery_id", idsToDelete);
@@ -299,7 +281,7 @@ Deno.serve(async (req) => {
         
         try {
           // First count records to delete
-          let countQuery = supabase
+          let countQuery = supabaseAdmin
             .from(tableConfig.table)
             .select("id", { count: "exact", head: true })
             .lt(tableConfig.dateColumn, cutoffDateStr);
@@ -317,7 +299,7 @@ Deno.serve(async (req) => {
           }
 
           // Then delete
-          let deleteQuery = supabase
+          let deleteQuery = supabaseAdmin
             .from(tableConfig.table)
             .delete()
             .lt(tableConfig.dateColumn, cutoffDateStr);
@@ -344,7 +326,7 @@ Deno.serve(async (req) => {
 
       // Log the action
       try {
-        await supabase.from("activity_logs").insert({
+        await supabaseAdmin.from("activity_logs").insert({
           user_id: userId,
           action: isFactoryReset ? "factory_reset" : "data_archived",
           entity_type: "system",
