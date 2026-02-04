@@ -84,10 +84,50 @@ export function useInventoryData() {
       });
 
       if (error) throw error;
+
+      // Auto-create expense for initial stock purchase
+      let expenseCreated = false;
+      let expenseAmount = 0;
+      const initialStock = parseFloat(formData.current_stock) || 0;
+      const costPerUnit = formData.cost_per_unit ? parseFloat(formData.cost_per_unit) : 0;
+      
+      if (initialStock > 0 && costPerUnit > 0) {
+        expenseAmount = initialStock * costPerUnit;
+        try {
+          logger.expense("Creating initial feed expense", { item: formData.name, amount: expenseAmount });
+          expenseCreated = await logFeedPurchase(
+            formData.name,
+            initialStock,
+            costPerUnit,
+            formData.unit,
+            format(new Date(), "yyyy-MM-dd")
+          );
+          logger.expense("Initial expense result", { item: formData.name, result: expenseCreated ? 'Created' : 'Skipped (duplicate)' });
+        } catch (expenseError) {
+          logger.error("Expense Automation", "Failed to create initial expense", expenseError);
+          expenseCreated = false;
+        }
+      }
+
+      return { expenseCreated, expenseAmount, initialStock, costPerUnit };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
-      toast({ title: "Item added" });
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      
+      if (result?.expenseCreated) {
+        toast({ 
+          title: "Item added & expense recorded",
+          description: `₹${result.expenseAmount.toLocaleString()} added to expenses`
+        });
+      } else if (result?.initialStock && result.initialStock > 0 && result?.costPerUnit && result.costPerUnit > 0) {
+        toast({ 
+          title: "Item added",
+          description: "Expense may already exist for similar purchase"
+        });
+      } else {
+        toast({ title: "Item added" });
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Error saving item", description: error.message, variant: "destructive" });
