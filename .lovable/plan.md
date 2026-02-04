@@ -1,305 +1,281 @@
 
 
-# Comprehensive Fix: Add-on Delivery Orders & Billing Integration
+# Comprehensive Financial System Analysis & Fix Plan
 
 ## Executive Summary
 
-After thorough analysis of the codebase, I've identified **4 key issues** that prevent addon delivery orders from being created properly and integrating with the billing system. The fixes are minimal and targeted to avoid breaking existing functionality.
+After thoroughly analyzing the complete financial system of the Awadh Dairy application, I identified **7 critical issues** that affect the accuracy and functionality of auto-expense tracking, ledger management, and billing integration. The core architecture is solid, but there are several missing pieces that break the financial automation chain.
 
 ---
 
 ## Issues Identified
 
-### Issue 1: Missing `running_balance` Calculation in QuickAddOnOrderDialog
+### CRITICAL ISSUE 1: Feed/Inventory Purchase - Auto Expense Works BUT New Item Creation Doesn't Track Expense
 
-**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
-**Problem:** When inserting a ledger entry for add-on orders, the code doesn't calculate the `running_balance` field. The ledger entry is inserted without this value, causing:
-- Incorrect balance display in customer ledger
-- Inconsistent financial tracking
+**Current Status**: PARTIALLY WORKING - only stock updates trigger expense, not initial creation
 
-**Current code (lines 179-188):**
-```tsx
-const { error: ledgerError } = await supabase
-  .from("customer_ledger")
-  .insert({
-    customer_id: customerId,
-    transaction_date: format(deliveryDate, "yyyy-MM-dd"),
-    transaction_type: "delivery",
-    description: `Add-on Order: ${orderItems.map((i) => `${i.product_name} × ${i.quantity}`).join(", ")}`,
-    debit_amount: totalAmount,
-    reference_id: delivery.id,
-    // Missing: running_balance
-  });
+**Location**: `src/hooks/useInventoryData.ts`
+
+**Problem**: When adding a NEW inventory item with initial stock and cost, no expense is created. The expense automation only triggers during the `updateStock` mutation (lines 123-174), not during `createItem` mutation (lines 74-95).
+
+**Current Flow**:
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ ADD NEW INVENTORY ITEM (with initial stock + cost)              │
+│                                                                 │
+│  createItemMutation → insert to feed_inventory                  │
+│  ❌ NO expense created for initial purchase value               │
+│                                                                 │
+│ UPDATE STOCK (Add Stock action)                                 │
+│  updateStockMutation → update stock + logFeedPurchase()         │
+│  ✅ Expense IS created                                           │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**The `useLedgerAutomation` hook correctly calculates this (line 48-65):**
-```tsx
-const currentBalance = await getRunningBalance(entry.customer_id);
-const newBalance = currentBalance + debit - credit;
-// Then includes running_balance: newBalance in insert
-```
+**Impact**: If user creates a new item "Cattle Feed" with 100kg @ ₹50/kg (₹5,000), NO expense is recorded. They must later use "Update Stock → Add" to record an expense.
 
 ---
 
-### Issue 2: Duplicate Deliveries When Same-Day Addon Order
+### CRITICAL ISSUE 2: Billing Page - Payment Ledger Entry Missing `running_balance`
 
-**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
-**Problem:** When an add-on order is placed on a day that already has a delivery (subscription or previous addon), it creates a NEW delivery record instead of appending items to the existing one. This causes:
-- Multiple delivery records for the same customer on the same day
-- Confusing delivery history
-- Items appearing in separate delivery rows in the UI
+**Location**: `src/pages/Billing.tsx` (lines 149-157)
 
-**Current behavior:**
-- Customer already has a delivery for 2024-02-03 (subscription)
-- User creates an add-on order for the same day
-- System creates a SECOND delivery record for 2024-02-03
-- Customer now has 2 deliveries on the same date
+**Problem**: When recording a payment, the ledger entry is inserted WITHOUT calculating `running_balance`. This breaks financial tracking.
 
-**Expected behavior:**
-- If a delivery already exists for the customer on that date, add items to it
-- Only create new delivery if none exists
-
----
-
-### Issue 3: Error Handling Doesn't Distinguish RLS Failures
-
-**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
-**Problem:** The catch block shows a generic "Failed to create order" message. If RLS policies block the insert, users don't get helpful feedback about why the operation failed.
-
-**Current code (lines 195-198):**
-```tsx
-} catch (error) {
-  console.error("Error creating add-on order:", error);
-  toast.error("Failed to create order");
-}
+**Current Code**:
+```typescript
+await supabase.from("customer_ledger").insert({
+  customer_id: selectedInvoice.customer_id,
+  transaction_date: format(new Date(), "yyyy-MM-dd"),
+  transaction_type: "payment",
+  description: `Payment for ${selectedInvoice.invoice_number}`,
+  debit_amount: 0,
+  credit_amount: amount,
+  // ❌ MISSING: running_balance
+});
 ```
 
+**Impact**: Customer ledger shows payments but running balance is NULL/incorrect.
+
 ---
 
-### Issue 4: DeliveryItemsEditor Doesn't Update Ledger
+### CRITICAL ISSUE 3: Billing Page - Invoice Ledger Entry Is Missing
 
-**File:** `src/components/deliveries/DeliveryItemsEditor.tsx`
-**Problem:** When items are added/modified via the DeliveryItemsEditor (from the Deliveries page), no ledger entry is created. This means:
-- Add-ons added through the Deliveries page bypass the ledger
-- Financial tracking is inconsistent
+**Location**: `src/pages/Billing.tsx`
 
-**Current behavior:**
-- User edits delivery items via "Items" button in Deliveries page
-- Items are saved to `delivery_items` table
-- No entry is added to `customer_ledger`
+**Problem**: When an invoice is created via SmartInvoiceCreator, a ledger entry is created. However, the Billing page does NOT add a ledger entry when recording a payment. Additionally, if someone creates an invoice directly (bypassing SmartInvoiceCreator), there's no ledger entry at all.
+
+**Analysis**: 
+- SmartInvoiceCreator DOES add ledger entries (lines 377-398) ✅
+- Billing.tsx payments add ledger entries but WITHOUT running_balance ❌
+- No duplicate invoice ledger entries needed (SmartInvoiceCreator handles it)
+
+---
+
+### MODERATE ISSUE 4: Equipment Page - Works Correctly ✅
+
+**Location**: `src/hooks/useEquipmentData.ts`
+
+**Status**: WORKING - The `createEquipmentMutation` already calls `logEquipmentPurchase()` after successful insert (lines 97-106). Maintenance costs are also tracked via `logMaintenanceExpense()` (lines 147-158).
+
+---
+
+### MODERATE ISSUE 5: Health Records - Works Correctly ✅
+
+**Location**: `src/hooks/useHealthData.ts`
+
+**Status**: WORKING - The `createMutation` already calls `logHealthExpense()` after successful insert (lines 95-108).
+
+---
+
+### MODERATE ISSUE 6: Employee Salary - Works Correctly ✅
+
+**Location**: `src/pages/Employees.tsx`
+
+**Status**: WORKING - The `handleMarkPaid` function calls `logSalaryExpense()` when marking payroll as paid (lines 244-251).
+
+---
+
+### MODERATE ISSUE 7: Vendor Payments - Works Correctly ✅
+
+**Location**: `src/components/procurement/VendorPaymentsDialog.tsx`
+
+**Status**: WORKING - The `handleSavePayment` function calls `logVendorPaymentExpense()` after recording payment (lines 179-189).
 
 ---
 
 ## Implementation Plan
 
-### Change 1: Fix QuickAddOnOrderDialog - Add Running Balance & Check for Existing Delivery
+### Fix 1: Add Expense Automation to Inventory Item Creation
 
-**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
+**File**: `src/hooks/useInventoryData.ts`
 
-**Modifications:**
+**Changes**:
+1. Modify `createItemMutation` to call `logFeedPurchase()` when a new item is created with initial stock and cost
+2. This ensures that the initial purchase value is tracked as an expense
 
-1. **Check for existing delivery** before creating a new one:
-   - Query for delivery with same `customer_id` and `delivery_date`
-   - If exists, use that delivery ID; otherwise create new
+**Updated Logic**:
+```typescript
+const createItemMutation = useMutation({
+  mutationFn: async (formData: FeedFormData) => {
+    const { data, error } = await supabase.from("feed_inventory").insert({
+      // ... existing fields
+    }).select().single();
 
-2. **Calculate running_balance** before inserting ledger entry:
-   - Fetch the latest running_balance for the customer
-   - Add debit amount to get new balance
-   - Include in the insert
+    if (error) throw error;
 
-**Updated logic (handleSaveOrder function):**
-
-```tsx
-const handleSaveOrder = async () => {
-  if (orderItems.length === 0) {
-    toast.error("Please select at least one product");
-    return;
-  }
-
-  setSaving(true);
-  try {
-    const formattedDate = format(deliveryDate, "yyyy-MM-dd");
+    // Auto-create expense for initial stock purchase
+    let expenseCreated = false;
+    const initialStock = parseFloat(formData.current_stock) || 0;
+    const costPerUnit = formData.cost_per_unit ? parseFloat(formData.cost_per_unit) : 0;
     
-    // Step 1: Check for existing delivery on this date
-    const { data: existingDelivery } = await supabase
-      .from("deliveries")
-      .select("id")
-      .eq("customer_id", customerId)
-      .eq("delivery_date", formattedDate)
-      .maybeSingle();
-    
-    let deliveryId: string;
-    
-    if (existingDelivery) {
-      // Use existing delivery
-      deliveryId = existingDelivery.id;
-    } else {
-      // Create new delivery
-      const currentTime = new Date().toLocaleTimeString("en-IN", {...});
-      const { data: newDelivery, error: deliveryError } = await supabase
-        .from("deliveries")
-        .insert({
-          customer_id: customerId,
-          delivery_date: formattedDate,
-          status: "delivered",
-          delivery_time: currentTime,
-          notes: "Add-on order",
-        })
-        .select("id")
-        .single();
-      if (deliveryError) throw deliveryError;
-      deliveryId = newDelivery.id;
+    if (initialStock > 0 && costPerUnit > 0) {
+      expenseCreated = await logFeedPurchase(
+        formData.name,
+        initialStock,
+        costPerUnit,
+        formData.unit,
+        format(new Date(), "yyyy-MM-dd")
+      );
     }
 
-    // Step 2: Insert delivery items
-    const deliveryItems = orderItems.map((item) => ({...}));
-    const { error: itemsError } = await supabase
-      .from("delivery_items")
-      .insert(deliveryItems);
-    if (itemsError) throw itemsError;
-
-    // Step 3: Calculate running balance before ledger insert
-    const { data: lastEntry } = await supabase
-      .from("customer_ledger")
-      .select("running_balance")
-      .eq("customer_id", customerId)
-      .order("transaction_date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    return { data, expenseCreated, initialStock, costPerUnit };
+  },
+  onSuccess: (result) => {
+    queryClient.invalidateQueries({ queryKey: ["inventory"] });
+    queryClient.invalidateQueries({ queryKey: ["expenses"] });
     
-    const previousBalance = lastEntry?.running_balance || 0;
-    const newBalance = previousBalance + totalAmount;
-
-    // Step 4: Insert ledger entry with running_balance
-    const { error: ledgerError } = await supabase
-      .from("customer_ledger")
-      .insert({
-        customer_id: customerId,
-        transaction_date: formattedDate,
-        transaction_type: "delivery",
-        description: `Add-on Order: ${orderItems.map(...)...}`,
-        debit_amount: totalAmount,
-        credit_amount: 0,
-        running_balance: newBalance,
-        reference_id: deliveryId,
+    if (result?.expenseCreated) {
+      const amount = (result.initialStock || 0) * (result.costPerUnit || 0);
+      toast({ 
+        title: "Item added & expense recorded",
+        description: `₹${amount.toLocaleString()} added to expenses`
       });
-    if (ledgerError) throw ledgerError;
-
-    toast.success("Add-on order created successfully!");
-    onOpenChange(false);
-    onSuccess?.();
-  } catch (error: any) {
-    console.error("Error creating add-on order:", error);
-    // Better error message
-    if (error.message?.includes("policy")) {
-      toast.error("Permission denied. Please check your access rights.");
+    } else if (result?.initialStock > 0 && result?.costPerUnit > 0) {
+      toast({ 
+        title: "Item added",
+        description: "Set unit cost to enable expense tracking"
+      });
     } else {
-      toast.error(`Failed to create order: ${error.message || "Unknown error"}`);
+      toast({ title: "Item added" });
     }
-  } finally {
-    setSaving(false);
-  }
+  },
+  // ...
+});
+```
+
+---
+
+### Fix 2: Add running_balance to Billing Page Payment Ledger
+
+**File**: `src/pages/Billing.tsx`
+
+**Changes**:
+1. Before inserting the ledger entry, fetch the customer's current running balance
+2. Calculate new balance (subtract credit/payment from balance)
+3. Include `running_balance` in the insert
+
+**Updated Logic**:
+```typescript
+const handleRecordPayment = async () => {
+  // ... existing validation and invoice update code ...
+
+  // Calculate running balance before ledger insert
+  const { data: lastLedgerEntry } = await supabase
+    .from("customer_ledger")
+    .select("running_balance")
+    .eq("customer_id", selectedInvoice.customer_id)
+    .order("transaction_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  
+  const previousBalance = lastLedgerEntry?.running_balance || 0;
+  const newBalance = previousBalance - amount; // Payment reduces balance
+
+  // Add ledger entry with running_balance
+  await supabase.from("customer_ledger").insert({
+    customer_id: selectedInvoice.customer_id,
+    transaction_date: format(new Date(), "yyyy-MM-dd"),
+    transaction_type: "payment",
+    description: `Payment for ${selectedInvoice.invoice_number}`,
+    debit_amount: 0,
+    credit_amount: amount,
+    running_balance: newBalance, // ✅ Now included
+    reference_id: selectedInvoice.id, // Link to invoice
+  });
+
+  // ... rest of function
 };
 ```
 
 ---
 
-### Change 2: Add Ledger Entry Support to DeliveryItemsEditor (Optional Enhancement)
+## Summary of Changes
 
-**File:** `src/components/deliveries/DeliveryItemsEditor.tsx`
-
-This is a lower-priority enhancement. The current implementation doesn't track delivery item changes in the ledger. For now, this is acceptable because:
-- SmartInvoiceCreator fetches actual delivery_items data
-- Invoices will reflect correct totals regardless
-
-However, if precise ledger tracking is needed, we can add this in a future update.
+| File | Issue | Fix | Priority |
+|------|-------|-----|----------|
+| `src/hooks/useInventoryData.ts` | New item creation doesn't log expense | Add `logFeedPurchase()` in `createItemMutation` | Critical |
+| `src/pages/Billing.tsx` | Payment ledger missing `running_balance` | Calculate and include balance in insert | Critical |
 
 ---
 
-## Files to Modify
+## Already Working Components
 
-| File | Changes | Impact |
-|------|---------|--------|
-| `src/components/customers/QuickAddOnOrderDialog.tsx` | Add existing delivery check, calculate running_balance | Fixes addon order creation |
+| Component | Location | Status |
+|-----------|----------|--------|
+| Stock Update Expense | `useInventoryData.ts` | ✅ Working |
+| Equipment Purchase Expense | `useEquipmentData.ts` | ✅ Working |
+| Maintenance Expense | `useEquipmentData.ts` | ✅ Working |
+| Health Record Expense | `useHealthData.ts` | ✅ Working |
+| Salary Expense | `Employees.tsx` | ✅ Working |
+| Vendor Payment Expense | `VendorPaymentsDialog.tsx` | ✅ Working |
+| Invoice Ledger Entry | `SmartInvoiceCreator.tsx` | ✅ Working |
+| Add-on Order Ledger | `QuickAddOnOrderDialog.tsx` | ✅ Working |
 
 ---
 
-## What Remains Unchanged
+## Financial Flow After Fixes
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      COMPLETE FINANCIAL AUTOMATION                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  EXPENSES (Auto-Tracked)                                                    │
+│  ├── Inventory/Feed Purchase (NEW ITEM) ✅ [Fixed]                          │
+│  ├── Inventory/Feed Purchase (Stock Update) ✅                              │
+│  ├── Equipment Purchase ✅                                                   │
+│  ├── Maintenance ✅                                                          │
+│  ├── Health/Medical ✅                                                       │
+│  ├── Salary (when marked paid) ✅                                           │
+│  └── Vendor Payments ✅                                                      │
+│                                                                             │
+│  CUSTOMER LEDGER (Auto-Tracked)                                             │
+│  ├── Deliveries → Debit (via auto-deliver function)                        │
+│  ├── Add-on Orders → Debit + running_balance ✅                             │
+│  ├── Invoice Generation → Debit + running_balance ✅                        │
+│  └── Payments → Credit + running_balance ✅ [Fixed]                          │
+│                                                                             │
+│  BILLING/INVOICES                                                           │
+│  ├── Auto-fetch from delivery_items ✅                                       │
+│  ├── Include addons ✅                                                       │
+│  ├── PDF generation ✅                                                       │
+│  └── Payment tracking ✅                                                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## What Will NOT Change
 
 To ensure no functionality is lost:
 
-| Component | Status | Reason |
-|-----------|--------|--------|
-| `useAutoInvoiceGenerator.ts` | Unchanged | Already fetches all delivered items correctly |
-| `SmartInvoiceCreator.tsx` | Unchanged | Already distinguishes addons vs subscriptions |
-| `useLedgerAutomation.ts` | Unchanged | Can be used as reference but not modified |
-| `DeliveryItemsEditor.tsx` | Unchanged | Works correctly for its purpose |
-| `auto-deliver-daily` edge function | Unchanged | Handles subscription deliveries |
-| All billing/invoice flows | Unchanged | Already work with delivery_items |
-
----
-
-## Integration Flow After Fix
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    ADD-ON ORDER FLOW (FIXED)                    │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  User clicks "Add Order" in CustomerDetailDialog                │
-│       ↓                                                         │
-│  QuickAddOnOrderDialog opens                                    │
-│       ↓                                                         │
-│  User selects products & date → clicks "Add Order"              │
-│       ↓                                                         │
-│  [NEW] Check: Does delivery exist for this date?                │
-│       ├─ YES → Use existing delivery ID                         │
-│       └─ NO → Create new delivery record                        │
-│       ↓                                                         │
-│  Insert delivery_items for the delivery                         │
-│       ↓                                                         │
-│  [NEW] Calculate running_balance from last ledger entry         │
-│       ↓                                                         │
-│  Insert customer_ledger entry WITH running_balance              │
-│       ↓                                                         │
-│  Success! Items now appear in:                                  │
-│    - Deliveries page (under single delivery)                    │
-│    - Customer ledger (with correct balance)                     │
-│    - Invoice creation (fetched from delivery_items)             │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Invoice Auto-Fetch Verification
-
-The existing invoice generation correctly handles addon orders:
-
-1. **SmartInvoiceCreator** (lines 124-185):
-   - Fetches all deliveries with status `delivered` in the billing period
-   - Iterates through `delivery_items` and aggregates by product
-   - Marks items as `is_addon` if not in customer subscriptions
-   - Shows addons separately in the invoice UI
-
-2. **useAutoInvoiceGenerator** (lines 70-113):
-   - Same pattern: fetches deliveries → aggregates delivery_items
-   - All items from both subscription and addon deliveries are included
-   - No changes needed
-
-The fix ensures addon orders create proper `delivery_items` entries, which are then automatically picked up by invoice generation.
-
----
-
-## Testing Checklist
-
-After implementation, verify:
-
-1. [ ] Create an add-on order for a day WITH existing delivery → items should be added to existing delivery
-2. [ ] Create an add-on order for a day WITHOUT existing delivery → new delivery should be created
-3. [ ] Check customer ledger shows correct running_balance after addon order
-4. [ ] Create invoice for period containing addon orders → addon items should appear
-5. [ ] Verify delivery appears once per day in Deliveries page (not duplicated)
-6. [ ] Check CustomerDetailDialog shows addon orders correctly in history
+1. **All existing expense automation hooks** - Only extending, not modifying core logic
+2. **Database schema** - No changes to table structure
+3. **Edge functions** - No changes required
+4. **Invoice generation** - SmartInvoiceCreator remains unchanged
+5. **Delivery automation** - auto-deliver-daily function unchanged
+6. **Customer portal** - All customer-facing features remain intact
 
