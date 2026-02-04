@@ -146,7 +146,20 @@ export default function BillingPage() {
       payment_date: format(new Date(), "yyyy-MM-dd"),
     });
 
-    // Add ledger entry for payment
+    // Calculate running balance before ledger insert
+    const { data: lastLedgerEntry } = await supabase
+      .from("customer_ledger")
+      .select("running_balance")
+      .eq("customer_id", selectedInvoice.customer_id)
+      .order("transaction_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    
+    const previousBalance = lastLedgerEntry?.running_balance || 0;
+    const newBalance = previousBalance - amount; // Payment reduces balance (credit)
+
+    // Add ledger entry for payment with running_balance
     await supabase.from("customer_ledger").insert({
       customer_id: selectedInvoice.customer_id,
       transaction_date: format(new Date(), "yyyy-MM-dd"),
@@ -154,6 +167,8 @@ export default function BillingPage() {
       description: `Payment for ${selectedInvoice.invoice_number}`,
       debit_amount: 0,
       credit_amount: amount,
+      running_balance: newBalance,
+      reference_id: selectedInvoice.id,
     });
 
     if (invoiceError || paymentError) {
