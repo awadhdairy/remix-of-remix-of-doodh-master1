@@ -74,12 +74,16 @@ export function BulkDeliveryActions({
       const delivery = pendingDeliveries[i];
 
       try {
-        // Check if customer is on vacation
+        // Check if customer is on vacation using direct query (works on any database)
         const { data: vacationCheck } = await supabase
-          .rpc("is_customer_on_vacation", {
-            _customer_id: delivery.customer_id,
-            _check_date: delivery.delivery_date,
-          });
+          .from("customer_vacations")
+          .select("id")
+          .eq("customer_id", delivery.customer_id)
+          .eq("is_active", true)
+          .lte("start_date", delivery.delivery_date)
+          .gte("end_date", delivery.delivery_date)
+          .limit(1)
+          .maybeSingle();
 
         if (vacationCheck) {
           // Skip customers on vacation

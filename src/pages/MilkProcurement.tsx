@@ -165,9 +165,19 @@ export default function MilkProcurementPage() {
   });
 
   const { toast } = useToast();
+  
+  // Fetch data when filters change
   useEffect(() => {
     fetchData();
   }, [dateRange, sortBy, sortOrder]);
+
+  // Fix: Update activeVendors stat when vendors state changes (avoids race condition)
+  useEffect(() => {
+    setStats(prev => ({
+      ...prev,
+      activeVendors: vendors.filter((v) => v.is_active).length
+    }));
+  }, [vendors]);
 
   const fetchData = async () => {
     setLoading(true);
