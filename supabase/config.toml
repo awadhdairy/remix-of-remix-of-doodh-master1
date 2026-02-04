@@ -1,5 +1,8 @@
 project_id = "ohrytohcbbkorivsuukm"
 
+[functions.archive-old-data]
+verify_jwt = false
+
 [functions.auto-deliver-daily]
 verify_jwt = false
 

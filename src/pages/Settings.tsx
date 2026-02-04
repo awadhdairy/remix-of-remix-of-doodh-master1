@@ -8,7 +8,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound } from "lucide-react";
+import { useUserRole } from "@/hooks/useUserRole";
+import { DataArchiveManager } from "@/components/settings/DataArchiveManager";
+import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound, Database } from "lucide-react";
 
 interface DairySettings {
   id: string;
@@ -38,6 +40,9 @@ export default function SettingsPage() {
   const [newPin, setNewPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
   const { toast } = useToast();
+  const { role } = useUserRole();
+  
+  const isSuperAdmin = role === "super_admin";
 
   useEffect(() => {
     fetchSettings();
@@ -238,7 +243,7 @@ export default function SettingsPage() {
       />
 
       <Tabs defaultValue="dairy" className="space-y-6">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="dairy" className="gap-2">
             <Building2 className="h-4 w-4" /> Dairy Info
           </TabsTrigger>
@@ -251,6 +256,11 @@ export default function SettingsPage() {
           <TabsTrigger value="notifications" className="gap-2">
             <Bell className="h-4 w-4" /> Notifications
           </TabsTrigger>
+          {isSuperAdmin && (
+            <TabsTrigger value="data-management" className="gap-2">
+              <Database className="h-4 w-4" /> Data Management
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="dairy">
@@ -506,6 +516,13 @@ export default function SettingsPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* Data Management Tab - Super Admin Only */}
+        {isSuperAdmin && (
+          <TabsContent value="data-management">
+            <DataArchiveManager />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
