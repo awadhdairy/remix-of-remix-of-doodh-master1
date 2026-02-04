@@ -1,180 +1,222 @@
 
-# Data Archival/Cleanup Feature for Admin
+# Complete Migration to External Supabase - Zero Lovable Cloud Dependency
 
-## Overview
+## Current State Analysis
 
-This feature adds a secure admin-only tool to clear old historical data beyond configurable retention periods (1/2/3+ years). This is essential for long-term database health and performance as transactional data grows.
+After comprehensive code review, I found that:
 
-## Architecture
+### Already Migrated (75 files)
+All database operations correctly use `externalSupabase` from `@/lib/external-supabase`:
+- All pages (Customers, Billing, Deliveries, etc.)
+- All hooks (useAutoInvoiceGenerator, useDashboardData, etc.)
+- All components
 
-```text
-+------------------+     +----------------------+     +-----------------+
-|  Settings Page   |---->|  Archive Edge Func   |---->|   Database      |
-|  (Admin Tab)     |     |  (archive-old-data)  |     |   Cleanup       |
-+------------------+     +----------------------+     +-----------------+
-        |                          |
-        v                          v
-   Role Check               Super Admin
- (super_admin only)         Verification
+### Problem Areas (6 files using `supabase.functions.invoke`)
+These files call edge functions using `supabase.functions.invoke()`, which routes to **whichever Supabase the client is connected to**. In Lovable Editor, this goes to Lovable Cloud. On Vercel, it would go to external Supabase.
+
+| File | Functions Called | Status |
+|------|-----------------|--------|
+| `src/pages/Settings.tsx` | change-pin | Needs fix |
+| `src/pages/UserManagement.tsx` | create-user, update-user-status, reset-user-pin, delete-user | Needs fix |
+| `src/pages/customer/CustomerAuth.tsx` | customer-auth | Needs fix |
+| `src/hooks/useCustomerAuth.tsx` | customer-auth | Needs fix |
+| `src/components/settings/DataArchiveManager.tsx` | archive-old-data | Needs fix |
+| `src/components/dashboard/DeliveryAutomationCard.tsx` | auto-deliver-daily | Needs fix |
+
+### Root Cause
+When you use `supabase.functions.invoke("function-name")`, the SDK makes a request to:
+`{SUPABASE_URL}/functions/v1/function-name`
+
+In Lovable Editor, the `supabase` client uses Lovable Cloud's URL, so function calls fail because:
+1. Functions exist in code but deploy to Lovable Cloud (wrong project)
+2. External Supabase (ohrytohcbbkorivsuukm) doesn't have these functions deployed
+
+---
+
+## Solution: Direct Edge Function Calls
+
+Replace `supabase.functions.invoke()` with direct `fetch()` calls to the external Supabase URL, using the `invokeExternalFunction` helper that already exists.
+
+### Architecture After Fix
+
+```
+Frontend (Vercel/Lovable Editor)
+        │
+        ▼
+┌───────────────────────────────┐
+│  invokeExternalFunction()     │ ◄── Hardcoded external URL
+│  (src/lib/external-supabase)  │
+└───────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────┐
+│  External Supabase            │
+│  ohrytohcbbkorivsuukm         │
+│  └── Edge Functions           │
+│      └── All 10 functions     │
+└───────────────────────────────┘
 ```
 
-## Data Tables to Archive
+---
 
-The following tables contain date-based data that grows indefinitely:
+## Implementation Plan
 
-| Table | Date Column | Safe to Archive | Notes |
-|-------|-------------|-----------------|-------|
-| activity_logs | created_at | Yes | Audit trail, archive after retention |
-| attendance | attendance_date | Yes | Historical records |
-| bottle_transactions | transaction_date | Yes | Historical |
-| breeding_records | record_date | Yes | Historical |
-| cattle_health | record_date | Yes | Historical, but keep recent for care continuity |
-| customer_ledger | transaction_date | Partial | Only if invoices paid (financial compliance) |
-| deliveries | delivery_date | Yes | Historical |
-| delivery_items | via delivery_id | Yes | Cascade with deliveries |
-| expenses | expense_date | Partial | Financial records, 7 year retention recommended |
-| feed_consumption | consumption_date | Yes | Historical |
-| invoices | created_at | Partial | Only fully paid invoices |
-| maintenance_records | maintenance_date | Yes | Historical |
-| milk_procurement | procurement_date | Yes | Historical |
-| milk_production | production_date | Yes | Historical |
-| notification_logs | created_at | Yes | Audit trail |
-| payments | payment_date | Partial | Financial records |
-| payroll_records | pay_period_start | Partial | HR/financial records |
-| vendor_payments | payment_date | Partial | Financial records |
+### Phase 1: Enhance External Function Helper
 
-## Implementation Details
+Modify `src/lib/external-supabase.ts` to add a specialized helper that handles the app's custom session token authentication (used by staff auth system):
 
-### 1. New Settings Tab: "Data Management" (Admin Only)
-
-Add a new tab in Settings.tsx that only appears for `super_admin` users with:
-
-- Dropdown to select retention period (1 year / 2 years / 3 years / 5 years)
-- Data preview showing record counts that would be deleted
-- Confirmation dialog with PIN re-entry for security
-- Export option before deletion (backup safety)
-- Detailed activity logging of what was deleted
-
-### 2. New Edge Function: `archive-old-data`
-
-Secure edge function that:
-
-- Verifies caller is `super_admin` (same pattern as delete-user)
-- Accepts retention period and optional table selection
-- Performs deletions in correct order (respecting foreign keys)
-- Logs all actions to `activity_logs`
-- Returns detailed summary of deleted records
-
-### 3. Deletion Order (Foreign Key Aware)
-
-```text
-Step 1: Get delivery IDs older than cutoff
-Step 2: Delete delivery_items (FK to deliveries)
-Step 3: Delete deliveries
-Step 4: Delete invoice_items (if exists) before invoices
-Step 5: Delete payments (FK to invoices) - only for paid invoices
-Step 6: Delete invoices - only fully paid ones
-Step 7: Delete other standalone tables (attendance, logs, etc.)
+```typescript
+// Add session-aware function invocation
+export async function invokeExternalFunctionWithSession<T = unknown>(
+  functionName: string,
+  body: Record<string, unknown> = {}
+): Promise<{ data: T | null; error: Error | null }> {
+  // Get session token from localStorage (staff auth system)
+  const sessionToken = localStorage.getItem('session_token');
+  
+  // Also check for Supabase Auth token (customer auth system)
+  const { data: { session } } = await externalSupabase.auth.getSession();
+  const authToken = session?.access_token || sessionToken;
+  
+  return invokeExternalFunction<T>(functionName, body, authToken || undefined);
+}
 ```
 
-### 4. Safety Measures
+### Phase 2: Update All Edge Function Calls (6 files)
 
-- **Super Admin only**: Role verified server-side via user_roles table
-- **PIN confirmation**: Require current PIN re-entry before destructive action
-- **Preview mode**: Show what will be deleted before confirming
-- **Export first**: Option to download affected data as JSON/Excel backup
-- **Exclude critical data**: Never delete unpaid invoices, active customers, current cattle
-- **Audit logging**: Every deletion logged with details
-
-### 5. UI Component Structure
-
-```text
-Settings.tsx
-   └── TabsContent value="data-management"
-       └── DataArchiveManager.tsx (new component)
-           ├── RetentionPeriodSelector
-           ├── AffectedDataPreview
-           ├── ExportBeforeDeleteButton
-           ├── ConfirmArchiveDialog (with PIN)
-           └── ArchiveProgressDisplay
+#### File 1: `src/pages/Settings.tsx`
+**Line 196**: Replace `supabase.functions.invoke("change-pin", ...)` with:
+```typescript
+const response = await invokeExternalFunctionWithSession("change-pin", {
+  currentPin,
+  newPin,
+});
 ```
 
-## Files to Create/Modify
+#### File 2: `src/pages/UserManagement.tsx`
+**Lines 138, 176, 216, 258**: Replace all `supabase.functions.invoke()` calls with `invokeExternalFunctionWithSession()`:
+- create-user
+- update-user-status
+- reset-user-pin
+- delete-user
 
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/settings/DataArchiveManager.tsx` | CREATE | Main archive management component |
-| `src/pages/Settings.tsx` | MODIFY | Add "Data Management" tab for super_admin |
-| `supabase/functions/archive-old-data/index.ts` | CREATE | Secure edge function for data cleanup |
-| `supabase/config.toml` | MODIFY | Add archive-old-data function config |
+#### File 3: `src/pages/customer/CustomerAuth.tsx`
+**Lines 43, 95**: Replace customer-auth calls with direct invocation
 
-## Edge Function Logic
+#### File 4: `src/hooks/useCustomerAuth.tsx`
+**Lines 98, 126, 158**: Replace all customer-auth function calls
 
-```text
-1. Verify Authorization
-   - Extract JWT from Authorization header
-   - Validate user via supabase.auth.getUser(token)
-   - Check user_roles for super_admin
+#### File 5: `src/components/settings/DataArchiveManager.tsx`
+**Lines 104, 152, 226**: Replace archive-old-data calls with session-aware invocation
 
-2. Parse Request
-   - retention_years: 1 | 2 | 3 | 5
-   - mode: "preview" | "execute"
-   - tables: string[] (optional, defaults to all archivable)
+#### File 6: `src/components/dashboard/DeliveryAutomationCard.tsx`
+**Line 44**: Replace auto-deliver-daily call
 
-3. Calculate Cutoff Date
-   - cutoff = NOW() - (retention_years * 365 days)
+### Phase 3: Deploy Edge Functions to External Supabase
 
-4. Preview Mode
-   - For each table, count records older than cutoff
-   - Return summary without deleting
+The edge function code is already correct and uses Supabase's built-in environment variables. You need to deploy them to your external project:
 
-5. Execute Mode (with transaction-like behavior)
-   - Delete in FK-safe order
-   - Track deleted counts per table
-   - Log to activity_logs with full details
-   - Return summary
+```bash
+# One-time setup
+supabase login
+supabase link --project-ref ohrytohcbbkorivsuukm
 
-6. Error Handling
-   - Wrap in try/catch
-   - Partial failures logged but don't stop process
-   - Return detailed error info
+# Deploy all functions
+supabase functions deploy archive-old-data --no-verify-jwt
+supabase functions deploy auto-deliver-daily --no-verify-jwt
+supabase functions deploy change-pin --no-verify-jwt
+supabase functions deploy create-user --no-verify-jwt
+supabase functions deploy customer-auth --no-verify-jwt
+supabase functions deploy delete-user --no-verify-jwt
+supabase functions deploy health-check --no-verify-jwt
+supabase functions deploy reset-user-pin --no-verify-jwt
+supabase functions deploy setup-external-db --no-verify-jwt
+supabase functions deploy update-user-status --no-verify-jwt
 ```
 
-## UI Flow
+---
 
-1. User navigates to Settings > Data Management
-2. System shows current data volume by table
-3. User selects retention period (e.g., "Keep last 2 years")
-4. Click "Preview" to see affected record counts
-5. Click "Export Backup" to download data that will be deleted
-6. Click "Archive Now" button
-7. Confirmation dialog appears with:
-   - Summary of what will be deleted
-   - Warning about irreversibility
-   - PIN re-entry field
-8. After PIN verification, deletion proceeds
-9. Progress bar shows completion
-10. Final summary with counts displayed
-11. Action logged to audit trail
+## Files to Modify
 
-## Security Considerations
+| File | Type | Changes |
+|------|------|---------|
+| `src/lib/external-supabase.ts` | MODIFY | Add `invokeExternalFunctionWithSession` helper |
+| `src/pages/Settings.tsx` | MODIFY | Replace function invoke (1 location) |
+| `src/pages/UserManagement.tsx` | MODIFY | Replace function invokes (4 locations) |
+| `src/pages/customer/CustomerAuth.tsx` | MODIFY | Replace function invokes (2 locations) |
+| `src/hooks/useCustomerAuth.tsx` | MODIFY | Replace function invokes (3 locations) |
+| `src/components/settings/DataArchiveManager.tsx` | MODIFY | Replace function invokes (3 locations) |
+| `src/components/dashboard/DeliveryAutomationCard.tsx` | MODIFY | Replace function invoke (1 location) |
 
-- Server-side role verification (never trust client)
-- PIN confirmation prevents accidental/unauthorized deletions
-- All actions logged with requestor identity
-- Backup export available before any deletion
-- Deletion cascades handled properly via FK order
-- No way to delete current year's data (minimum 1 year retention)
+**Total: 7 files, 14 function call replacements**
 
-## Testing Checklist
+---
+
+## Technical Details
+
+### Authentication Handling
+
+The app has TWO authentication systems:
+1. **Staff Auth**: Custom session tokens in `localStorage.session_token`, validated via `auth_sessions` table
+2. **Customer Auth**: Supabase Auth with JWT tokens, validated via `supabase.auth.getSession()`
+
+The helper will check both and use whichever is available.
+
+### Error Response Handling
+
+Current code expects:
+```typescript
+const response = await supabase.functions.invoke("fn", { body });
+// response.error = FunctionsFetchError
+// response.data = parsed JSON body
+```
+
+New helper returns:
+```typescript
+const response = await invokeExternalFunctionWithSession("fn", body);
+// response.error = Error (if any)
+// response.data = parsed JSON body
+```
+
+The structure is compatible, minimal code changes needed.
+
+---
+
+## Verification Checklist
 
 After implementation:
 
-1. Non-admin users cannot see Data Management tab
-2. Preview mode shows correct counts without deleting
-3. Export creates valid JSON/Excel file with affected data
-4. PIN verification works (wrong PIN rejected)
-5. Deletion respects foreign key constraints
-6. Activity log entry created with all details
-7. UI shows progress during long operations
-8. Unpaid invoices are never deleted
+1. **Staff Auth Works**
+   - Login as super_admin
+   - Create new user (UserManagement)
+   - Change own PIN (Settings)
+   - Reset another user's PIN
+   - Delete a user
+
+2. **Customer Auth Works**
+   - Customer login
+   - Customer registration
+   - Customer PIN change
+
+3. **Automation Works**
+   - Manual trigger of auto-deliver-daily
+   - Data archive preview/export/execute
+
+4. **Deploy to Vercel**
+   - Set environment variables:
+     - VITE_SUPABASE_URL
+     - VITE_SUPABASE_ANON_KEY
+   - Verify all functions work in production
+
+---
+
+## Summary
+
+This migration ensures:
+- **Zero runtime dependency on Lovable Cloud**
+- All edge functions deployed to YOUR Supabase (ohrytohcbbkorivsuukm)
+- All frontend calls go directly to external Supabase
+- Database operations already use external Supabase (no changes needed)
+- Complete independence for Vercel + External Supabase hosting
+
+The website will work identically in Lovable Editor preview AND production Vercel deployment.
