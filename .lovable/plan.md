@@ -1,266 +1,268 @@
 
-
-# Implementation Plan: Add Date Range Filters & Sorting to High-Volume Pages
+# Comprehensive Plan: Fix Billing Calculations and Overdue Detection
 
 ## Executive Summary
 
-This plan adds intelligent date range filtering (30/60/90 days/All) and sorting capabilities to all pages that fetch large datasets from the backend. The implementation will reduce initial load times by limiting data fetched by default, while maintaining full data access when needed.
+This plan fixes **3 critical billing calculation issues** identified in the codebase that lead to incorrect financial reporting:
+
+1. **Pending Stat Error**: Shows full invoice amount instead of remaining balance
+2. **Missing Partial Status**: Partial payments not included in outstanding totals  
+3. **No Overdue Detection**: System never marks invoices as "overdue" when due date passes
 
 ---
 
-## Pages Requiring Filter/Sort Enhancement
+## Issue Analysis
 
-Based on the codebase analysis, the following pages fetch large datasets and will benefit from this feature:
+### Current Code Problems
 
-| Page | Table | Current Behavior | Risk Level |
-|------|-------|------------------|------------|
-| **Production** | `milk_production` | Hard limit of 100 rows | High - data loss |
-| **Expenses** | `expenses` | Fetches ALL records | High - slow on large data |
-| **Billing** | `invoices` | Fetches ALL records | Medium |
-| **Health** | `cattle_health` | Fetches ALL records | Medium |
-| **Milk Procurement** | `milk_procurement` | 30 days hardcoded | Low |
-| **Audit Logs** | `activity_logs` | Limit 500 rows | Medium |
-| **Deliveries** | `deliveries` | Date-filtered already | Low (already has date picker) |
-| **Customers** | `customers` | Fetches ALL | Low (usually small) |
-| **Cattle** | `cattle` | Fetches ALL | Low (usually small) |
+| Location | Issue | Impact |
+|----------|-------|--------|
+| `Billing.tsx` Line 219 | Pending uses `final_amount` instead of `final_amount - paid_amount` | Overstates pending by amount already paid |
+| `Billing.tsx` Line 219 | Only filters `payment_status === "pending"` | Excludes partial payments from outstanding |
+| `Billing.tsx` Line 220 | Relies on `payment_status === "overdue"` | Never shows overdue (status never set) |
+| `useDashboardData.ts` Line 135 | Correct calculation for pending | Good - uses `final_amount - paid_amount` |
+| `AccountantDashboard.tsx` Line 92-94 | Correct calculation | Good - uses remaining balance |
 
-**Priority Pages** (Large datasets, no current date filtering):
-1. Production (CRITICAL - currently loses data)
-2. Expenses (HIGH - can grow very large)
-3. Billing (MEDIUM - invoices accumulate)
-4. Health (MEDIUM - records accumulate)
-5. Audit Logs (already has filters, needs sort enhancement)
+### Root Cause: No Overdue Automation
+
+The `invoices` table has a `payment_status` enum: `["paid", "partial", "pending", "overdue"]`
+
+However, **nothing in the codebase ever sets `payment_status = "overdue"`**. The system expects:
+- `SmartInvoiceCreator.tsx` creates invoices with `payment_status: "pending"`
+- `Billing.tsx` changes status to `"partial"` or `"paid"` on payment
+- But **no code checks due dates** and updates to `"overdue"`
 
 ---
 
-## Design Approach
+## Solution Architecture
 
-### Reusable Filter/Sort Component
-
-Create a new reusable component `DataFilters` that can be used across all pages:
-
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        BILLING STATS FIX                               │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│  Current (Broken):                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐     │
+│  │ pending = invoices.filter(status === "pending")              │     │
+│  │           .reduce(sum + final_amount)                        │     │
+│  │                                                              │     │
+│  │ overdue = invoices.filter(status === "overdue")              │     │
+│  │           .reduce(sum + (final_amount - paid_amount))        │     │
+│  └──────────────────────────────────────────────────────────────┘     │
+│                                                                        │
+│  Fixed:                                                                │
+│  ┌──────────────────────────────────────────────────────────────┐     │
+│  │ Helper: isOverdue(invoice) =>                                │     │
+│  │   due_date < today && status !== "paid"                      │     │
+│  │                                                              │     │
+│  │ Helper: getBalance(invoice) =>                               │     │
+│  │   final_amount - paid_amount                                 │     │
+│  │                                                              │     │
+│  │ outstanding = invoices.filter(status !== "paid")             │     │
+│  │               .reduce(sum + getBalance(invoice))             │     │
+│  │                                                              │     │
+│  │ overdue = invoices.filter(isOverdue)                         │     │
+│  │           .reduce(sum + getBalance(invoice))                 │     │
+│  └──────────────────────────────────────────────────────────────┘     │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  ┌──────────────┐  ┌─────────────────┐  ┌─────────────────────┐ │
-│  │ Last 30 Days │  │ Sort by: Date ▼ │  │ Order: Newest ▼    │ │
-│  │ 60 | 90 | All│  └─────────────────┘  └─────────────────────┘ │
-│  └──────────────┘                                               │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Filter Options
-- **Last 30 Days** (default for most pages)
-- **Last 60 Days**
-- **Last 90 Days**
-- **All Time** (with warning for large datasets)
-
-### Sort Options (page-specific)
-- Date (default: newest first)
-- Amount (for financial pages)
-- Name/Tag (for entity pages)
-- Status (for pages with status fields)
 
 ---
 
 ## Implementation Details
 
-### Component 1: Create DataFilters Component
+### Part 1: Fix Billing Page Stats (src/pages/Billing.tsx)
 
-**File**: `src/components/common/DataFilters.tsx`
-
+**Current Code (Lines 216-221):**
 ```typescript
-interface DataFiltersProps {
-  dateRange: "30" | "60" | "90" | "all";
-  onDateRangeChange: (range: "30" | "60" | "90" | "all") => void;
-  sortBy?: string;
-  sortOptions?: { value: string; label: string }[];
-  onSortChange?: (field: string) => void;
-  sortOrder?: "asc" | "desc";
-  onSortOrderChange?: (order: "asc" | "desc") => void;
-  showWarningOnAll?: boolean;
-}
+const stats = {
+  total: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
+  collected: invoices.reduce((sum, i) => sum + Number(i.paid_amount), 0),
+  pending: invoices.filter(i => i.payment_status === "pending").reduce((sum, i) => sum + Number(i.final_amount), 0),
+  overdue: invoices.filter(i => i.payment_status === "overdue").reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount)), 0),
+};
 ```
 
-Features:
-- Button group for date range selection
-- Dropdown for sort field
-- Toggle for sort order (asc/desc)
-- Optional warning when "All" is selected
-- Mobile-responsive layout
-
----
-
-### Page 1: Production Page (CRITICAL)
-
-**File**: `src/pages/Production.tsx`
-
-**Current Issues**:
-- Line 92: Hard limit of 100 records
-- No date range filter
-- Older production data becomes inaccessible
-
-**Changes**:
-1. Add `dateRange` state (default: "30")
-2. Add `sortBy` state (options: date, quantity, cattle)
-3. Replace `limit(100)` with date-based filtering
-4. Add DataFilters component below PageHeader
-
-**Updated Query Logic**:
+**Fixed Code:**
 ```typescript
-const startDate = dateRange === "all" 
-  ? null 
-  : format(subDays(new Date(), parseInt(dateRange)), "yyyy-MM-dd");
+// Helper to detect overdue based on due_date
+const isOverdue = (invoice: InvoiceWithCustomer) => {
+  if (invoice.payment_status === "paid") return false;
+  if (!invoice.due_date) return false;
+  return new Date(invoice.due_date) < new Date(new Date().setHours(0, 0, 0, 0));
+};
 
-// Query with date filter instead of hard limit
-let query = supabase
-  .from("milk_production")
-  .select(`*, cattle:cattle_id (id, tag_number, name)`)
-  .order(sortBy, { ascending: sortOrder === "asc" });
+// Helper to get remaining balance
+const getBalance = (invoice: InvoiceWithCustomer) => 
+  Number(invoice.final_amount) - Number(invoice.paid_amount);
 
-if (startDate) {
-  query = query.gte("production_date", startDate);
-}
+const stats = {
+  total: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
+  collected: invoices.reduce((sum, i) => sum + Number(i.paid_amount), 0),
+  // Outstanding: All unpaid invoices (pending + partial + overdue) - remaining balance only
+  outstanding: invoices
+    .filter(i => i.payment_status !== "paid")
+    .reduce((sum, i) => sum + getBalance(i), 0),
+  // Overdue: Based on due_date comparison, not status field
+  overdue: invoices
+    .filter(i => isOverdue(i))
+    .reduce((sum, i) => sum + getBalance(i), 0),
+};
 ```
 
-**Sort Options**:
-- `production_date` - Date (default)
-- `quantity_liters` - Quantity
-- `session` - Session (Morning/Evening)
+**UI Card Updates:**
+- Rename "Pending" card to "Outstanding" (more accurate)
+- Keep "Overdue" card showing date-based overdue calculation
+- Update card subtitle to show count of overdue invoices
 
 ---
 
-### Page 2: Expenses Page
+### Part 2: Update Status Badge Display for Overdue
 
-**File**: `src/pages/Expenses.tsx`
+Since the `payment_status` field in the database may not reflect overdue status, we need to compute it at display time.
 
-**Current Issues**:
-- Line 85-88: Fetches ALL expenses with no limit
-- Can become very slow as expenses accumulate
-
-**Changes**:
-1. Add `dateRange` state (default: "30")
-2. Add `sortBy` state (options: date, amount, category)
-3. Modify `fetchExpenses` to use date range filter
-
-**Updated Query**:
+**Update Status Column in Billing.tsx:**
 ```typescript
-const startDate = dateRange === "all"
-  ? null
-  : format(subDays(new Date(), parseInt(dateRange)), "yyyy-MM-dd");
-
-let query = supabase
-  .from("expenses")
-  .select("*")
-  .order(sortBy, { ascending: sortOrder === "asc" });
-
-if (startDate) {
-  query = query.gte("expense_date", startDate);
-}
+{
+  key: "payment_status",
+  header: "Status",
+  render: (item: InvoiceWithCustomer) => {
+    // Compute effective status (check if overdue by date)
+    let effectiveStatus = item.payment_status;
+    if (item.payment_status !== "paid" && item.due_date) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (new Date(item.due_date) < today) {
+        effectiveStatus = "overdue";
+      }
+    }
+    return <StatusBadge status={effectiveStatus} />;
+  },
+},
 ```
 
-**Sort Options**:
-- `expense_date` - Date (default)
-- `amount` - Amount
-- `category` - Category
-
 ---
 
-### Page 3: Billing Page
+### Part 3: Update Status Tab Filtering
 
-**File**: `src/pages/Billing.tsx`
+The status tabs should also use computed overdue status:
 
-**Current Issues**:
-- Line 88-94: Fetches ALL invoices
-- No date range option
-
-**Changes**:
-1. Add `dateRange` state (default: "90" - invoices are less frequent)
-2. Add `sortBy` state (options: date, amount, status)
-3. Modify query to use date range
-
-**Sort Options**:
-- `created_at` - Date Created (default)
-- `final_amount` - Amount
-- `payment_status` - Status
-- `billing_period_start` - Billing Period
-
----
-
-### Page 4: Health Records Page
-
-**File**: `src/pages/Health.tsx`
-
-**Current Issues**:
-- `useHealthData` hook fetches ALL records (line 43-47)
-- No date filtering
-
-**Changes**:
-1. Modify `useHealthData` to accept date range parameter
-2. Add state in Health.tsx for dateRange
-3. Add DataFilters component
-
-**Hook Modification** (`src/hooks/useHealthData.ts`):
+**Current (Line 212-214):**
 ```typescript
-export function useHealthData(dateRange: "30" | "60" | "90" | "all" = "90") {
-  const startDate = dateRange === "all"
-    ? null
-    : format(subDays(new Date(), parseInt(dateRange)), "yyyy-MM-dd");
+const filteredInvoices = statusFilter === "all" 
+  ? invoices 
+  : invoices.filter(i => i.payment_status === statusFilter);
+```
+
+**Fixed:**
+```typescript
+// Compute effective status for each invoice
+const getEffectiveStatus = (invoice: InvoiceWithCustomer) => {
+  if (invoice.payment_status === "paid") return "paid";
+  if (invoice.due_date) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (new Date(invoice.due_date) < today) {
+      return "overdue";
+    }
+  }
+  return invoice.payment_status; // "pending" or "partial"
+};
+
+const filteredInvoices = statusFilter === "all" 
+  ? invoices 
+  : invoices.filter(i => getEffectiveStatus(i) === statusFilter);
+```
+
+---
+
+### Part 4: Create Reusable Invoice Status Helper
+
+Create a utility function for consistent status computation across the app:
+
+**New File: src/lib/invoice-helpers.ts**
+```typescript
+export interface InvoiceBase {
+  payment_status: string;
+  due_date: string | null;
+  final_amount: number;
+  paid_amount: number;
+}
+
+/**
+ * Get effective payment status considering due date
+ * Returns "overdue" if past due date and not fully paid
+ */
+export function getEffectivePaymentStatus(invoice: InvoiceBase): string {
+  if (invoice.payment_status === "paid") return "paid";
   
-  // Use startDate in query
-}
-```
-
-**Sort Options**:
-- `record_date` - Date (default)
-- `record_type` - Type
-- `cost` - Cost
-
----
-
-### Page 5: Audit Logs Page
-
-**File**: `src/pages/AuditLogs.tsx`
-
-**Current Status**: Already has entity/action/date filters (good!)
-
-**Enhancements**:
-1. Add quick date range buttons (30/60/90 days)
-2. Add sort order toggle
-3. Already has limit(500) - enhance with date filtering
-
----
-
-### Page 6: Milk Procurement Page
-
-**File**: `src/pages/MilkProcurement.tsx`
-
-**Current Status**: Line 194 has hardcoded 30-day filter
-
-**Changes**:
-1. Make the 30-day filter configurable
-2. Add sortBy options
-
----
-
-## Hook Modifications
-
-### Update `useHealthData.ts`
-
-Add optional date range parameter to the hook that accepts date filtering:
-
-```typescript
-async function fetchHealthData(startDate: string | null): Promise<HealthData> {
-  let query = supabase
-    .from("cattle_health")
-    .select(`*, cattle:cattle_id (id, tag_number, name)`)
-    .order("record_date", { ascending: false });
-  
-  if (startDate) {
-    query = query.gte("record_date", startDate);
+  if (invoice.due_date) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(invoice.due_date);
+    if (dueDate < today) {
+      return "overdue";
+    }
   }
   
-  // ... rest of function
+  return invoice.payment_status; // "pending" or "partial"
 }
+
+/**
+ * Get remaining balance on invoice
+ */
+export function getInvoiceBalance(invoice: InvoiceBase): number {
+  return Number(invoice.final_amount) - Number(invoice.paid_amount);
+}
+
+/**
+ * Check if invoice is overdue
+ */
+export function isInvoiceOverdue(invoice: InvoiceBase): boolean {
+  return getEffectivePaymentStatus(invoice) === "overdue";
+}
+```
+
+---
+
+### Part 5: Update AccountantDashboard.tsx
+
+The AccountantDashboard already has good calculations but should also use the helper:
+
+**Current overdue query (Lines 68-81):**
+Uses `.neq("payment_status", "paid").lt("due_date", todayStr)` which is correct
+
+**Enhancement:** Use the helper for consistency and add count:
+```typescript
+// Calculate overdue amount from the same data
+const overdueAmount = overdue.reduce(
+  (sum, inv) => sum + (Number(inv.final_amount) - Number(inv.paid_amount || 0)), 
+  0
+);
+```
+
+---
+
+### Part 6: Update CustomerDetailDialog.tsx
+
+**Current (Lines 234-235):**
+```typescript
+const paidInvoices = invoices.filter(i => i.payment_status === "paid").length;
+const pendingInvoices = invoices.filter(i => i.payment_status === "pending" || i.payment_status === "partial").length;
+```
+
+**Fixed - Include overdue detection:**
+```typescript
+import { getEffectivePaymentStatus } from "@/lib/invoice-helpers";
+
+const paidInvoices = invoices.filter(i => i.payment_status === "paid").length;
+const pendingInvoices = invoices.filter(i => 
+  getEffectivePaymentStatus(i) !== "paid"
+).length;
+const overdueInvoices = invoices.filter(i => 
+  getEffectivePaymentStatus(i) === "overdue"
+).length;
 ```
 
 ---
@@ -269,81 +271,60 @@ async function fetchHealthData(startDate: string | null): Promise<HealthData> {
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/common/DataFilters.tsx` | CREATE | Reusable filter/sort component |
-| `src/pages/Production.tsx` | MODIFY | Add date range & sort |
-| `src/pages/Expenses.tsx` | MODIFY | Add date range & sort |
-| `src/pages/Billing.tsx` | MODIFY | Add date range & sort |
-| `src/pages/Health.tsx` | MODIFY | Add date range filter |
-| `src/hooks/useHealthData.ts` | MODIFY | Accept date range param |
-| `src/pages/MilkProcurement.tsx` | MODIFY | Make date range configurable |
-| `src/pages/AuditLogs.tsx` | MODIFY | Add quick date buttons |
+| `src/lib/invoice-helpers.ts` | CREATE | Reusable invoice status & balance helpers |
+| `src/pages/Billing.tsx` | MODIFY | Fix stats calculation, status display, filtering |
+| `src/components/customers/CustomerDetailDialog.tsx` | MODIFY | Use helpers for invoice counts |
+| `src/components/dashboard/AccountantDashboard.tsx` | VERIFY | Already correct, minor cleanup |
 
 ---
 
-## UI/UX Design
+## Stat Card Changes Summary
 
-### DataFilters Component Layout
+### Before (Billing Page)
+| Card | Calculation | Problem |
+|------|-------------|---------|
+| Total Billed | sum(final_amount) | Correct |
+| Collected | sum(paid_amount) | Correct |
+| Pending | status="pending" sum(final_amount) | Wrong: uses full amount, excludes partial |
+| Overdue | status="overdue" sum(balance) | Wrong: status never set to overdue |
 
-```
-Desktop:
-┌────────────────────────────────────────────────────────────────┐
-│ [30 Days] [60 Days] [90 Days] [All Time]    Sort: [Date ▼] [↓]│
-└────────────────────────────────────────────────────────────────┘
-
-Mobile:
-┌─────────────────────────┐
-│ [30] [60] [90] [All]    │
-├─────────────────────────┤
-│ Sort: [Date ▼]  [↓↑]    │
-└─────────────────────────┘
-```
-
-### Visual Integration
-- Placed below PageHeader, above data tables
-- Consistent styling with existing Tabs components
-- Subtle animation when filters change
-- Loading indicator during data refresh
-
----
-
-## Performance Considerations
-
-1. **Default to 30 days** - Reduces initial load
-2. **"All Time" warning** - Alert users about potential slow load
-3. **URL state persistence** - Store filter state in URL params for bookmarking
-4. **Query optimization** - Date filters push filtering to database level
-5. **Memoization** - Use `useMemo` for expensive filtering operations
+### After (Billing Page)
+| Card | Calculation | Result |
+|------|-------------|--------|
+| Total Billed | sum(final_amount) | Correct |
+| Collected | sum(paid_amount) | Correct |
+| Outstanding | status!="paid" sum(balance) | Correct: all unpaid, remaining balance |
+| Overdue | due_date<today sum(balance) | Correct: date-based detection |
 
 ---
 
 ## Safety Guarantees
 
-### What WILL NOT Change:
-1. **All existing automation hooks** - Expense, ledger, delivery automation untouched
-2. **Data insertion logic** - No changes to how data is created
-3. **Edge functions** - All backend functions remain unchanged
+### What Will NOT Change:
+1. **Invoice creation logic** - SmartInvoiceCreator unchanged
+2. **Payment recording logic** - handleRecordPayment unchanged  
+3. **Ledger entries** - All ledger automation intact
 4. **Database schema** - No table modifications
 5. **RLS policies** - Security unchanged
-6. **Invoice generation** - SmartInvoiceCreator unchanged
-7. **Customer portal** - No changes to customer-facing pages
+6. **Customer portal billing** - CustomerBilling.tsx only displays, calculations are display-only
 
 ### Validation Points:
+- Stats will now accurately reflect true financial position
+- Overdue invoices show correctly without needing status field update
 - All existing CRUD operations work identically
-- Stats cards recalculate based on filtered data (where appropriate)
-- Export functionality exports filtered data
-- No data is deleted or modified
+- Tab filtering works with computed status
 
 ---
 
-## Implementation Order
+## Testing Checklist
 
-1. Create `DataFilters` component (foundation)
-2. Production page (fixes critical data loss bug)
-3. Expenses page (high impact)
-4. Billing page (medium impact)
-5. Health page + hook modification
-6. MilkProcurement page
-7. AuditLogs enhancement
-
-This ensures the most critical fixes are applied first.
+After implementation, verify:
+1. Create new invoice -> appears in "Pending" tab with full balance
+2. Record partial payment -> appears in "Partial" tab with remaining balance
+3. Invoice past due date -> appears in "Overdue" tab automatically
+4. Record full payment -> moves to "Paid" tab
+5. Stats cards show correct totals:
+   - Outstanding = Total Billed - Collected
+   - Overdue subset of Outstanding based on dates
+6. AccountantDashboard overdue list matches Billing page
 
