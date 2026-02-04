@@ -176,6 +176,20 @@ export function VendorPaymentsDialog({
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
+      // Update vendor balance directly (defensive - works even if DB triggers missing)
+      const newBalance = vendorBalance - amount;
+      await supabase
+        .from("milk_vendors")
+        .update({ current_balance: newBalance })
+        .eq("id", vendor.id);
+      
+      // Also try RPC recalculation as backup (gracefully fails if function missing)
+      try {
+        await supabase.rpc("recalculate_vendor_balance", { p_vendor_id: vendor.id });
+      } catch {
+        // Silently ignore - direct update above is the primary method
+      }
+
       // Auto-log expense for vendor payment
       if (data) {
         const modeLabel = paymentModes.find(m => m.value === paymentForm.payment_mode)?.label || paymentForm.payment_mode;
