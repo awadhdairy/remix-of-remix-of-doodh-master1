@@ -1,273 +1,199 @@
 
-# Add "0 Year" Option for Complete Data Reset
+# Fix: Align archive-old-data Edge Function with Supabase Auth
 
-## Overview
+## Problem Summary
 
-This feature adds a "Clear All Data (Start Fresh)" option to the Data Archive Manager, allowing super admins to completely wipe transactional data and start from scratch. This is useful for:
-- Fresh production start after testing
-- End-of-year complete reset
-- System migration/fresh start scenarios
+The `archive-old-data` edge function uses a **custom session token** system (`auth_sessions` table) for authentication, but your app uses **Supabase Auth** (JWT tokens). This mismatch causes "Invalid or expired session" errors.
 
-## Safety Measures for Complete Reset
+## Root Cause
 
-Since "0 years" means deleting ALL data including today's records, extra safety layers are required:
+| Component | Current Behavior |
+|-----------|-----------------|
+| `Auth.tsx` | Uses `supabase.auth.signInWithPassword()` - creates Supabase JWT |
+| `invokeExternalFunctionWithSession` | Sends Supabase JWT as Bearer token |
+| `archive-old-data` function | Expects custom `session_token` from `auth_sessions` table |
+| **Result** | JWT ≠ session_token → "Invalid or expired session" |
 
-| Safety Layer | Standard Archive (1-5 years) | Complete Reset (0 years) |
-|--------------|------------------------------|--------------------------|
-| Preview Required | Yes | Yes |
-| Export Backup | Optional | **Strongly Recommended** |
-| PIN Confirmation | 6-digit PIN | 6-digit PIN |
-| Confirmation Text | - | **Type "DELETE ALL" required** |
-| Warning Level | Destructive | **Critical with red banner** |
-| Dialog Styling | Standard | **Double confirmation dialog** |
+## Solution
+
+Update `archive-old-data` edge function to use **Supabase Auth JWT validation** (same as `create-user`, `change-pin`, `delete-user`), not the custom `auth_sessions` table.
+
+## Files to Modify
+
+| File | Action |
+|------|--------|
+| `supabase/functions/archive-old-data/index.ts` | Replace custom session validation with Supabase Auth JWT validation |
 
 ## Implementation Details
 
-### 1. Frontend: DataArchiveManager.tsx
-
-**Changes:**
-- Add "0" to retention period dropdown with special label "Clear All (Reset)"
-- Add state for typed confirmation: `confirmText: string`
-- Conditional UI: Show extra confirmation field when `retentionYears === "0"`
-- Update cutoff date display: "ALL records will be deleted" instead of date
-- Add critical warning banner for reset mode
-- Validate both PIN AND "DELETE ALL" text for 0-year mode
-
-**UI Flow for 0-Year Option:**
-```
-1. Select "Clear All (Reset)" from dropdown
-2. Critical warning banner appears
-3. Click "Preview Data" - shows ALL record counts
-4. Click "Export Backup" (strongly recommended)
-5. Click "Delete All Records" (destructive button)
-6. Confirmation dialog appears with:
-   - Extra warning about complete data loss
-   - Type "DELETE ALL" input field
-   - PIN entry field
-7. Both validations must pass to proceed
-```
-
-### 2. Backend: archive-old-data Edge Function
-
-**Changes:**
-- Accept `0` as valid `retention_years` value
-- When `retention_years === 0`:
-  - Set `cutoffDateStr` to tomorrow's date (deletes everything including today)
-  - Or use a far-future date to match all records
-  - Add special handling for financial records warning in logs
-- Enhanced audit logging for complete reset operations
-
-### 3. Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/components/settings/DataArchiveManager.tsx` | Add 0-year option, extra confirmation UI, validation |
-| `supabase/functions/archive-old-data/index.ts` | Accept 0 as valid, handle complete deletion logic |
-
-## Detailed Code Changes
-
-### DataArchiveManager.tsx Changes
-
-1. **Add "Clear All" option to Select dropdown:**
+### Before (Lines 46-71)
 ```typescript
-<SelectContent>
-  <SelectItem value="0" className="text-destructive">
-    Clear All (Factory Reset)
-  </SelectItem>
-  <SelectItem value="1">1 Year</SelectItem>
-  <SelectItem value="2">2 Years</SelectItem>
-  <SelectItem value="3">3 Years</SelectItem>
-  <SelectItem value="5">5 Years</SelectItem>
-</SelectContent>
-```
-
-2. **Add confirmText state:**
-```typescript
-const [confirmText, setConfirmText] = useState("");
-```
-
-3. **Update cutoff date display for 0 years:**
-```typescript
-const isFactoryReset = retentionYears === "0";
-// Show "ALL records" message instead of date for reset mode
-```
-
-4. **Add extra critical warning for reset mode:**
-```typescript
-{isFactoryReset && (
-  <Alert variant="destructive" className="border-2 border-destructive">
-    <AlertTriangle className="h-4 w-4" />
-    <AlertTitle>COMPLETE DATA RESET</AlertTitle>
-    <AlertDescription>
-      This will delete ALL transactional data including today's records. 
-      Only master data (customers, cattle, products, users) will be preserved.
-      THIS CANNOT BE UNDONE.
-    </AlertDescription>
-  </Alert>
-)}
-```
-
-5. **Add "DELETE ALL" confirmation in dialog:**
-```typescript
-{isFactoryReset && (
-  <div className="space-y-2">
-    <Label>Type "DELETE ALL" to confirm complete reset</Label>
-    <Input
-      value={confirmText}
-      onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
-      placeholder="DELETE ALL"
-    />
-  </div>
-)}
-```
-
-6. **Update validation in handleArchive:**
-```typescript
-if (isFactoryReset && confirmText !== "DELETE ALL") {
-  toast({
-    title: "Confirmation Required",
-    description: 'Please type "DELETE ALL" to confirm complete reset',
-    variant: "destructive",
-  });
-  return;
+// Get authorization header
+const authHeader = req.headers.get("Authorization");
+if (!authHeader) {
+  return new Response(JSON.stringify({ error: "Authorization required" }), ...);
 }
+
+// Validate session via custom auth_sessions table ❌
+const token = authHeader.replace("Bearer ", "");
+const { data: sessionData } = await supabase
+  .from("auth_sessions")
+  .select("user_id, user_type")
+  .eq("session_token", token)
+  .gt("expires_at", new Date().toISOString())
+  .limit(1);
+
+if (!sessionData || sessionData.length === 0) {
+  return new Response(JSON.stringify({ error: "Invalid or expired session" }), ...);
+}
+const userId = sessionData[0].user_id;
 ```
 
-### archive-old-data Edge Function Changes
-
-1. **Accept 0 as valid retention_years:**
+### After (Using Supabase Auth like other functions)
 ```typescript
-if (retention_years === undefined || ![0, 1, 2, 3, 5].includes(retention_years)) {
+const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+// Get authorization header
+const authHeader = req.headers.get("Authorization");
+if (!authHeader) {
+  return new Response(JSON.stringify({ error: "Authorization required" }), ...);
+}
+
+// Validate via Supabase Auth JWT ✅
+const token = authHeader.replace("Bearer ", "");
+const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { headers: { Authorization: `Bearer ${token}` } }
+});
+
+const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+if (userError || !user) {
+  return new Response(JSON.stringify({ error: "Invalid or expired session" }), ...);
+}
+
+const userId = user.id;
+```
+
+## Updated Edge Function Flow
+
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│                    archive-old-data Function                     │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. Get Authorization header (Bearer token)                       │
+│                          ↓                                       │
+│ 2. Create Supabase client with user's JWT                        │
+│    supabaseClient = createClient(url, anonKey, {Authorization})  │
+│                          ↓                                       │
+│ 3. Validate JWT: supabaseClient.auth.getUser()                   │
+│    ✓ Returns user object with id                                 │
+│                          ↓                                       │
+│ 4. Check super_admin role in user_roles table                    │
+│    (using service role client)                                   │
+│                          ↓                                       │
+│ 5. Process archive request (preview/export/execute)              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Complete Code Changes
+
+Replace lines 36-71 in `archive-old-data/index.ts` with:
+
+```typescript
+const supabaseUrl = Deno.env.get("SUPABASE_URL");
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+
+if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+  throw new Error("Missing Supabase configuration");
+}
+
+// Admin client for database operations
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+
+// Get authorization header
+const authHeader = req.headers.get("Authorization");
+if (!authHeader || !authHeader.startsWith("Bearer ")) {
   return new Response(
-    JSON.stringify({ error: "Invalid retention_years. Use 0, 1, 2, 3, or 5" }),
+    JSON.stringify({ error: "Authorization required" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+// Validate via Supabase Auth JWT
+const token = authHeader.replace("Bearer ", "");
+const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { headers: { Authorization: `Bearer ${token}` } }
+});
+
+const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+if (userError || !user) {
+  console.log(`[ARCHIVE] Auth failed: ${userError?.message}`);
+  return new Response(
+    JSON.stringify({ error: "Invalid or expired session" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+const userId = user.id;
+
+// Verify super_admin role (server-side check using admin client)
+const { data: roleData } = await supabaseAdmin
+  .from("user_roles")
+  .select("role")
+  .eq("user_id", userId)
+  .eq("role", "super_admin")
+  .limit(1);
+```
+
+## Also Update PIN Verification (Lines 220-248)
+
+Replace the PIN verification logic that uses `verify_pin` with user's phone to work with the user ID directly:
+
+```typescript
+// Get user's phone for PIN verification
+const { data: userProfile } = await supabaseAdmin
+  .from("profiles")
+  .select("phone")
+  .eq("id", userId)
+  .single();
+
+if (!userProfile?.phone) {
+  return new Response(
+    JSON.stringify({ error: "User profile not found" }),
     { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+const { data: verifiedUserId } = await supabaseAdmin.rpc("verify_pin", {
+  _phone: userProfile.phone,
+  _pin: pin,
+});
+
+if (!verifiedUserId || verifiedUserId !== userId) {
+  return new Response(
+    JSON.stringify({ error: "Incorrect PIN" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
 ```
 
-2. **Handle 0-year cutoff (delete everything):**
-```typescript
-let cutoffDateStr: string;
-const isFactoryReset = retention_years === 0;
+## Deployment After Fix
 
-if (isFactoryReset) {
-  // Set to tomorrow to include today's records
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  cutoffDateStr = tomorrow.toISOString().split("T")[0];
-  console.log(`[ARCHIVE] FACTORY RESET - Deleting ALL records`);
-} else {
-  const cutoffDate = new Date();
-  cutoffDate.setFullYear(cutoffDate.getFullYear() - retention_years);
-  cutoffDateStr = cutoffDate.toISOString().split("T")[0];
-}
-```
+After updating the code, redeploy to external Supabase:
 
-3. **Enhanced logging for factory reset:**
-```typescript
-await supabase.from("activity_logs").insert({
-  user_id: userId,
-  action: isFactoryReset ? "factory_reset" : "data_archived",
-  entity_type: "system",
-  entity_id: isFactoryReset ? "factory_reset" : "archive",
-  details: {
-    retention_years,
-    is_factory_reset: isFactoryReset,
-    cutoff_date: cutoffDateStr,
-    deleted,
-    total_deleted: totalDeleted,
-    errors: errors.length > 0 ? errors : undefined,
-  },
-});
-```
-
-## What Data Gets Preserved (Master Data)
-
-Even with factory reset, these tables are NOT deleted:
-- `profiles` - User accounts
-- `customers` - Customer master data
-- `cattle` - Cattle records
-- `products` - Product catalog
-- `routes` - Delivery routes
-- `price_rules` - Pricing configuration
-- `user_roles` - Role assignments
-- `auth_sessions` - Active sessions
-- `inventory_items` - Inventory catalog
-
-## What Data Gets Deleted (Transactional Data)
-
-| Table | Description |
-|-------|-------------|
-| activity_logs | All audit logs |
-| attendance | Employee attendance |
-| bottle_transactions | Bottle tracking |
-| breeding_records | Breeding history |
-| cattle_health | Health records |
-| deliveries + delivery_items | All delivery records |
-| expenses | All expenses |
-| feed_consumption | Feed records |
-| invoices (paid only) | Paid invoices |
-| maintenance_records | Equipment maintenance |
-| milk_procurement | Procurement records |
-| milk_production | Production records |
-| notification_logs | Notification history |
-| payments | Payment records |
-| payroll_records | Payroll history |
-| vendor_payments | Vendor payment history |
-
-## User Experience Flow
-
-```
-Admin → Settings → Data Management
-         ↓
-    Select "Clear All (Factory Reset)"
-         ↓
-    ⚠️ Critical Warning Banner Appears
-         ↓
-    Click "Preview Data" 
-         ↓
-    See ALL records that will be deleted
-         ↓
-    Click "Export Backup" (recommended)
-         ↓
-    Click "Delete All Records"
-         ↓
-    Confirmation Dialog:
-    ┌─────────────────────────────────┐
-    │ ⚠️ FACTORY RESET                 │
-    │                                 │
-    │ This will permanently delete    │
-    │ ALL 45,678 transactional        │
-    │ records from the system.        │
-    │                                 │
-    │ Type "DELETE ALL" to confirm:   │
-    │ ┌─────────────────────────────┐ │
-    │ │ DELETE ALL                  │ │
-    │ └─────────────────────────────┘ │
-    │                                 │
-    │ Enter your 6-digit PIN:         │
-    │ ┌─────────────────────────────┐ │
-    │ │ ● ● ● ● ● ●                 │ │
-    │ └─────────────────────────────┘ │
-    │                                 │
-    │ [Cancel]  [🗑️ Reset Everything] │
-    └─────────────────────────────────┘
-         ↓
-    System performs complete reset
-         ↓
-    Success: "Factory reset complete. Deleted X records."
+```bash
+supabase functions deploy archive-old-data --no-verify-jwt --project-ref ohrytohcbbkorivsuukm
 ```
 
 ## Testing Checklist
 
-After implementation:
-1. "Clear All" option appears in dropdown (styled as destructive)
-2. Selecting it shows critical warning banner
-3. Preview shows ALL record counts (not filtered by date)
-4. Export creates backup of all data
-5. Confirmation dialog requires both "DELETE ALL" and PIN
-6. Wrong confirmation text is rejected
-7. Wrong PIN is rejected
-8. Successful reset deletes all transactional data
-9. Master data (customers, cattle, products) is preserved
-10. Activity log records the factory reset action
+1. Login as super_admin on Vercel deployment
+2. Navigate to Settings → Data Management
+3. Select retention period (e.g., 1 Year)
+4. Click "Preview Data" - should show record counts ✅
+5. Click "Export Backup" - should download Excel ✅
+6. Enter PIN and confirm deletion - should work ✅
+
+## Summary
+
+The fix aligns `archive-old-data` with the same Supabase Auth JWT validation pattern used by all other edge functions (`create-user`, `change-pin`, `delete-user`, etc.). This ensures consistent authentication across the entire application.
