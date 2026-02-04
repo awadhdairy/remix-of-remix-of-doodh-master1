@@ -111,25 +111,72 @@ Deno.serve(async (req) => {
     // Check if phone number already exists in profiles
     const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
-      .select('id, is_active')
+      .select('id, is_active, full_name')
       .eq('phone', phone)
       .maybeSingle()
 
     if (existingProfile) {
-      if (existingProfile.is_active) {
+      // Check if this profile has a matching auth user
+      const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(existingProfile.id)
+      
+      if (!authUser?.user) {
+        // This is an ORPHANED profile - clean it up automatically
+        console.log(`[CREATE-USER] Found orphaned profile ${existingProfile.id}, cleaning up...`)
+        
+        // Delete sessions first
+        await supabaseAdmin.from('auth_sessions').delete().eq('user_id', existingProfile.id)
+        
+        // Delete user_roles 
+        await supabaseAdmin.from('user_roles').delete().eq('user_id', existingProfile.id)
+        
+        // Delete orphaned profile
+        const { error: deleteError } = await supabaseAdmin.from('profiles').delete().eq('id', existingProfile.id)
+        
+        if (deleteError) {
+          console.error('[CREATE-USER] Failed to delete orphaned profile:', deleteError)
+          return new Response(
+            JSON.stringify({ error: 'Failed to clean up orphaned data. Please try again.' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+        
+        console.log(`[CREATE-USER] Orphaned profile ${existingProfile.id} cleaned up successfully`)
+        // Now proceed with normal user creation
+      } else if (existingProfile.is_active) {
         return new Response(
           JSON.stringify({ error: 'A user with this phone number already exists' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
+      } else {
+        return new Response(
+          JSON.stringify({ error: 'This phone number belongs to a deactivated user. Please reactivate the account instead.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
-      return new Response(
-        JSON.stringify({ error: 'This phone number belongs to a deactivated user. Please reactivate the account instead.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    }
+
+    // Also check for orphaned auth users with the same email pattern
+    const email = `${phone}@awadhdairy.com`
+    const { data: existingAuthUsers } = await supabaseAdmin.auth.admin.listUsers()
+    const existingAuthUser = existingAuthUsers?.users?.find(u => u.email === email)
+    
+    if (existingAuthUser) {
+      // Check if this auth user has a matching profile
+      const { data: matchingProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', existingAuthUser.id)
+        .maybeSingle()
+      
+      if (!matchingProfile) {
+        // Auth user exists but no profile - delete the orphaned auth user
+        console.log(`[CREATE-USER] Found orphaned auth user ${existingAuthUser.id}, cleaning up...`)
+        await supabaseAdmin.auth.admin.deleteUser(existingAuthUser.id)
+        console.log(`[CREATE-USER] Orphaned auth user ${existingAuthUser.id} deleted`)
+      }
     }
 
     // Create the auth user
-    const email = `${phone}@awadhdairy.com`
     console.log(`Creating auth user for phone: ${phone}, email: ${email}`)
 
     const { data: authData, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -172,6 +219,29 @@ Deno.serve(async (req) => {
 
     if (profileError) {
       console.error('Error upserting profile:', profileError)
+      
+      // If profile creation fails due to phone constraint, try to clean up and retry
+      if (profileError.code === '23505' && profileError.message?.includes('phone')) {
+        console.log('[CREATE-USER] Phone conflict detected, forcing cleanup...')
+        
+        // Force delete any profile with this phone that isn't this user
+        await supabaseAdmin.from('profiles').delete().eq('phone', phone).neq('id', userId)
+        
+        // Retry the upsert
+        const { error: retryError } = await supabaseAdmin
+          .from('profiles')
+          .upsert({
+            id: userId,
+            full_name: fullName,
+            phone: phone,
+            role: role,
+            is_active: true
+          }, { onConflict: 'id' })
+        
+        if (retryError) {
+          console.error('Error upserting profile after cleanup:', retryError)
+        }
+      }
     }
 
     // Set PIN hash

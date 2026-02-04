@@ -88,6 +88,143 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { userId, action, userIds } = body
 
+    // ========================================
+    // ACTION: Comprehensive cleanup of ALL orphan types
+    // ========================================
+    if (action === 'cleanup-all-orphan-types') {
+      console.log('[DELETE-USER] Starting comprehensive orphan cleanup...')
+      
+      const results = {
+        orphanedProfiles: 0,
+        orphanedRoles: 0,
+        orphanedAuthUsers: 0,
+        orphanedSessions: 0,
+        details: [] as { type: string; id: string; success: boolean; error?: string }[]
+      }
+      
+      try {
+        // 1. Get all auth users
+        const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers()
+        const authUserIds = new Set(authUsers?.users?.map(u => u.id) || [])
+        
+        // 2. Get all profiles
+        const { data: profiles } = await supabaseAdmin.from('profiles').select('id, phone')
+        const profileIds = new Set(profiles?.map(p => p.id) || [])
+        
+        // 3. Delete profiles without matching auth users
+        for (const profile of (profiles || [])) {
+          if (!authUserIds.has(profile.id)) {
+            console.log(`[DELETE-USER] Cleaning orphaned profile: ${profile.id}`)
+            
+            // Delete sessions first
+            await supabaseAdmin.from('auth_sessions').delete().eq('user_id', profile.id)
+            
+            // Delete user_roles
+            await supabaseAdmin.from('user_roles').delete().eq('user_id', profile.id)
+            
+            // Delete profile
+            const { error } = await supabaseAdmin.from('profiles').delete().eq('id', profile.id)
+            
+            if (!error) {
+              results.orphanedProfiles++
+              results.details.push({ type: 'profile', id: profile.id, success: true })
+            } else {
+              results.details.push({ type: 'profile', id: profile.id, success: false, error: error.message })
+            }
+          }
+        }
+        
+        // 4. Delete auth users (staff-created: @awadhdairy.com) without matching profiles
+        for (const authUser of (authUsers?.users || [])) {
+          if (authUser.email?.endsWith('@awadhdairy.com') && !profileIds.has(authUser.id)) {
+            // Never delete the requesting user
+            if (authUser.id === requestingUser.id) continue
+            
+            console.log(`[DELETE-USER] Cleaning orphaned auth user: ${authUser.id}`)
+            
+            // Delete sessions first
+            await supabaseAdmin.from('auth_sessions').delete().eq('user_id', authUser.id)
+            
+            // Delete any leftover user_roles
+            await supabaseAdmin.from('user_roles').delete().eq('user_id', authUser.id)
+            
+            const { error } = await supabaseAdmin.auth.admin.deleteUser(authUser.id)
+            
+            if (!error) {
+              results.orphanedAuthUsers++
+              results.details.push({ type: 'auth_user', id: authUser.id, success: true })
+            } else {
+              results.details.push({ type: 'auth_user', id: authUser.id, success: false, error: error.message })
+            }
+          }
+        }
+        
+        // 5. Delete user_roles without matching profiles or auth users
+        const { data: allRoles } = await supabaseAdmin.from('user_roles').select('user_id')
+        for (const role of (allRoles || [])) {
+          if (!profileIds.has(role.user_id) && !authUserIds.has(role.user_id)) {
+            console.log(`[DELETE-USER] Cleaning orphaned user_role: ${role.user_id}`)
+            
+            const { error } = await supabaseAdmin.from('user_roles').delete().eq('user_id', role.user_id)
+            
+            if (!error) {
+              results.orphanedRoles++
+              results.details.push({ type: 'user_role', id: role.user_id, success: true })
+            } else {
+              results.details.push({ type: 'user_role', id: role.user_id, success: false, error: error.message })
+            }
+          }
+        }
+        
+        // 6. Delete orphaned sessions (user_id not in profiles)
+        const { data: allSessions } = await supabaseAdmin.from('auth_sessions').select('id, user_id')
+        for (const session of (allSessions || [])) {
+          if (!profileIds.has(session.user_id) && !authUserIds.has(session.user_id)) {
+            const { error } = await supabaseAdmin.from('auth_sessions').delete().eq('id', session.id)
+            
+            if (!error) {
+              results.orphanedSessions++
+              results.details.push({ type: 'session', id: session.id, success: true })
+            }
+          }
+        }
+        
+        // Log the cleanup action
+        await supabaseAdmin
+          .from('activity_logs')
+          .insert({
+            user_id: requestingUser.id,
+            action: 'comprehensive_orphan_cleanup',
+            entity_type: 'system',
+            details: {
+              orphanedProfiles: results.orphanedProfiles,
+              orphanedRoles: results.orphanedRoles,
+              orphanedAuthUsers: results.orphanedAuthUsers,
+              orphanedSessions: results.orphanedSessions,
+              cleaned_by: requestingUser.email,
+            },
+          })
+        
+        console.log('[DELETE-USER] Comprehensive cleanup complete:', results)
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            message: `Cleaned up ${results.orphanedProfiles} profiles, ${results.orphanedAuthUsers} auth users, ${results.orphanedRoles} roles, ${results.orphanedSessions} sessions`,
+            ...results
+          }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+        
+      } catch (error) {
+        console.error('[DELETE-USER] Comprehensive cleanup error:', error)
+        return new Response(
+          JSON.stringify({ error: 'Cleanup failed', details: String(error) }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // Handle find-and-cleanup-orphaned action (dynamic detection)
     if (action === 'find-and-cleanup-orphaned') {
       console.log('Finding and cleaning up orphaned users dynamically...')
@@ -140,6 +277,10 @@ Deno.serve(async (req) => {
       const results = []
       for (const orphan of orphanedUsers) {
         try {
+          // Clean up related data first
+          await supabaseAdmin.from('auth_sessions').delete().eq('user_id', orphan.id)
+          await supabaseAdmin.from('user_roles').delete().eq('user_id', orphan.id)
+          
           const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(orphan.id)
           if (deleteError) {
             console.error(`Failed to delete orphaned user ${orphan.id}:`, deleteError)
@@ -189,6 +330,10 @@ Deno.serve(async (req) => {
       
       for (const id of userIds) {
         try {
+          // Clean up related data first
+          await supabaseAdmin.from('auth_sessions').delete().eq('user_id', id)
+          await supabaseAdmin.from('user_roles').delete().eq('user_id', id)
+          
           const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(id)
           if (deleteError) {
             console.error(`Failed to delete orphaned user ${id}:`, deleteError)
@@ -264,6 +409,9 @@ Deno.serve(async (req) => {
       .select('full_name, phone')
       .eq('id', userId)
       .single()
+
+    // Clean up all related data first
+    await supabaseAdmin.from('auth_sessions').delete().eq('user_id', userId)
 
     // HYBRID DELETION: Handle both auth-based users and profile-only users
     // Try to delete from auth.users first
