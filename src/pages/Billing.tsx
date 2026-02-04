@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
+import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +58,12 @@ interface InvoiceWithCustomer extends Invoice {
   customer: Customer;
 }
 
+const sortOptions = [
+  { value: "created_at", label: "Date Created" },
+  { value: "final_amount", label: "Amount" },
+  { value: "billing_period_start", label: "Billing Period" },
+];
+
 export default function BillingPage() {
   const [invoices, setInvoices] = useState<InvoiceWithCustomer[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -69,29 +76,42 @@ export default function BillingPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithCustomer | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<InvoiceWithCustomer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  
+  // Filter & Sort state
+  const [dateRange, setDateRange] = useState<DateRange>("90");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  
   const { toast } = useToast();
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [dateRange, sortBy, sortOrder]);
 
   const fetchData = async () => {
     setLoading(true);
+    const startDate = getDateFilterValue(dateRange);
     
     try {
+      let invoiceQuery = supabase
+        .from("invoices")
+        .select(`
+          *,
+          customer:customer_id (id, name)
+        `)
+        .order(sortBy, { ascending: sortOrder === "asc" });
+      
+      if (startDate) {
+        invoiceQuery = invoiceQuery.gte("created_at", startDate);
+      }
+      
       const [customerRes, invoiceRes, productRes] = await Promise.all([
         supabase
           .from("customers")
           .select("id, name")
           .eq("is_active", true)
           .order("name"),
-        supabase
-          .from("invoices")
-          .select(`
-            *,
-            customer:customer_id (id, name)
-          `)
-          .order("created_at", { ascending: false }),
+        invoiceQuery,
         supabase
           .from("products")
           .select("id, name, base_price, unit, tax_percentage")
@@ -337,7 +357,18 @@ export default function BillingPage() {
         </Card>
       </div>
 
-      {/* Filter Tabs */}
+      {/* Data Filters */}
+      <DataFilters
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        sortBy={sortBy}
+        sortOptions={sortOptions}
+        onSortChange={setSortBy}
+        sortOrder={sortOrder}
+        onSortOrderChange={setSortOrder}
+      />
+
+      {/* Status Filter Tabs */}
       <Tabs value={statusFilter} onValueChange={setStatusFilter}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>

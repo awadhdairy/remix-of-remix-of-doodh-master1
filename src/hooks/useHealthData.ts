@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
+import { DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 
 interface Cattle {
   id: string;
@@ -39,12 +40,27 @@ interface HealthData {
   cattle: Cattle[];
 }
 
-async function fetchHealthData(): Promise<HealthData> {
+interface UseHealthDataOptions {
+  dateRange?: DateRange;
+  sortBy?: string;
+  sortOrder?: SortOrder;
+}
+
+async function fetchHealthData(options: UseHealthDataOptions): Promise<HealthData> {
+  const { dateRange = "90", sortBy = "record_date", sortOrder = "desc" } = options;
+  const startDate = getDateFilterValue(dateRange);
+  
+  let recordsQuery = supabase
+    .from("cattle_health")
+    .select(`*, cattle:cattle_id (id, tag_number, name)`)
+    .order(sortBy, { ascending: sortOrder === "asc" });
+  
+  if (startDate) {
+    recordsQuery = recordsQuery.gte("record_date", startDate);
+  }
+  
   const [recordsRes, cattleRes] = await Promise.all([
-    supabase
-      .from("cattle_health")
-      .select(`*, cattle:cattle_id (id, tag_number, name)`)
-      .order("record_date", { ascending: false }),
+    recordsQuery,
     supabase
       .from("cattle")
       .select("id, tag_number, name")
@@ -61,14 +77,16 @@ async function fetchHealthData(): Promise<HealthData> {
   };
 }
 
-export function useHealthData() {
+export function useHealthData(options: UseHealthDataOptions = {}) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { logHealthExpense } = useExpenseAutomation();
+  
+  const { dateRange = "90", sortBy = "record_date", sortOrder = "desc" } = options;
 
   const healthQuery = useQuery({
-    queryKey: ["health-records"],
-    queryFn: fetchHealthData,
+    queryKey: ["health-records", dateRange, sortBy, sortOrder],
+    queryFn: () => fetchHealthData({ dateRange, sortBy, sortOrder }),
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
   });
