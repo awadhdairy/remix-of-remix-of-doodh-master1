@@ -34,35 +34,48 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL");
-    const supabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const supabaseAnonKey = Deno.env.get("EXTERNAL_SUPABASE_ANON_KEY") || Deno.env.get("SUPABASE_ANON_KEY");
+    // ============================================================
+    // STANDARDIZED AUTH PATTERN - CONSISTENT ACROSS ALL FUNCTIONS
+    // ============================================================
+    
+    // Use Supabase's built-in environment variables (auto-provided by Supabase)
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
     if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
-      throw new Error("Missing Supabase configuration");
+      console.error("[ARCHIVE] Missing Supabase configuration");
+      console.error("[ARCHIVE] URL:", !!supabaseUrl, "Service:", !!supabaseServiceKey, "Anon:", !!supabaseAnonKey);
+      return new Response(
+        JSON.stringify({ error: "Server configuration error" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
-    // Admin client for database operations
+    // Admin client for database operations (bypasses RLS)
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get authorization header
     const authHeader = req.headers.get("Authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      console.log("[ARCHIVE] No authorization header provided");
       return new Response(
         JSON.stringify({ error: "Authorization required" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Validate via Supabase Auth JWT (same pattern as create-user, change-pin, etc.)
+    // Create user client and validate JWT
     const token = authHeader.replace("Bearer ", "");
     const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: `Bearer ${token}` } }
     });
 
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    // CRITICAL: Pass token explicitly to getUser for proper JWT validation
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+
     if (userError || !user) {
-      console.log(`[ARCHIVE] Auth failed: ${userError?.message}`);
+      console.log(`[ARCHIVE] Auth failed: ${userError?.message || 'No user returned'}`);
       return new Response(
         JSON.stringify({ error: "Invalid or expired session" }),
         { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -70,22 +83,59 @@ Deno.serve(async (req) => {
     }
 
     const userId = user.id;
+    console.log(`[ARCHIVE] User authenticated: ${userId} (${user.email})`);
 
-    // Verify super_admin role (server-side check using admin client)
-    const { data: roleData } = await supabaseAdmin
+    // Verify super_admin role with detailed logging (using admin client to bypass RLS)
+    const { data: roleData, error: roleError } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", userId)
       .eq("role", "super_admin")
       .limit(1);
 
+    console.log(`[ARCHIVE] Role check for ${userId}:`);
+    console.log(`[ARCHIVE]   - Query: user_roles WHERE user_id='${userId}' AND role='super_admin'`);
+    console.log(`[ARCHIVE]   - Rows found: ${roleData?.length || 0}`);
+    console.log(`[ARCHIVE]   - Role data: ${JSON.stringify(roleData)}`);
+    console.log(`[ARCHIVE]   - Error: ${roleError?.message || 'none'}`);
+
+    // Also check profile for debugging
+    const { data: profileData, error: profileError } = await supabaseAdmin
+      .from("profiles")
+      .select("id, phone, role, is_active, full_name")
+      .eq("id", userId)
+      .single();
+
+    console.log(`[ARCHIVE] Profile check for ${userId}:`);
+    console.log(`[ARCHIVE]   - Profile data: ${JSON.stringify(profileData)}`);
+    console.log(`[ARCHIVE]   - Profile error: ${profileError?.message || 'none'}`);
+
     if (!roleData || roleData.length === 0) {
-      console.log(`[ARCHIVE] Unauthorized access attempt by user ${userId}`);
+      console.log(`[ARCHIVE] DENIED - User ${userId} is not super_admin`);
+      console.log(`[ARCHIVE] Debug info: email=${user.email}, roleRows=${roleData?.length || 0}, hasProfile=${!!profileData}`);
+      
       return new Response(
-        JSON.stringify({ error: "Only super admin can perform data archival" }),
+        JSON.stringify({ 
+          error: "Only super admin can perform data archival",
+          debug: {
+            userId,
+            email: user.email,
+            roleDataLength: roleData?.length || 0,
+            roleError: roleError?.message || null,
+            profileExists: !!profileData,
+            profileRole: profileData?.role || null,
+            profileActive: profileData?.is_active || null
+          }
+        }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+
+    console.log(`[ARCHIVE] GRANTED - User ${userId} verified as super_admin`);
+
+    // ============================================================
+    // END OF AUTH PATTERN - PROCEEDING WITH BUSINESS LOGIC
+    // ============================================================
 
     // Parse request body
     const body = await req.json();
@@ -162,7 +212,7 @@ Deno.serve(async (req) => {
 
     // EXPORT MODE - Fetch data for backup
     if (mode === "export") {
-      const exportData: Record<string, any[]> = {};
+      const exportData: Record<string, unknown[]> = {};
 
       for (const tableConfig of ARCHIVABLE_TABLES) {
         if (!tableConfig.dateColumn) continue;
@@ -249,7 +299,6 @@ Deno.serve(async (req) => {
         try {
           // Delete in batches to avoid timeout
           const batchSize = 100;
-          let deletedItems = 0;
           
           for (let i = 0; i < idsToDelete.length; i += batchSize) {
             const batch = idsToDelete.slice(i, i + batchSize);
@@ -263,15 +312,10 @@ Deno.serve(async (req) => {
             }
           }
           
-          // Count what we deleted
-          const { count } = await supabaseAdmin
-            .from("delivery_items")
-            .select("id", { count: "exact", head: true })
-            .in("delivery_id", idsToDelete);
-          
           deleted["delivery_items"] = idsToDelete.length * 2; // Estimate since we deleted them
-        } catch (e: any) {
-          errors.push(`delivery_items: ${e.message}`);
+        } catch (e: unknown) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          errors.push(`delivery_items: ${errorMessage}`);
         }
       }
 
@@ -317,9 +361,10 @@ Deno.serve(async (req) => {
             deleted[tableConfig.table] = beforeCount || 0;
             totalDeleted += beforeCount || 0;
           }
-        } catch (e: any) {
-          console.log(`[ARCHIVE] Exception deleting ${tableConfig.table}: ${e.message}`);
-          errors.push(`${tableConfig.table}: ${e.message}`);
+        } catch (e: unknown) {
+          const errorMessage = e instanceof Error ? e.message : String(e);
+          console.log(`[ARCHIVE] Exception deleting ${tableConfig.table}: ${errorMessage}`);
+          errors.push(`${tableConfig.table}: ${errorMessage}`);
           deleted[tableConfig.table] = 0;
         }
       }
@@ -362,10 +407,11 @@ Deno.serve(async (req) => {
       JSON.stringify({ error: "Invalid request" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     console.error("[ARCHIVE] Error:", error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

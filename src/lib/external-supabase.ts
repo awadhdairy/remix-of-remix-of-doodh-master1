@@ -84,14 +84,24 @@ export async function invokeExternalFunctionWithSession<T = unknown>(
   functionName: string,
   body: Record<string, unknown> = {}
 ): Promise<{ data: T | null; error: Error | null }> {
-  // Get staff session token from localStorage (custom auth system)
-  const sessionToken = localStorage.getItem('session_token');
+  // Get Supabase Auth session (this is the primary auth mechanism)
+  const { data: { session }, error: sessionError } = await externalSupabase.auth.getSession();
   
-  // Also check for Supabase Auth token (customer auth system)
-  const { data: { session } } = await externalSupabase.auth.getSession();
+  if (sessionError) {
+    console.warn('[External] Session error:', sessionError.message);
+  }
   
-  // Prefer Supabase Auth token, fall back to staff session token
-  const authToken = session?.access_token || sessionToken;
+  const authToken = session?.access_token;
+  
+  // Debug logging for troubleshooting auth issues
+  console.log(`[External] Invoking ${functionName}`);
+  console.log(`[External] Auth token present: ${!!authToken}`);
+  console.log(`[External] User ID: ${session?.user?.id || 'none'}`);
+  console.log(`[External] User email: ${session?.user?.email || 'none'}`);
+  
+  if (!authToken) {
+    console.warn(`[External] No auth token available for ${functionName}`);
+  }
   
   return invokeExternalFunction<T>(functionName, body, authToken || undefined);
 }

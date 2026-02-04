@@ -275,6 +275,50 @@ Deno.serve(async (req) => {
       console.log('[SETUP] Admin created with ID:', adminUserId)
     }
 
+    // ============================================================
+    // VERIFICATION: Ensure admin data is correctly linked
+    // ============================================================
+    console.log('[SETUP] Verifying admin data consistency...')
+    
+    const { data: verifyProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('id, phone, role, is_active')
+      .eq('id', adminUserId)
+      .single()
+    
+    const { data: verifyRole } = await supabaseAdmin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', adminUserId)
+      .eq('role', 'super_admin')
+      .limit(1)
+    
+    console.log('[SETUP] Verification results:')
+    console.log('[SETUP]   - Profile exists:', !!verifyProfile)
+    console.log('[SETUP]   - Profile data:', JSON.stringify(verifyProfile))
+    console.log('[SETUP]   - Role exists:', !!verifyRole?.length)
+    console.log('[SETUP]   - Role data:', JSON.stringify(verifyRole))
+    
+    // Fix any missing data
+    if (!verifyRole || verifyRole.length === 0) {
+      console.log('[SETUP] Role missing, creating...')
+      await supabaseAdmin.from('user_roles').upsert(
+        { user_id: adminUserId, role: 'super_admin' },
+        { onConflict: 'user_id' }
+      )
+    }
+    
+    if (!verifyProfile) {
+      console.log('[SETUP] Profile missing, creating...')
+      await supabaseAdmin.from('profiles').upsert({
+        id: adminUserId,
+        full_name: PERMANENT_ADMIN_NAME,
+        phone: PERMANENT_ADMIN_PHONE,
+        role: 'super_admin',
+        is_active: true
+      }, { onConflict: 'id' })
+    }
+
     // ====== SEED DUMMY DATA ======
 
     console.log('[SETUP] Seeding dummy data...')
