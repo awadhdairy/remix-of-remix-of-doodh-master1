@@ -106,7 +106,7 @@ export default function Auth() {
           <img 
             src={awadhDairyLogo} 
             alt="Awadh Dairy" 
-            className="mx-auto mb-6 h-32 w-32 object-contain"
+            className="mx-auto mb-6 h-40 w-40 object-contain"
           />
           <h1 className="mb-4 text-4xl font-bold text-sidebar-foreground">
             Awadh Dairy
@@ -139,7 +139,7 @@ export default function Auth() {
             <img 
               src={awadhDairyLogo} 
               alt="Awadh Dairy" 
-              className="mx-auto mb-2 h-16 w-16 object-contain lg:hidden"
+              className="mx-auto mb-2 h-20 w-20 object-contain lg:hidden"
             />
             <CardTitle className="text-2xl font-bold">Welcome</CardTitle>
             <CardDescription>
