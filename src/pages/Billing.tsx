@@ -17,12 +17,19 @@ import {
 } from "@/components/ui/responsive-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Receipt, IndianRupee, Loader2, Edit3 } from "lucide-react";
+import { Receipt, IndianRupee, Loader2, Edit3, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { InvoicePDFGenerator } from "@/components/billing/InvoicePDFGenerator";
 import { EditInvoiceDialog } from "@/components/billing/EditInvoiceDialog";
 import { SmartInvoiceCreator } from "@/components/billing/SmartInvoiceCreator";
-
+import { 
+  getEffectivePaymentStatus, 
+  getInvoiceBalance, 
+  isInvoiceOverdue,
+  calculateOutstandingBalance,
+  calculateOverdueBalance,
+  countOverdueInvoices
+} from "@/lib/invoice-helpers";
 interface Customer {
   id: string;
   name: string;
@@ -209,15 +216,21 @@ export default function BillingPage() {
     }
   };
 
+  // Use computed effective status for filtering (includes date-based overdue detection)
   const filteredInvoices = statusFilter === "all" 
     ? invoices 
-    : invoices.filter(i => i.payment_status === statusFilter);
+    : invoices.filter(i => getEffectivePaymentStatus(i) === statusFilter);
 
+  // Stats using correct calculations:
+  // - Outstanding: All unpaid invoices (pending + partial + overdue) showing REMAINING balance
+  // - Overdue: Date-based detection (due_date < today and not paid) showing REMAINING balance
+  const overdueCount = countOverdueInvoices(invoices);
   const stats = {
     total: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
-    collected: invoices.reduce((sum, i) => sum + Number(i.paid_amount), 0),
-    pending: invoices.filter(i => i.payment_status === "pending").reduce((sum, i) => sum + Number(i.final_amount), 0),
-    overdue: invoices.filter(i => i.payment_status === "overdue").reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount)), 0),
+    collected: invoices.reduce((sum, i) => sum + Number(i.paid_amount || 0), 0),
+    outstanding: calculateOutstandingBalance(invoices),
+    overdue: calculateOverdueBalance(invoices),
+    overdueCount,
   };
 
   const columns = [
@@ -273,7 +286,9 @@ export default function BillingPage() {
     {
       key: "payment_status",
       header: "Status",
-      render: (item: InvoiceWithCustomer) => <StatusBadge status={item.payment_status} />,
+      render: (item: InvoiceWithCustomer) => (
+        <StatusBadge status={getEffectivePaymentStatus(item)} />
+      ),
     },
     {
       key: "download",
@@ -345,14 +360,21 @@ export default function BillingPage() {
         </Card>
         <Card className="border-warning/30">
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-warning">₹{stats.pending.toLocaleString("en-IN")}</div>
-            <p className="text-sm text-muted-foreground">Pending</p>
+            <div className="text-2xl font-bold text-warning">₹{stats.outstanding.toLocaleString("en-IN")}</div>
+            <p className="text-sm text-muted-foreground">Outstanding</p>
           </CardContent>
         </Card>
         <Card className="border-destructive/30">
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-destructive">₹{stats.overdue.toLocaleString("en-IN")}</div>
-            <p className="text-sm text-muted-foreground">Overdue</p>
+            <div className="flex items-center gap-2">
+              <div className="text-2xl font-bold text-destructive">₹{stats.overdue.toLocaleString("en-IN")}</div>
+              {stats.overdueCount > 0 && (
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Overdue {stats.overdueCount > 0 && `(${stats.overdueCount} invoices)`}
+            </p>
           </CardContent>
         </Card>
       </div>

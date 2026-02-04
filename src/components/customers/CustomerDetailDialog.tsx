@@ -15,9 +15,10 @@ import {
   Clock, CheckCircle, XCircle, AlertCircle,
   Package, Receipt, Truck, DollarSign,
   TrendingUp, CreditCard, Palmtree, ShoppingCart,
-  CalendarDays, Plus
+  CalendarDays, Plus, AlertTriangle
 } from "lucide-react";
 import { format, parseISO, differenceInDays } from "date-fns";
+import { getEffectivePaymentStatus, countOverdueInvoices } from "@/lib/invoice-helpers";
 
 interface Customer {
   id: string;
@@ -232,7 +233,9 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
   const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
   const totalInvoiced = invoices.reduce((sum, i) => sum + i.final_amount, 0);
   const paidInvoices = invoices.filter(i => i.payment_status === "paid").length;
-  const pendingInvoices = invoices.filter(i => i.payment_status === "pending" || i.payment_status === "partial").length;
+  // Use computed effective status for pending/overdue counts
+  const pendingInvoices = invoices.filter(i => getEffectivePaymentStatus(i) !== "paid").length;
+  const overdueInvoices = countOverdueInvoices(invoices);
 
   const activeSubscriptions = subscriptions.filter(s => s.is_active).length;
   const monthlyValue = subscriptions

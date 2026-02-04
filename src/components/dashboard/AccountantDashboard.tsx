@@ -13,10 +13,12 @@ import {
   TrendingDown,
   Loader2,
   FileText,
-  AlertCircle
+  AlertCircle,
+  AlertTriangle
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Link } from "react-router-dom";
+import { getInvoiceBalance, countOverdueInvoices, calculateOverdueBalance } from "@/lib/invoice-helpers";
 
 interface AccountingStats {
   monthlyRevenue: number;
