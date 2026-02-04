@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
+import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import {
   Milk,
   Plus,
@@ -120,12 +121,23 @@ const emptyProcurementForm: ProcurementFormData = {
   notes: "",
 };
 
+const sortOptions = [
+  { value: "procurement_date", label: "Date" },
+  { value: "quantity_liters", label: "Quantity" },
+  { value: "total_amount", label: "Amount" },
+];
+
 export default function MilkProcurementPage() {
   const [activeTab, setActiveTab] = useState<"records" | "vendors" | "analytics">("records");
   const [vendors, setVendors] = useState<MilkVendor[]>([]);
   const [procurements, setProcurements] = useState<MilkProcurement[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  // Filter & Sort state
+  const [dateRange, setDateRange] = useState<DateRange>("30");
+  const [sortBy, setSortBy] = useState("procurement_date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   // Dialogs
   const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
@@ -155,7 +167,7 @@ export default function MilkProcurementPage() {
   const { toast } = useToast();
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [dateRange, sortBy, sortOrder]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -184,16 +196,26 @@ export default function MilkProcurementPage() {
     const today = format(new Date(), "yyyy-MM-dd");
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
+    const startDate = getDateFilterValue(dateRange);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("milk_procurement")
       .select(`
         *,
         vendor:vendor_id (id, name, phone, area)
       `)
-      .gte("procurement_date", format(subDays(new Date(), 30), "yyyy-MM-dd"))
-      .order("procurement_date", { ascending: false })
-      .order("session", { ascending: true });
+      .order(sortBy, { ascending: sortOrder === "asc" });
+    
+    if (startDate) {
+      query = query.gte("procurement_date", startDate);
+    }
+    
+    // Secondary sort for consistent ordering
+    if (sortBy === "procurement_date") {
+      query = query.order("session", { ascending: true });
+    }
+    
+    const { data, error } = await query;
 
     if (error) {
       toast({

@@ -3,6 +3,7 @@ import { useHealthData, HealthRecordWithCattle, HealthFormData } from "@/hooks/u
 import { HealthPageSkeleton } from "@/components/common/PageSkeletons";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
+import { DataFilters, DateRange, SortOrder } from "@/components/common/DataFilters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,8 +54,23 @@ const emptyFormData: HealthFormData = {
   next_due_date: "",
 };
 
+const sortOptions = [
+  { value: "record_date", label: "Date" },
+  { value: "record_type", label: "Type" },
+  { value: "cost", label: "Cost" },
+];
+
 export default function HealthPage() {
-  const { records, cattle, isLoading, createRecord, isCreating } = useHealthData();
+  // Filter & Sort state
+  const [dateRange, setDateRange] = useState<DateRange>("90");
+  const [sortBy, setSortBy] = useState("record_date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  
+  const { records, cattle, isLoading, createRecord, isCreating } = useHealthData({
+    dateRange,
+    sortBy,
+    sortOrder,
+  });
   const [dialogOpen, setDialogOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState("all");
   const [formData, setFormData] = useState<HealthFormData>(emptyFormData);
@@ -147,6 +163,18 @@ export default function HealthPage() {
         </Card>
       )}
 
+      {/* Data Filters */}
+      <DataFilters
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        sortBy={sortBy}
+        sortOptions={sortOptions}
+        onSortChange={setSortBy}
+        sortOrder={sortOrder}
+        onSortOrderChange={setSortOrder}
+      />
+
+      {/* Type Filter */}
       <Tabs value={typeFilter} onValueChange={setTypeFilter}>
         <TabsList><TabsTrigger value="all">All</TabsTrigger><TabsTrigger value="vaccination">Vaccinations</TabsTrigger><TabsTrigger value="treatment">Treatments</TabsTrigger><TabsTrigger value="checkup">Checkups</TabsTrigger><TabsTrigger value="disease">Diseases</TabsTrigger></TabsList>
       </Tabs>

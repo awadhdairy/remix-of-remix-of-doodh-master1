@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
+import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +43,12 @@ interface ProductionWithCattle extends MilkProduction {
   cattle: Cattle;
 }
 
+const sortOptions = [
+  { value: "production_date", label: "Date" },
+  { value: "quantity_liters", label: "Quantity" },
+  { value: "session", label: "Session" },
+];
+
 export default function ProductionPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [productions, setProductions] = useState<ProductionWithCattle[]>([]);
@@ -53,6 +60,11 @@ export default function ProductionPage() {
   const [session, setSession] = useState<"morning" | "evening">("morning");
   const [entries, setEntries] = useState<Record<string, { quantity: string; fat: string; snf: string; notes: string }>>({});
   const { toast } = useToast();
+
+  // Filter & Sort state
+  const [dateRange, setDateRange] = useState<DateRange>("30");
+  const [sortBy, setSortBy] = useState("production_date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   // History dialog state
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
@@ -67,13 +79,34 @@ export default function ProductionPage() {
       setDialogOpen(true);
       setSearchParams({});
     }
-  }, [searchParams]);
+  }, [searchParams, dateRange, sortBy, sortOrder]);
 
   const fetchData = async () => {
     setLoading(true);
     
     try {
-      // Fetch cattle and productions in parallel for faster loading
+      const startDate = getDateFilterValue(dateRange);
+      
+      // Build production query with date filter
+      let productionQuery = supabase
+        .from("milk_production")
+        .select(`
+          *,
+          cattle:cattle_id (id, tag_number, name)
+        `)
+        .order(sortBy, { ascending: sortOrder === "asc" });
+      
+      // Apply date filter if not "all"
+      if (startDate) {
+        productionQuery = productionQuery.gte("production_date", startDate);
+      }
+      
+      // Secondary sort by session for consistent ordering
+      if (sortBy === "production_date") {
+        productionQuery = productionQuery.order("session", { ascending: false });
+      }
+
+      // Fetch cattle and productions in parallel
       const [cattleRes, productionRes] = await Promise.all([
         supabase
           .from("cattle")
@@ -81,15 +114,7 @@ export default function ProductionPage() {
           .eq("status", "active")
           .in("lactation_status", ["lactating"])
           .order("tag_number"),
-        supabase
-          .from("milk_production")
-          .select(`
-            *,
-            cattle:cattle_id (id, tag_number, name)
-          `)
-          .order("production_date", { ascending: false })
-          .order("session", { ascending: false })
-          .limit(100)
+        productionQuery
       ]);
 
       setCattle(cattleRes.data || []);
@@ -335,6 +360,17 @@ export default function ProductionPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Data Filters */}
+      <DataFilters
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        sortBy={sortBy}
+        sortOptions={sortOptions}
+        onSortChange={setSortBy}
+        sortOrder={sortOrder}
+        onSortOrderChange={setSortOrder}
+      />
 
       <DataTable
         data={productions}

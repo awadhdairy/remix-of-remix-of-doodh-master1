@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
+import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,6 +60,12 @@ const categoryLabels: Record<string, string> = {
   misc: "Miscellaneous",
 };
 
+const sortOptions = [
+  { value: "expense_date", label: "Date" },
+  { value: "amount", label: "Amount" },
+  { value: "category", label: "Category" },
+];
+
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,6 +74,12 @@ export default function ExpensesPage() {
   const [saving, setSaving] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  
+  // Filter & Sort state
+  const [dateRange, setDateRange] = useState<DateRange>("30");
+  const [sortBy, setSortBy] = useState("expense_date");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  
   const [formData, setFormData] = useState({
     category: "feed",
     title: "",
@@ -78,14 +91,22 @@ export default function ExpensesPage() {
 
   useEffect(() => {
     fetchExpenses();
-  }, []);
+  }, [dateRange, sortBy, sortOrder]);
 
   const fetchExpenses = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const startDate = getDateFilterValue(dateRange);
+    
+    let query = supabase
       .from("expenses")
       .select("*")
-      .order("expense_date", { ascending: false });
+      .order(sortBy, { ascending: sortOrder === "asc" });
+    
+    if (startDate) {
+      query = query.gte("expense_date", startDate);
+    }
+    
+    const { data, error } = await query;
 
     if (error) {
       toast({ title: "Error fetching expenses", description: error.message, variant: "destructive" });
@@ -307,7 +328,18 @@ export default function ExpensesPage() {
         </CardContent>
       </Card>
 
-      {/* Filter */}
+      {/* Data Filters */}
+      <DataFilters
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        sortBy={sortBy}
+        sortOptions={sortOptions}
+        onSortChange={setSortBy}
+        sortOrder={sortOrder}
+        onSortOrderChange={setSortOrder}
+      />
+
+      {/* Category Filter */}
       <Tabs value={categoryFilter} onValueChange={setCategoryFilter}>
         <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="all">All</TabsTrigger>

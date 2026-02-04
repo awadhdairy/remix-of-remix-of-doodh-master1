@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
+import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -48,26 +49,47 @@ const entityLabels: Record<string, string> = {
   health: "Health Record",
 };
 
+const sortOptions = [
+  { value: "created_at", label: "Time" },
+  { value: "action", label: "Action" },
+  { value: "entity_type", label: "Entity" },
+];
+
 export default function AuditLogsPage() {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
   
-  // Filters
+  // Filter & Sort state
+  const [dateRange, setDateRange] = useState<DateRange>("30");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  
+  // Additional Filters
   const [entityFilter, setEntityFilter] = useState("");
   const [actionFilter, setActionFilter] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [dateRange, sortBy, sortOrder]);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
+      const startDate = getDateFilterValue(dateRange);
+      
+      let logsQuery = supabase
+        .from("activity_logs")
+        .select("*")
+        .order(sortBy, { ascending: sortOrder === "asc" });
+      
+      if (startDate) {
+        logsQuery = logsQuery.gte("created_at", startDate);
+      }
+      
       const [logsRes, profilesRes] = await Promise.all([
-        supabase.from("activity_logs").select("*").order("created_at", { ascending: false }).limit(500),
+        logsQuery,
         supabase.from("profiles_safe").select("id, full_name"),
       ]);
 
@@ -88,8 +110,6 @@ export default function AuditLogsPage() {
   const filteredLogs = logs.filter(log => {
     if (entityFilter && log.entity_type !== entityFilter) return false;
     if (actionFilter && log.action !== actionFilter) return false;
-    if (dateFrom && new Date(log.created_at) < new Date(dateFrom)) return false;
-    if (dateTo && new Date(log.created_at) > new Date(dateTo + "T23:59:59")) return false;
     return true;
   });
 
@@ -242,16 +262,27 @@ export default function AuditLogsPage() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* Data Filters */}
+      <DataFilters
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
+        sortBy={sortBy}
+        sortOptions={sortOptions}
+        onSortChange={setSortBy}
+        sortOrder={sortOrder}
+        onSortOrderChange={setSortOrder}
+      />
+
+      {/* Additional Filters */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Filter className="h-4 w-4" />
-            Filters
+            Additional Filters
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <label className="text-sm font-medium">Entity Type</label>
               <Select value={entityFilter || "all"} onValueChange={(v) => setEntityFilter(v === "all" ? "" : v)}>
@@ -276,29 +307,20 @@ export default function AuditLogsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">From Date</label>
-              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">To Date</label>
-              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <div className="flex items-end">
+              {(entityFilter || actionFilter) && (
+                <Button 
+                  variant="ghost" 
+                  onClick={() => {
+                    setEntityFilter("");
+                    setActionFilter("");
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           </div>
-          {(entityFilter || actionFilter || dateFrom || dateTo) && (
-            <Button 
-              variant="ghost" 
-              className="mt-4" 
-              onClick={() => {
-                setEntityFilter("");
-                setActionFilter("");
-                setDateFrom("");
-                setDateTo("");
-              }}
-            >
-              Clear Filters
-            </Button>
-          )}
         </CardContent>
       </Card>
 
