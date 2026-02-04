@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAutoDeliveryScheduler } from "@/hooks/useAutoDeliveryScheduler";
-import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { invokeExternalFunctionWithSession } from "@/lib/external-supabase";
 import { format, addDays } from "date-fns";
 import { 
   Truck, 
@@ -41,9 +41,9 @@ export function DeliveryAutomationCard() {
   const handleTriggerCronJob = async () => {
     setCronLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("auto-deliver-daily", {
-        body: { triggered_at: new Date().toISOString(), manual: true },
-      });
+      const { data, error } = await invokeExternalFunctionWithSession<{
+        result?: { delivered: number; scheduled: number; skipped: number; errors?: string[] };
+      }>("auto-deliver-daily", { triggered_at: new Date().toISOString(), manual: true });
 
       if (error) throw error;
 

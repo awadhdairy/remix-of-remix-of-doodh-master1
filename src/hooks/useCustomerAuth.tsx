@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext } from 'react';
-import { externalSupabase as supabase } from '@/lib/external-supabase';
+import { externalSupabase as supabase, invokeExternalFunction } from '@/lib/external-supabase';
 import { User, Session } from '@supabase/supabase-js';
 
 interface CustomerAuthContext {
@@ -95,9 +95,13 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
 
   const login = async (phone: string, pin: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('customer-auth', {
-        body: { action: 'login', phone, pin }
-      });
+      const { data, error } = await invokeExternalFunction<{
+        success: boolean;
+        error?: string;
+        pending?: boolean;
+        session?: { access_token: string; refresh_token: string };
+        customer_id?: string;
+      }>('customer-auth', { action: 'login', phone, pin });
 
       if (error) {
         return { success: false, error: error.message };
@@ -123,9 +127,11 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
 
   const register = async (phone: string, pin: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('customer-auth', {
-        body: { action: 'register', phone, pin }
-      });
+      const { data, error } = await invokeExternalFunction<{
+        success: boolean;
+        error?: string;
+        approved?: boolean;
+      }>('customer-auth', { action: 'register', phone, pin });
 
       if (error) {
         return { success: false, error: error.message };
@@ -155,9 +161,10 @@ export function CustomerAuthProvider({ children }: { children: React.ReactNode }
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('customer-auth', {
-        body: { action: 'change-pin', customerId, currentPin, newPin }
-      });
+      const { data, error } = await invokeExternalFunction<{
+        success: boolean;
+        error?: string;
+      }>('customer-auth', { action: 'change-pin', customerId, currentPin, newPin });
 
       if (error) {
         return { success: false, error: error.message };

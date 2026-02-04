@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { externalSupabase as supabase } from '@/lib/external-supabase';
+import { externalSupabase as supabase, invokeExternalFunction } from '@/lib/external-supabase';
 
 const authSchema = z.object({
   phone: z.string().min(10, 'Enter a valid 10-digit mobile number').max(10, 'Enter a valid 10-digit mobile number'),
@@ -40,9 +40,12 @@ export default function CustomerAuth() {
     setPendingApproval(false);
 
     try {
-      const { data, error } = await supabase.functions.invoke('customer-auth', {
-        body: { action: 'login', phone: values.phone, pin: values.pin }
-      });
+      const { data, error } = await invokeExternalFunction<{
+        success: boolean;
+        error?: string;
+        pending?: boolean;
+        session?: { access_token: string; refresh_token: string };
+      }>('customer-auth', { action: 'login', phone: values.phone, pin: values.pin });
 
       if (error) throw error;
 
@@ -92,9 +95,11 @@ export default function CustomerAuth() {
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('customer-auth', {
-        body: { action: 'register', phone: values.phone, pin: values.pin }
-      });
+      const { data, error } = await invokeExternalFunction<{
+        success: boolean;
+        error?: string;
+        approved?: boolean;
+      }>('customer-auth', { action: 'register', phone: values.phone, pin: values.pin });
 
       if (error) throw error;
 
