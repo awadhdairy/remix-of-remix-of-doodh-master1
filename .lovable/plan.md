@@ -1,429 +1,388 @@
 
+# Comprehensive Permanent Solution: Single Super Admin Backend System
 
-# Comprehensive Solution: Fix Duplicate Phone Key Constraint & Prevent Future Orphaned Data
+## Problem Summary
 
-## Problem Analysis
+From the diagnostic SQL results, the database state is **correctly configured**:
+- Auth user `5b2b5877-...` exists with email `7897716792@awadhdairy.com` ✅
+- Profile exists with same ID, phone `7897716792`, role `super_admin` ✅
+- user_roles entry exists with `super_admin` role ✅
 
-### Current Situation
-From the SQL query results and error message:
-- **Auth User ID**: `5b2b5877-1d73-428f-842d-47b4f2d0e82d`
-- **Email**: `7897716792@awadhdairy.com` 
-- **user_roles entry**: `super_admin` ✅
-- **profiles entry**: Missing (`NULL`) ❌
+Despite this, the "Only super admin can perform data archival" error persists. This indicates the issue is not in the data but in the **authentication flow or code execution**.
 
-When attempting to INSERT a profile with phone `7897716792`:
-```
-ERROR: 23505: duplicate key value violates unique constraint "profiles_phone_key"
-Key (phone)=(7897716792) already exists.
-```
+## Root Cause Analysis
 
-### Root Cause
-There's an **orphaned profile record** in the `profiles` table with:
-- Phone = `7897716792`
-- But `id` = some OTHER UUID (not `5b2b5877-...`)
+After reviewing all edge functions and the authentication flow:
 
-This creates a data integrity nightmare:
-1. Auth user exists in `auth.users` → ID: 5b2b5877-...
-2. Role assigned in `user_roles` → user_id: 5b2b5877-...  
-3. Old orphaned profile in `profiles` → id: DIFFERENT UUID, phone: 7897716792
-4. INSERT fails because phone is UNIQUE
+| Issue | Location | Impact |
+|-------|----------|--------|
+| Environment variable naming mismatch | `archive-old-data` uses `EXTERNAL_SUPABASE_*` fallback | May not find correct env vars |
+| Inconsistent auth patterns | Different functions use slightly different auth approaches | Potential JWT validation failures |
+| No debug logging for role check | `archive-old-data` doesn't log the actual userId being checked | Makes debugging impossible |
+| Stale deployment | Functions may not have been redeployed after code changes | Old code still running |
 
-### Why This Happens
+## Solution Architecture
 
 ```text
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Data Integrity Failure Points                │
+│                    PERMANENT ADMIN SYSTEM                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. setup-external-db creates auth user (5b2b5877...)           │
-│                    ↓                                             │
-│  2. Tries profile.upsert({id: 5b2b5877, phone: 7897716792})     │
-│                    ↓                                             │
-│  3. FAILS! Another profile (id=XYZ) has phone=7897716792        │
-│                    ↓                                             │
-│  4. Auth user exists without matching profile                   │
-│                    ↓                                             │
-│  5. Function reports success (doesn't check upsert error)       │
+│  SINGLE SOURCE OF TRUTH: auth.users table                       │
+│  ├── ID: auto-generated UUID                                    │
+│  ├── Email: {phone}@awadhdairy.com                              │
+│  └── Password: 6-digit PIN                                      │
+│                                                                 │
+│  LINKED DATA (must have matching ID):                           │
+│  ├── profiles.id = auth.users.id                                │
+│  ├── user_roles.user_id = auth.users.id                         │
+│  └── auth_sessions.user_id = auth.users.id                      │
+│                                                                 │
+│  PERMANENT ADMIN (hardcoded in setup-external-db):              │
+│  ├── Phone: 7897716792                                          │
+│  ├── PIN: 101101                                                │
+│  ├── Role: super_admin                                          │
+│  └── Email: 7897716792@awadhdairy.com                           │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Comprehensive Solution Overview
-
-| Component | Problem | Solution |
-|-----------|---------|----------|
-| `setup-external-db` | Silent upsert failures | Add proper error handling, cleanup orphans first |
-| `create-user` | Phone conflict possible | Check and handle existing orphaned profiles |
-| Database Schema | No cascade cleanup | Add trigger to sync phone uniqueness |
-| New SQL Function | Manual intervention needed | Create `cleanup_orphaned_data` function |
-| Edge Function | No admin cleanup tool | Add `find-and-cleanup-all-orphans` action |
-
----
-
 ## Implementation Plan
 
-### Phase 1: Immediate SQL Fix (Manual - Run in External Supabase)
+### Phase 1: Standardize Edge Function Authentication Pattern
 
-Run these queries in the external Supabase SQL Editor to fix the current state:
+All edge functions will use the **exact same** authentication pattern for consistency:
 
-```sql
--- Step 1: Find the orphaned profile with phone 7897716792
-SELECT id, full_name, phone, role, is_active, created_at
-FROM public.profiles
-WHERE phone = '7897716792';
+```typescript
+// Standard Auth Pattern (to be used in ALL edge functions)
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
--- Step 2: Check if this orphaned profile has a matching auth user
--- (Run after Step 1 to get the orphaned profile's ID)
+// Admin client for database operations
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
--- Step 3: Delete the orphaned profile (if it's not linked to a valid auth user)
--- Replace <ORPHANED_ID> with the actual ID from Step 1
-DELETE FROM public.profiles 
-WHERE phone = '7897716792' 
-  AND id != '5b2b5877-1d73-428f-842d-47b4f2d0e82d';
+// Get authorization header
+const authHeader = req.headers.get('Authorization');
+if (!authHeader?.startsWith('Bearer ')) {
+  return errorResponse(401, 'Authorization required');
+}
 
--- Step 4: Delete any orphaned user_roles entry
-DELETE FROM public.user_roles 
-WHERE user_id NOT IN (
-  SELECT id FROM auth.users
-  UNION
-  SELECT id FROM public.profiles
-);
+// Create user client and validate JWT
+const token = authHeader.replace('Bearer ', '');
+const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { headers: { Authorization: `Bearer ${token}` } }
+});
 
--- Step 5: Now insert the correct profile for the super admin
-INSERT INTO public.profiles (id, full_name, phone, role, is_active, pin_hash)
-VALUES (
-  '5b2b5877-1d73-428f-842d-47b4f2d0e82d',
-  'Super Admin',
-  '7897716792',
-  'super_admin',
-  true,
-  crypt('101101', gen_salt('bf'))
-);
+// CRITICAL: Pass token to getUser for proper validation
+const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+if (userError || !user) {
+  return errorResponse(401, 'Invalid or expired session');
+}
+
+const userId = user.id;
+
+// Role check with detailed logging
+console.log(`[FUNCTION] User authenticated: ${userId} (${user.email})`);
+
+const { data: roleData, error: roleError } = await supabaseAdmin
+  .from('user_roles')
+  .select('role')
+  .eq('user_id', userId)
+  .eq('role', 'super_admin')
+  .limit(1);
+
+console.log(`[FUNCTION] Role check - Found: ${roleData?.length || 0} rows, Error: ${roleError?.message || 'none'}`);
+
+if (!roleData || roleData.length === 0) {
+  return errorResponse(403, 'Only super admin can perform this action');
+}
 ```
 
----
+### Phase 2: Fix archive-old-data Edge Function
 
-### Phase 2: Update `setup-external-db` Edge Function
+**File**: `supabase/functions/archive-old-data/index.ts`
+
+**Changes**:
+1. Remove `EXTERNAL_SUPABASE_*` fallbacks (use standard `SUPABASE_*` only)
+2. Add `token` parameter to `getUser()` call for explicit JWT verification
+3. Add comprehensive debug logging
+4. Add pre-flight checks before operations
+
+### Phase 3: Update setup-external-db for Robustness
 
 **File**: `supabase/functions/setup-external-db/index.ts`
 
 **Changes**:
+1. Add validation that admin was created successfully
+2. Return comprehensive status including verification queries
+3. Add idempotency guarantees
 
-1. **Add orphan cleanup BEFORE profile operations**:
-```typescript
-// Clean up any orphaned profile with the admin phone number
-const { data: orphanedProfile } = await supabaseAdmin
-  .from('profiles')
-  .select('id')
-  .eq('phone', PERMANENT_ADMIN_PHONE)
-  .neq('id', adminUserId) // Not matching current auth user
-  .maybeSingle();
+### Phase 4: Create Health Check with Admin Verification
 
-if (orphanedProfile) {
-  console.log('[SETUP] Found orphaned profile, cleaning up:', orphanedProfile.id);
-  // Delete orphaned user_roles first
-  await supabaseAdmin.from('user_roles').delete().eq('user_id', orphanedProfile.id);
-  // Delete orphaned profile
-  await supabaseAdmin.from('profiles').delete().eq('id', orphanedProfile.id);
-}
-```
-
-2. **Add proper error handling for upsert operations**:
-```typescript
-const { error: profileError } = await supabaseAdmin
-  .from('profiles')
-  .upsert({
-    id: adminUserId,
-    full_name: PERMANENT_ADMIN_NAME,
-    phone: PERMANENT_ADMIN_PHONE,
-    role: 'super_admin',
-    is_active: true
-  }, { onConflict: 'id' });
-
-if (profileError) {
-  console.error('[SETUP] Profile upsert failed:', profileError);
-  throw new Error(`Profile creation failed: ${profileError.message}`);
-}
-```
-
-3. **Add comprehensive cleanup function at the start**:
-```typescript
-// Clean up ALL orphaned data before proceeding
-async function cleanupOrphans(supabaseAdmin: SupabaseClient) {
-  // Find profiles with no matching auth user
-  const { data: allProfiles } = await supabaseAdmin.from('profiles').select('id');
-  const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
-  
-  const authUserIds = new Set(authUsers?.users?.map(u => u.id) || []);
-  const orphanedProfileIds = allProfiles
-    ?.filter(p => !authUserIds.has(p.id))
-    .map(p => p.id) || [];
-  
-  for (const orphanId of orphanedProfileIds) {
-    await supabaseAdmin.from('user_roles').delete().eq('user_id', orphanId);
-    await supabaseAdmin.from('profiles').delete().eq('id', orphanId);
-    console.log('[SETUP] Cleaned orphaned profile:', orphanId);
-  }
-  
-  return orphanedProfileIds.length;
-}
-```
-
----
-
-### Phase 3: Update `create-user` Edge Function
-
-**File**: `supabase/functions/create-user/index.ts`
+**File**: `supabase/functions/health-check/index.ts`
 
 **Changes**:
+1. Add authenticated admin verification endpoint
+2. Return complete system status including admin account health
 
-1. **Enhanced phone number conflict detection**:
-```typescript
-// Check if phone number already exists in profiles
-const { data: existingProfile } = await supabaseAdmin
-  .from('profiles')
-  .select('id, is_active, full_name')
-  .eq('phone', phone)
-  .maybeSingle();
+### Phase 5: SQL Validation Queries (For External Supabase)
 
-if (existingProfile) {
-  // Check if this profile has a matching auth user
-  const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(existingProfile.id);
-  
-  if (!authUser?.user) {
-    // This is an ORPHANED profile - clean it up automatically
-    console.log(`[CREATE-USER] Found orphaned profile ${existingProfile.id}, cleaning up...`);
-    await supabaseAdmin.from('user_roles').delete().eq('user_id', existingProfile.id);
-    await supabaseAdmin.from('profiles').delete().eq('id', existingProfile.id);
-    // Now proceed with creation
-  } else if (existingProfile.is_active) {
-    return new Response(
-      JSON.stringify({ error: 'A user with this phone number already exists' }),
-      { status: 400, ... }
-    );
-  } else {
-    return new Response(
-      JSON.stringify({ error: 'This phone number belongs to a deactivated user. Please reactivate instead.' }),
-      { status: 400, ... }
-    );
-  }
-}
-```
-
----
-
-### Phase 4: Add New Database Function (SQL)
-
-**Add to**: `EXTERNAL_SUPABASE_SCHEMA.sql`
+Provide SQL commands to verify and fix any remaining issues:
 
 ```sql
--- Cleanup orphaned data function
-CREATE OR REPLACE FUNCTION public.cleanup_orphaned_data()
-RETURNS JSON
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _orphaned_profiles INT := 0;
-  _orphaned_roles INT := 0;
-  _result JSONB;
-BEGIN
-  -- Find and delete profiles with no matching auth user
-  WITH deleted_profiles AS (
-    DELETE FROM public.profiles p
-    WHERE NOT EXISTS (
-      SELECT 1 FROM auth.users au WHERE au.id = p.id
-    )
-    RETURNING id
-  )
-  SELECT COUNT(*) INTO _orphaned_profiles FROM deleted_profiles;
-
-  -- Find and delete user_roles with no matching profile
-  WITH deleted_roles AS (
-    DELETE FROM public.user_roles ur
-    WHERE NOT EXISTS (
-      SELECT 1 FROM public.profiles p WHERE p.id = ur.user_id
-    )
-    RETURNING user_id
-  )
-  SELECT COUNT(*) INTO _orphaned_roles FROM deleted_roles;
-
-  RETURN json_build_object(
-    'success', true,
-    'orphaned_profiles_deleted', _orphaned_profiles,
-    'orphaned_roles_deleted', _orphaned_roles
-  );
-END;
-$$;
+-- Comprehensive Admin Verification Query
+SELECT 
+  'VERIFICATION' as check_type,
+  CASE 
+    WHEN au.id IS NOT NULL 
+     AND p.id IS NOT NULL 
+     AND ur.user_id IS NOT NULL 
+     AND ur.role = 'super_admin'
+    THEN 'PASS'
+    ELSE 'FAIL'
+  END as status,
+  au.id as auth_id,
+  au.email,
+  p.phone,
+  p.role as profile_role,
+  ur.role as user_roles_role,
+  p.is_active
+FROM auth.users au
+LEFT JOIN public.profiles p ON p.id = au.id
+LEFT JOIN public.user_roles ur ON ur.user_id = au.id
+WHERE au.email = '7897716792@awadhdairy.com';
 ```
-
----
-
-### Phase 5: Enhanced `delete-user` Edge Function
-
-**File**: `supabase/functions/delete-user/index.ts`
-
-**Add new action**: `find-and-cleanup-all-orphans`
-
-This action finds and cleans up:
-1. Profiles without matching auth.users
-2. user_roles without matching profiles
-3. auth.users without matching profiles (already exists)
-
-```typescript
-// Add new action handler
-if (action === 'cleanup-all-orphan-types') {
-  console.log('Comprehensive orphan cleanup...');
-  
-  // 1. Get all auth users
-  const { data: authUsers } = await supabaseAdmin.auth.admin.listUsers();
-  const authUserIds = new Set(authUsers?.users?.map(u => u.id) || []);
-  
-  // 2. Get all profiles
-  const { data: profiles } = await supabaseAdmin.from('profiles').select('id, phone');
-  const profileIds = new Set(profiles?.map(p => p.id) || []);
-  
-  const results = { 
-    orphanedProfiles: 0, 
-    orphanedRoles: 0, 
-    orphanedAuthUsers: 0 
-  };
-  
-  // 3. Delete profiles without matching auth users
-  for (const profile of (profiles || [])) {
-    if (!authUserIds.has(profile.id)) {
-      await supabaseAdmin.from('user_roles').delete().eq('user_id', profile.id);
-      await supabaseAdmin.from('profiles').delete().eq('id', profile.id);
-      results.orphanedProfiles++;
-    }
-  }
-  
-  // 4. Delete auth users without matching profiles
-  for (const authUser of (authUsers?.users || [])) {
-    if (authUser.email?.endsWith('@awadhdairy.com') && !profileIds.has(authUser.id)) {
-      await supabaseAdmin.auth.admin.deleteUser(authUser.id);
-      results.orphanedAuthUsers++;
-    }
-  }
-  
-  // 5. Delete user_roles without matching profiles
-  const { data: roles } = await supabaseAdmin.from('user_roles').select('user_id');
-  for (const role of (roles || [])) {
-    if (!profileIds.has(role.user_id) && !authUserIds.has(role.user_id)) {
-      await supabaseAdmin.from('user_roles').delete().eq('user_id', role.user_id);
-      results.orphanedRoles++;
-    }
-  }
-  
-  return new Response(JSON.stringify({ success: true, ...results }), ...);
-}
-```
-
----
-
-### Phase 6: Add Admin UI for Data Integrity Management
-
-**File**: `src/components/settings/DataIntegrityManager.tsx` (New File)
-
-A simple admin component to:
-- Show orphaned data counts
-- One-click cleanup button
-- Audit log of cleanup operations
-
----
-
-## Implementation Order
-
-| Step | Action | Risk Level |
-|------|--------|------------|
-| 1 | Run manual SQL fix (Phase 1) | Low - Fixes immediate issue |
-| 2 | Update `setup-external-db` (Phase 2) | Low - Prevents future orphans |
-| 3 | Update `create-user` (Phase 3) | Low - Auto-cleanup on create |
-| 4 | Add SQL cleanup function (Phase 4) | Low - Database-level safety net |
-| 5 | Update `delete-user` (Phase 5) | Low - Admin cleanup tool |
-| 6 | Add UI component (Phase 6) | Low - Optional visibility |
-
----
-
-## Testing After Implementation
-
-1. **Run setup-external-db** - should complete without errors
-2. **Login as super admin** - phone 7897716792, PIN 101101
-3. **Create new user** - verify no orphan issues
-4. **Delete user** - verify cleanup is complete
-5. **Data Archive** - verify preview/export/execute all work
-
----
 
 ## Files to Modify
 
-| File | Type | Changes |
-|------|------|---------|
-| `supabase/functions/setup-external-db/index.ts` | Edge Function | Add orphan cleanup, error handling |
-| `supabase/functions/create-user/index.ts` | Edge Function | Enhanced conflict detection |
-| `supabase/functions/delete-user/index.ts` | Edge Function | Add comprehensive cleanup action |
-| `EXTERNAL_SUPABASE_SCHEMA.sql` | SQL Schema | Add cleanup_orphaned_data function |
-| `src/components/settings/DataIntegrityManager.tsx` | New Component | Admin UI for data integrity |
-| `src/pages/Settings.tsx` | Page | Add DataIntegrityManager section |
+| File | Changes |
+|------|---------|
+| `supabase/functions/archive-old-data/index.ts` | Standardize auth, add logging, remove EXTERNAL_ fallbacks |
+| `supabase/functions/setup-external-db/index.ts` | Add verification return, ensure idempotency |
+| `supabase/functions/health-check/index.ts` | Add authenticated admin verification endpoint |
+| `src/lib/external-supabase.ts` | Add debug logging for auth token retrieval |
+| `EXTERNAL_SUPABASE_SCHEMA.sql` | Add admin verification function |
 
----
+## Detailed Code Changes
 
-## SQL Commands Summary (Run in External Supabase)
+### 1. archive-old-data/index.ts - Complete Rewrite of Auth Section
 
-**Immediate Fix (Run First)**:
-```sql
--- Find the orphan
-SELECT * FROM public.profiles WHERE phone = '7897716792';
+**Remove lines 37-88** and replace with standardized pattern:
 
--- Delete orphan (adjust ID if different)
-DELETE FROM public.profiles 
-WHERE phone = '7897716792' 
-  AND id != '5b2b5877-1d73-428f-842d-47b4f2d0e82d';
+```typescript
+// Use Supabase's built-in environment variables (auto-provided by Supabase)
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
--- Create correct profile
-INSERT INTO public.profiles (id, full_name, phone, role, is_active, pin_hash)
-VALUES (
-  '5b2b5877-1d73-428f-842d-47b4f2d0e82d',
-  'Super Admin', '7897716792', 'super_admin', true,
-  crypt('101101', gen_salt('bf'))
-);
-```
+if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+  console.error("[ARCHIVE] Missing Supabase configuration");
+  throw new Error("Missing Supabase configuration");
+}
 
-**Add Cleanup Function (After Fix)**:
-```sql
-CREATE OR REPLACE FUNCTION public.cleanup_orphaned_data()
-RETURNS JSON
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  _orphaned_profiles INT := 0;
-  _orphaned_roles INT := 0;
-BEGIN
-  WITH deleted_profiles AS (
-    DELETE FROM public.profiles p
-    WHERE NOT EXISTS (SELECT 1 FROM auth.users au WHERE au.id = p.id)
-    RETURNING id
-  )
-  SELECT COUNT(*) INTO _orphaned_profiles FROM deleted_profiles;
+// Admin client for database operations
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-  WITH deleted_roles AS (
-    DELETE FROM public.user_roles ur
-    WHERE NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.id = ur.user_id)
-    RETURNING user_id
-  )
-  SELECT COUNT(*) INTO _orphaned_roles FROM deleted_roles;
-
-  RETURN json_build_object(
-    'success', true,
-    'orphaned_profiles_deleted', _orphaned_profiles,
-    'orphaned_roles_deleted', _orphaned_roles
+// Get authorization header
+const authHeader = req.headers.get("Authorization");
+if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  console.log("[ARCHIVE] No authorization header provided");
+  return new Response(
+    JSON.stringify({ error: "Authorization required" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
-END;
-$$;
+}
+
+// Create user client and validate JWT
+const token = authHeader.replace("Bearer ", "");
+const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { headers: { Authorization: `Bearer ${token}` } }
+});
+
+// CRITICAL: Pass token explicitly to getUser for proper JWT validation
+const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
+
+if (userError || !user) {
+  console.log(`[ARCHIVE] Auth failed: ${userError?.message || 'No user returned'}`);
+  return new Response(
+    JSON.stringify({ error: "Invalid or expired session" }),
+    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+const userId = user.id;
+console.log(`[ARCHIVE] User authenticated: ${userId} (${user.email})`);
+
+// Verify super_admin role with detailed logging
+const { data: roleData, error: roleError } = await supabaseAdmin
+  .from("user_roles")
+  .select("role")
+  .eq("user_id", userId)
+  .eq("role", "super_admin")
+  .limit(1);
+
+console.log(`[ARCHIVE] Role check for ${userId}:`);
+console.log(`[ARCHIVE]   - Rows found: ${roleData?.length || 0}`);
+console.log(`[ARCHIVE]   - Error: ${roleError?.message || 'none'}`);
+
+// Also check profile for debugging
+const { data: profileData } = await supabaseAdmin
+  .from("profiles")
+  .select("id, phone, role, is_active")
+  .eq("id", userId)
+  .single();
+
+console.log(`[ARCHIVE] Profile check:`, JSON.stringify(profileData));
+
+if (!roleData || roleData.length === 0) {
+  console.log(`[ARCHIVE] DENIED - User ${userId} is not super_admin`);
+  return new Response(
+    JSON.stringify({ 
+      error: "Only super admin can perform data archival",
+      debug: {
+        userId,
+        email: user.email,
+        roleDataLength: roleData?.length || 0,
+        profileExists: !!profileData,
+        profileRole: profileData?.role
+      }
+    }),
+    { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+console.log(`[ARCHIVE] GRANTED - User ${userId} verified as super_admin`);
 ```
 
+### 2. health-check/index.ts - Add Admin Verification Endpoint
+
+Add new authenticated endpoint to verify admin account health:
+
+```typescript
+// Handle authenticated verification request
+if (req.method === "POST") {
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.replace("Bearer ", "");
+    
+    // Verify the requesting user
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
+    
+    const { data: { user }, error } = await supabaseClient.auth.getUser(token);
+    
+    if (user && !error) {
+      // Get complete user status
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
+        
+      const { data: role } = await supabaseAdmin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .single();
+      
+      return new Response(
+        JSON.stringify({
+          authenticated: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            profile: profile ? { 
+              phone: profile.phone,
+              role: profile.role,
+              is_active: profile.is_active 
+            } : null,
+            user_role: role?.role || null
+          }
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+  }
+}
+```
+
+### 3. external-supabase.ts - Add Debug Logging
+
+```typescript
+export async function invokeExternalFunctionWithSession<T = unknown>(
+  functionName: string,
+  body: Record<string, unknown> = {}
+): Promise<{ data: T | null; error: Error | null }> {
+  // Get Supabase Auth session
+  const { data: { session }, error: sessionError } = await externalSupabase.auth.getSession();
+  
+  if (sessionError) {
+    console.warn('[External] Session error:', sessionError.message);
+  }
+  
+  const authToken = session?.access_token;
+  
+  // Debug logging for troubleshooting
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[External] Invoking ${functionName}`);
+    console.log(`[External] Auth token present: ${!!authToken}`);
+    console.log(`[External] Token preview: ${authToken?.slice(0, 20)}...`);
+  }
+  
+  return invokeExternalFunction<T>(functionName, body, authToken || undefined);
+}
+```
+
+## Post-Deployment Verification
+
+After deploying all changes, run this verification:
+
+### Step 1: Verify Edge Function Deployment
+```bash
+# On external Supabase project
+supabase functions list --project-ref ohrytohcbbkorivsuukm
+```
+
+### Step 2: Test Health Check
+```bash
+curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check" \
+  -H "Content-Type: application/json"
+```
+
+### Step 3: Login and Test Archive
+1. Go to Vercel deployment
+2. Login with `7897716792` / `101101`
+3. Navigate to Settings → Data Management
+4. Click "Preview Data"
+5. Check browser console for detailed logs
+6. Check Supabase Edge Function logs for `[ARCHIVE]` entries
+
+## Deployment Commands
+
+After code changes are made, redeploy to external Supabase:
+
+```bash
+cd your-project
+
+# Link to external Supabase project
+supabase link --project-ref ohrytohcbbkorivsuukm
+
+# Deploy all functions with --no-verify-jwt flag
+supabase functions deploy archive-old-data --no-verify-jwt
+supabase functions deploy health-check --no-verify-jwt
+supabase functions deploy setup-external-db --no-verify-jwt
+```
+
+## Summary
+
+This solution:
+1. **Standardizes** all edge function authentication to use the same pattern
+2. **Adds comprehensive logging** to identify exactly where failures occur
+3. **Removes inconsistent** environment variable fallbacks
+4. **Adds debug output** in error responses for troubleshooting
+5. **Provides verification** endpoints and SQL queries
+6. **Ensures idempotency** - running setup multiple times is safe
+
+After implementing these changes and redeploying to your external Supabase, the permanent admin account will work reliably across all functions.
