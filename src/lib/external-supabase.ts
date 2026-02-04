@@ -71,3 +71,27 @@ export async function getAuthToken(): Promise<string | null> {
   const { data: { session } } = await externalSupabase.auth.getSession();
   return session?.access_token || null;
 }
+
+/**
+ * Session-aware edge function invocation
+ * Automatically handles both staff auth (session_token in localStorage) 
+ * and customer auth (Supabase Auth JWT)
+ * 
+ * This ensures all edge function calls go to the EXTERNAL Supabase project,
+ * never to Lovable Cloud
+ */
+export async function invokeExternalFunctionWithSession<T = unknown>(
+  functionName: string,
+  body: Record<string, unknown> = {}
+): Promise<{ data: T | null; error: Error | null }> {
+  // Get staff session token from localStorage (custom auth system)
+  const sessionToken = localStorage.getItem('session_token');
+  
+  // Also check for Supabase Auth token (customer auth system)
+  const { data: { session } } = await externalSupabase.auth.getSession();
+  
+  // Prefer Supabase Auth token, fall back to staff session token
+  const authToken = session?.access_token || sessionToken;
+  
+  return invokeExternalFunction<T>(functionName, body, authToken || undefined);
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { externalSupabase as supabase, invokeExternalFunctionWithSession } from "@/lib/external-supabase";
 import { PageHeader } from "@/components/common/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -193,11 +193,9 @@ export default function SettingsPage() {
 
     setChangingPin(true);
     try {
-      const response = await supabase.functions.invoke("change-pin", {
-        body: {
-          currentPin,
-          newPin,
-        },
+      const response = await invokeExternalFunctionWithSession<{ error?: string; success?: boolean }>("change-pin", {
+        currentPin,
+        newPin,
       });
 
       if (response.error) {

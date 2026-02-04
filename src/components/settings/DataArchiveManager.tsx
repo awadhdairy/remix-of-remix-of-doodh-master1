@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { useState } from "react";
+import { invokeExternalFunctionWithSession } from "@/lib/external-supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -101,11 +101,12 @@ export function DataArchiveManager() {
     setResult(null);
 
     try {
-      const response = await supabase.functions.invoke("archive-old-data", {
-        body: {
-          mode: "preview",
-          retention_years: parseInt(retentionYears),
-        },
+      const response = await invokeExternalFunctionWithSession<{
+        error?: string;
+        counts?: Record<string, number>;
+      }>("archive-old-data", {
+        mode: "preview",
+        retention_years: parseInt(retentionYears),
       });
 
       if (response.error) {
@@ -149,11 +150,12 @@ export function DataArchiveManager() {
 
     setExporting(true);
     try {
-      const response = await supabase.functions.invoke("archive-old-data", {
-        body: {
-          mode: "export",
-          retention_years: parseInt(retentionYears),
-        },
+      const response = await invokeExternalFunctionWithSession<{
+        error?: string;
+        export?: Record<string, unknown[]>;
+      }>("archive-old-data", {
+        mode: "export",
+        retention_years: parseInt(retentionYears),
       });
 
       if (response.error) {
@@ -223,12 +225,15 @@ export function DataArchiveManager() {
         setProgress((prev) => Math.min(prev + 5, 90));
       }, 500);
 
-      const response = await supabase.functions.invoke("archive-old-data", {
-        body: {
-          mode: "execute",
-          retention_years: parseInt(retentionYears),
-          pin,
-        },
+      const response = await invokeExternalFunctionWithSession<{
+        error?: string;
+        deleted?: Record<string, number>;
+        errors?: string[];
+        totalDeleted?: number;
+      }>("archive-old-data", {
+        mode: "execute",
+        retention_years: parseInt(retentionYears),
+        pin,
       });
 
       clearInterval(progressInterval);

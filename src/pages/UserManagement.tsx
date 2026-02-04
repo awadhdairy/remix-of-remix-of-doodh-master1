@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { externalSupabase as supabase, invokeExternalFunctionWithSession } from "@/lib/external-supabase";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -135,13 +135,11 @@ export default function UserManagement() {
         return;
       }
 
-      const response = await supabase.functions.invoke("create-user", {
-        body: {
-          phone,
-          pin,
-          fullName,
-          role: selectedRole,
-        },
+      const response = await invokeExternalFunctionWithSession<{ error?: string; message?: string }>("create-user", {
+        phone,
+        pin,
+        fullName,
+        role: selectedRole,
       });
 
       if (response.error) {
@@ -173,11 +171,9 @@ export default function UserManagement() {
   const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
     setTogglingUser(userId);
     try {
-      const response = await supabase.functions.invoke("update-user-status", {
-        body: {
-          userId,
-          isActive: !currentStatus,
-        },
+      const response = await invokeExternalFunctionWithSession<{ error?: string; message?: string; debug?: unknown }>("update-user-status", {
+        userId,
+        isActive: !currentStatus,
       });
 
       if (response.error) {
@@ -213,11 +209,9 @@ export default function UserManagement() {
 
     setResettingPin(true);
     try {
-      const response = await supabase.functions.invoke("reset-user-pin", {
-        body: {
-          userId: selectedUser.id,
-          newPin,
-        },
+      const response = await invokeExternalFunctionWithSession<{ error?: string; message?: string }>("reset-user-pin", {
+        userId: selectedUser.id,
+        newPin,
       });
 
       if (response.error) {
@@ -255,8 +249,8 @@ export default function UserManagement() {
 
     setDeleting(true);
     try {
-      const response = await supabase.functions.invoke("delete-user", {
-        body: { userId: selectedUser.id },
+      const response = await invokeExternalFunctionWithSession<{ error?: string; message?: string; debug?: unknown }>("delete-user", {
+        userId: selectedUser.id,
       });
 
       if (response.error) {
