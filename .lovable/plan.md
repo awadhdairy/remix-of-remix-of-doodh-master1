@@ -1,281 +1,349 @@
 
 
-# Comprehensive Financial System Analysis & Fix Plan
+# Implementation Plan: Add Date Range Filters & Sorting to High-Volume Pages
 
 ## Executive Summary
 
-After thoroughly analyzing the complete financial system of the Awadh Dairy application, I identified **7 critical issues** that affect the accuracy and functionality of auto-expense tracking, ledger management, and billing integration. The core architecture is solid, but there are several missing pieces that break the financial automation chain.
+This plan adds intelligent date range filtering (30/60/90 days/All) and sorting capabilities to all pages that fetch large datasets from the backend. The implementation will reduce initial load times by limiting data fetched by default, while maintaining full data access when needed.
 
 ---
 
-## Issues Identified
+## Pages Requiring Filter/Sort Enhancement
 
-### CRITICAL ISSUE 1: Feed/Inventory Purchase - Auto Expense Works BUT New Item Creation Doesn't Track Expense
+Based on the codebase analysis, the following pages fetch large datasets and will benefit from this feature:
 
-**Current Status**: PARTIALLY WORKING - only stock updates trigger expense, not initial creation
+| Page | Table | Current Behavior | Risk Level |
+|------|-------|------------------|------------|
+| **Production** | `milk_production` | Hard limit of 100 rows | High - data loss |
+| **Expenses** | `expenses` | Fetches ALL records | High - slow on large data |
+| **Billing** | `invoices` | Fetches ALL records | Medium |
+| **Health** | `cattle_health` | Fetches ALL records | Medium |
+| **Milk Procurement** | `milk_procurement` | 30 days hardcoded | Low |
+| **Audit Logs** | `activity_logs` | Limit 500 rows | Medium |
+| **Deliveries** | `deliveries` | Date-filtered already | Low (already has date picker) |
+| **Customers** | `customers` | Fetches ALL | Low (usually small) |
+| **Cattle** | `cattle` | Fetches ALL | Low (usually small) |
 
-**Location**: `src/hooks/useInventoryData.ts`
+**Priority Pages** (Large datasets, no current date filtering):
+1. Production (CRITICAL - currently loses data)
+2. Expenses (HIGH - can grow very large)
+3. Billing (MEDIUM - invoices accumulate)
+4. Health (MEDIUM - records accumulate)
+5. Audit Logs (already has filters, needs sort enhancement)
 
-**Problem**: When adding a NEW inventory item with initial stock and cost, no expense is created. The expense automation only triggers during the `updateStock` mutation (lines 123-174), not during `createItem` mutation (lines 74-95).
+---
 
-**Current Flow**:
-```text
+## Design Approach
+
+### Reusable Filter/Sort Component
+
+Create a new reusable component `DataFilters` that can be used across all pages:
+
+```
 ┌─────────────────────────────────────────────────────────────────┐
-│ ADD NEW INVENTORY ITEM (with initial stock + cost)              │
-│                                                                 │
-│  createItemMutation → insert to feed_inventory                  │
-│  ❌ NO expense created for initial purchase value               │
-│                                                                 │
-│ UPDATE STOCK (Add Stock action)                                 │
-│  updateStockMutation → update stock + logFeedPurchase()         │
-│  ✅ Expense IS created                                           │
+│  ┌──────────────┐  ┌─────────────────┐  ┌─────────────────────┐ │
+│  │ Last 30 Days │  │ Sort by: Date ▼ │  │ Order: Newest ▼    │ │
+│  │ 60 | 90 | All│  └─────────────────┘  └─────────────────────┘ │
+│  └──────────────┘                                               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Impact**: If user creates a new item "Cattle Feed" with 100kg @ ₹50/kg (₹5,000), NO expense is recorded. They must later use "Update Stock → Add" to record an expense.
+### Filter Options
+- **Last 30 Days** (default for most pages)
+- **Last 60 Days**
+- **Last 90 Days**
+- **All Time** (with warning for large datasets)
+
+### Sort Options (page-specific)
+- Date (default: newest first)
+- Amount (for financial pages)
+- Name/Tag (for entity pages)
+- Status (for pages with status fields)
 
 ---
 
-### CRITICAL ISSUE 2: Billing Page - Payment Ledger Entry Missing `running_balance`
+## Implementation Details
 
-**Location**: `src/pages/Billing.tsx` (lines 149-157)
+### Component 1: Create DataFilters Component
 
-**Problem**: When recording a payment, the ledger entry is inserted WITHOUT calculating `running_balance`. This breaks financial tracking.
+**File**: `src/components/common/DataFilters.tsx`
 
-**Current Code**:
 ```typescript
-await supabase.from("customer_ledger").insert({
-  customer_id: selectedInvoice.customer_id,
-  transaction_date: format(new Date(), "yyyy-MM-dd"),
-  transaction_type: "payment",
-  description: `Payment for ${selectedInvoice.invoice_number}`,
-  debit_amount: 0,
-  credit_amount: amount,
-  // ❌ MISSING: running_balance
-});
+interface DataFiltersProps {
+  dateRange: "30" | "60" | "90" | "all";
+  onDateRangeChange: (range: "30" | "60" | "90" | "all") => void;
+  sortBy?: string;
+  sortOptions?: { value: string; label: string }[];
+  onSortChange?: (field: string) => void;
+  sortOrder?: "asc" | "desc";
+  onSortOrderChange?: (order: "asc" | "desc") => void;
+  showWarningOnAll?: boolean;
+}
 ```
 
-**Impact**: Customer ledger shows payments but running balance is NULL/incorrect.
+Features:
+- Button group for date range selection
+- Dropdown for sort field
+- Toggle for sort order (asc/desc)
+- Optional warning when "All" is selected
+- Mobile-responsive layout
 
 ---
 
-### CRITICAL ISSUE 3: Billing Page - Invoice Ledger Entry Is Missing
+### Page 1: Production Page (CRITICAL)
 
-**Location**: `src/pages/Billing.tsx`
+**File**: `src/pages/Production.tsx`
 
-**Problem**: When an invoice is created via SmartInvoiceCreator, a ledger entry is created. However, the Billing page does NOT add a ledger entry when recording a payment. Additionally, if someone creates an invoice directly (bypassing SmartInvoiceCreator), there's no ledger entry at all.
-
-**Analysis**: 
-- SmartInvoiceCreator DOES add ledger entries (lines 377-398) ✅
-- Billing.tsx payments add ledger entries but WITHOUT running_balance ❌
-- No duplicate invoice ledger entries needed (SmartInvoiceCreator handles it)
-
----
-
-### MODERATE ISSUE 4: Equipment Page - Works Correctly ✅
-
-**Location**: `src/hooks/useEquipmentData.ts`
-
-**Status**: WORKING - The `createEquipmentMutation` already calls `logEquipmentPurchase()` after successful insert (lines 97-106). Maintenance costs are also tracked via `logMaintenanceExpense()` (lines 147-158).
-
----
-
-### MODERATE ISSUE 5: Health Records - Works Correctly ✅
-
-**Location**: `src/hooks/useHealthData.ts`
-
-**Status**: WORKING - The `createMutation` already calls `logHealthExpense()` after successful insert (lines 95-108).
-
----
-
-### MODERATE ISSUE 6: Employee Salary - Works Correctly ✅
-
-**Location**: `src/pages/Employees.tsx`
-
-**Status**: WORKING - The `handleMarkPaid` function calls `logSalaryExpense()` when marking payroll as paid (lines 244-251).
-
----
-
-### MODERATE ISSUE 7: Vendor Payments - Works Correctly ✅
-
-**Location**: `src/components/procurement/VendorPaymentsDialog.tsx`
-
-**Status**: WORKING - The `handleSavePayment` function calls `logVendorPaymentExpense()` after recording payment (lines 179-189).
-
----
-
-## Implementation Plan
-
-### Fix 1: Add Expense Automation to Inventory Item Creation
-
-**File**: `src/hooks/useInventoryData.ts`
+**Current Issues**:
+- Line 92: Hard limit of 100 records
+- No date range filter
+- Older production data becomes inaccessible
 
 **Changes**:
-1. Modify `createItemMutation` to call `logFeedPurchase()` when a new item is created with initial stock and cost
-2. This ensures that the initial purchase value is tracked as an expense
+1. Add `dateRange` state (default: "30")
+2. Add `sortBy` state (options: date, quantity, cattle)
+3. Replace `limit(100)` with date-based filtering
+4. Add DataFilters component below PageHeader
 
-**Updated Logic**:
+**Updated Query Logic**:
 ```typescript
-const createItemMutation = useMutation({
-  mutationFn: async (formData: FeedFormData) => {
-    const { data, error } = await supabase.from("feed_inventory").insert({
-      // ... existing fields
-    }).select().single();
+const startDate = dateRange === "all" 
+  ? null 
+  : format(subDays(new Date(), parseInt(dateRange)), "yyyy-MM-dd");
 
-    if (error) throw error;
+// Query with date filter instead of hard limit
+let query = supabase
+  .from("milk_production")
+  .select(`*, cattle:cattle_id (id, tag_number, name)`)
+  .order(sortBy, { ascending: sortOrder === "asc" });
 
-    // Auto-create expense for initial stock purchase
-    let expenseCreated = false;
-    const initialStock = parseFloat(formData.current_stock) || 0;
-    const costPerUnit = formData.cost_per_unit ? parseFloat(formData.cost_per_unit) : 0;
-    
-    if (initialStock > 0 && costPerUnit > 0) {
-      expenseCreated = await logFeedPurchase(
-        formData.name,
-        initialStock,
-        costPerUnit,
-        formData.unit,
-        format(new Date(), "yyyy-MM-dd")
-      );
-    }
-
-    return { data, expenseCreated, initialStock, costPerUnit };
-  },
-  onSuccess: (result) => {
-    queryClient.invalidateQueries({ queryKey: ["inventory"] });
-    queryClient.invalidateQueries({ queryKey: ["expenses"] });
-    
-    if (result?.expenseCreated) {
-      const amount = (result.initialStock || 0) * (result.costPerUnit || 0);
-      toast({ 
-        title: "Item added & expense recorded",
-        description: `₹${amount.toLocaleString()} added to expenses`
-      });
-    } else if (result?.initialStock > 0 && result?.costPerUnit > 0) {
-      toast({ 
-        title: "Item added",
-        description: "Set unit cost to enable expense tracking"
-      });
-    } else {
-      toast({ title: "Item added" });
-    }
-  },
-  // ...
-});
+if (startDate) {
+  query = query.gte("production_date", startDate);
+}
 ```
+
+**Sort Options**:
+- `production_date` - Date (default)
+- `quantity_liters` - Quantity
+- `session` - Session (Morning/Evening)
 
 ---
 
-### Fix 2: Add running_balance to Billing Page Payment Ledger
+### Page 2: Expenses Page
+
+**File**: `src/pages/Expenses.tsx`
+
+**Current Issues**:
+- Line 85-88: Fetches ALL expenses with no limit
+- Can become very slow as expenses accumulate
+
+**Changes**:
+1. Add `dateRange` state (default: "30")
+2. Add `sortBy` state (options: date, amount, category)
+3. Modify `fetchExpenses` to use date range filter
+
+**Updated Query**:
+```typescript
+const startDate = dateRange === "all"
+  ? null
+  : format(subDays(new Date(), parseInt(dateRange)), "yyyy-MM-dd");
+
+let query = supabase
+  .from("expenses")
+  .select("*")
+  .order(sortBy, { ascending: sortOrder === "asc" });
+
+if (startDate) {
+  query = query.gte("expense_date", startDate);
+}
+```
+
+**Sort Options**:
+- `expense_date` - Date (default)
+- `amount` - Amount
+- `category` - Category
+
+---
+
+### Page 3: Billing Page
 
 **File**: `src/pages/Billing.tsx`
 
+**Current Issues**:
+- Line 88-94: Fetches ALL invoices
+- No date range option
+
 **Changes**:
-1. Before inserting the ledger entry, fetch the customer's current running balance
-2. Calculate new balance (subtract credit/payment from balance)
-3. Include `running_balance` in the insert
+1. Add `dateRange` state (default: "90" - invoices are less frequent)
+2. Add `sortBy` state (options: date, amount, status)
+3. Modify query to use date range
 
-**Updated Logic**:
+**Sort Options**:
+- `created_at` - Date Created (default)
+- `final_amount` - Amount
+- `payment_status` - Status
+- `billing_period_start` - Billing Period
+
+---
+
+### Page 4: Health Records Page
+
+**File**: `src/pages/Health.tsx`
+
+**Current Issues**:
+- `useHealthData` hook fetches ALL records (line 43-47)
+- No date filtering
+
+**Changes**:
+1. Modify `useHealthData` to accept date range parameter
+2. Add state in Health.tsx for dateRange
+3. Add DataFilters component
+
+**Hook Modification** (`src/hooks/useHealthData.ts`):
 ```typescript
-const handleRecordPayment = async () => {
-  // ... existing validation and invoice update code ...
-
-  // Calculate running balance before ledger insert
-  const { data: lastLedgerEntry } = await supabase
-    .from("customer_ledger")
-    .select("running_balance")
-    .eq("customer_id", selectedInvoice.customer_id)
-    .order("transaction_date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+export function useHealthData(dateRange: "30" | "60" | "90" | "all" = "90") {
+  const startDate = dateRange === "all"
+    ? null
+    : format(subDays(new Date(), parseInt(dateRange)), "yyyy-MM-dd");
   
-  const previousBalance = lastLedgerEntry?.running_balance || 0;
-  const newBalance = previousBalance - amount; // Payment reduces balance
+  // Use startDate in query
+}
+```
 
-  // Add ledger entry with running_balance
-  await supabase.from("customer_ledger").insert({
-    customer_id: selectedInvoice.customer_id,
-    transaction_date: format(new Date(), "yyyy-MM-dd"),
-    transaction_type: "payment",
-    description: `Payment for ${selectedInvoice.invoice_number}`,
-    debit_amount: 0,
-    credit_amount: amount,
-    running_balance: newBalance, // ✅ Now included
-    reference_id: selectedInvoice.id, // Link to invoice
-  });
+**Sort Options**:
+- `record_date` - Date (default)
+- `record_type` - Type
+- `cost` - Cost
 
+---
+
+### Page 5: Audit Logs Page
+
+**File**: `src/pages/AuditLogs.tsx`
+
+**Current Status**: Already has entity/action/date filters (good!)
+
+**Enhancements**:
+1. Add quick date range buttons (30/60/90 days)
+2. Add sort order toggle
+3. Already has limit(500) - enhance with date filtering
+
+---
+
+### Page 6: Milk Procurement Page
+
+**File**: `src/pages/MilkProcurement.tsx`
+
+**Current Status**: Line 194 has hardcoded 30-day filter
+
+**Changes**:
+1. Make the 30-day filter configurable
+2. Add sortBy options
+
+---
+
+## Hook Modifications
+
+### Update `useHealthData.ts`
+
+Add optional date range parameter to the hook that accepts date filtering:
+
+```typescript
+async function fetchHealthData(startDate: string | null): Promise<HealthData> {
+  let query = supabase
+    .from("cattle_health")
+    .select(`*, cattle:cattle_id (id, tag_number, name)`)
+    .order("record_date", { ascending: false });
+  
+  if (startDate) {
+    query = query.gte("record_date", startDate);
+  }
+  
   // ... rest of function
-};
+}
 ```
 
 ---
 
-## Summary of Changes
+## Files to Create/Modify
 
-| File | Issue | Fix | Priority |
-|------|-------|-----|----------|
-| `src/hooks/useInventoryData.ts` | New item creation doesn't log expense | Add `logFeedPurchase()` in `createItemMutation` | Critical |
-| `src/pages/Billing.tsx` | Payment ledger missing `running_balance` | Calculate and include balance in insert | Critical |
-
----
-
-## Already Working Components
-
-| Component | Location | Status |
-|-----------|----------|--------|
-| Stock Update Expense | `useInventoryData.ts` | ✅ Working |
-| Equipment Purchase Expense | `useEquipmentData.ts` | ✅ Working |
-| Maintenance Expense | `useEquipmentData.ts` | ✅ Working |
-| Health Record Expense | `useHealthData.ts` | ✅ Working |
-| Salary Expense | `Employees.tsx` | ✅ Working |
-| Vendor Payment Expense | `VendorPaymentsDialog.tsx` | ✅ Working |
-| Invoice Ledger Entry | `SmartInvoiceCreator.tsx` | ✅ Working |
-| Add-on Order Ledger | `QuickAddOnOrderDialog.tsx` | ✅ Working |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/common/DataFilters.tsx` | CREATE | Reusable filter/sort component |
+| `src/pages/Production.tsx` | MODIFY | Add date range & sort |
+| `src/pages/Expenses.tsx` | MODIFY | Add date range & sort |
+| `src/pages/Billing.tsx` | MODIFY | Add date range & sort |
+| `src/pages/Health.tsx` | MODIFY | Add date range filter |
+| `src/hooks/useHealthData.ts` | MODIFY | Accept date range param |
+| `src/pages/MilkProcurement.tsx` | MODIFY | Make date range configurable |
+| `src/pages/AuditLogs.tsx` | MODIFY | Add quick date buttons |
 
 ---
 
-## Financial Flow After Fixes
+## UI/UX Design
 
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                      COMPLETE FINANCIAL AUTOMATION                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  EXPENSES (Auto-Tracked)                                                    │
-│  ├── Inventory/Feed Purchase (NEW ITEM) ✅ [Fixed]                          │
-│  ├── Inventory/Feed Purchase (Stock Update) ✅                              │
-│  ├── Equipment Purchase ✅                                                   │
-│  ├── Maintenance ✅                                                          │
-│  ├── Health/Medical ✅                                                       │
-│  ├── Salary (when marked paid) ✅                                           │
-│  └── Vendor Payments ✅                                                      │
-│                                                                             │
-│  CUSTOMER LEDGER (Auto-Tracked)                                             │
-│  ├── Deliveries → Debit (via auto-deliver function)                        │
-│  ├── Add-on Orders → Debit + running_balance ✅                             │
-│  ├── Invoice Generation → Debit + running_balance ✅                        │
-│  └── Payments → Credit + running_balance ✅ [Fixed]                          │
-│                                                                             │
-│  BILLING/INVOICES                                                           │
-│  ├── Auto-fetch from delivery_items ✅                                       │
-│  ├── Include addons ✅                                                       │
-│  ├── PDF generation ✅                                                       │
-│  └── Payment tracking ✅                                                     │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+### DataFilters Component Layout
+
+```
+Desktop:
+┌────────────────────────────────────────────────────────────────┐
+│ [30 Days] [60 Days] [90 Days] [All Time]    Sort: [Date ▼] [↓]│
+└────────────────────────────────────────────────────────────────┘
+
+Mobile:
+┌─────────────────────────┐
+│ [30] [60] [90] [All]    │
+├─────────────────────────┤
+│ Sort: [Date ▼]  [↓↑]    │
+└─────────────────────────┘
 ```
 
+### Visual Integration
+- Placed below PageHeader, above data tables
+- Consistent styling with existing Tabs components
+- Subtle animation when filters change
+- Loading indicator during data refresh
+
 ---
 
-## What Will NOT Change
+## Performance Considerations
 
-To ensure no functionality is lost:
+1. **Default to 30 days** - Reduces initial load
+2. **"All Time" warning** - Alert users about potential slow load
+3. **URL state persistence** - Store filter state in URL params for bookmarking
+4. **Query optimization** - Date filters push filtering to database level
+5. **Memoization** - Use `useMemo` for expensive filtering operations
 
-1. **All existing expense automation hooks** - Only extending, not modifying core logic
-2. **Database schema** - No changes to table structure
-3. **Edge functions** - No changes required
-4. **Invoice generation** - SmartInvoiceCreator remains unchanged
-5. **Delivery automation** - auto-deliver-daily function unchanged
-6. **Customer portal** - All customer-facing features remain intact
+---
+
+## Safety Guarantees
+
+### What WILL NOT Change:
+1. **All existing automation hooks** - Expense, ledger, delivery automation untouched
+2. **Data insertion logic** - No changes to how data is created
+3. **Edge functions** - All backend functions remain unchanged
+4. **Database schema** - No table modifications
+5. **RLS policies** - Security unchanged
+6. **Invoice generation** - SmartInvoiceCreator unchanged
+7. **Customer portal** - No changes to customer-facing pages
+
+### Validation Points:
+- All existing CRUD operations work identically
+- Stats cards recalculate based on filtered data (where appropriate)
+- Export functionality exports filtered data
+- No data is deleted or modified
+
+---
+
+## Implementation Order
+
+1. Create `DataFilters` component (foundation)
+2. Production page (fixes critical data loss bug)
+3. Expenses page (high impact)
+4. Billing page (medium impact)
+5. Health page + hook modification
+6. MilkProcurement page
+7. AuditLogs enhancement
+
+This ensures the most critical fixes are applied first.
 
