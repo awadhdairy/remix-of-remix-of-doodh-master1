@@ -1,175 +1,180 @@
 
-# Phase 1 Implementation Plan: Critical Financial Fixes
+# Data Archival/Cleanup Feature for Admin
 
 ## Overview
 
-This plan implements the critical fixes identified in the audit, focusing on **reliability and defensive programming** to ensure the app works correctly regardless of database trigger configuration.
+This feature adds a secure admin-only tool to clear old historical data beyond configurable retention periods (1/2/3+ years). This is essential for long-term database health and performance as transactional data grows.
 
----
+## Architecture
 
-## Issues Being Fixed
+```text
++------------------+     +----------------------+     +-----------------+
+|  Settings Page   |---->|  Archive Edge Func   |---->|   Database      |
+|  (Admin Tab)     |     |  (archive-old-data)  |     |   Cleanup       |
++------------------+     +----------------------+     +-----------------+
+        |                          |
+        v                          v
+   Role Check               Super Admin
+ (super_admin only)         Verification
+```
 
-| Issue | Severity | Description | Solution |
-|-------|----------|-------------|----------|
-| #1 | Medium | `activeVendors` stat uses stale data | Use fresh vendor data from fetch |
-| #5 | Critical | Bulk delivery uses RPC that may not exist | Replace with direct query |
-| #2/#3 | Critical | Vendor balance may not update after payment | Add explicit RPC call as backup |
+## Data Tables to Archive
 
----
+The following tables contain date-based data that grows indefinitely:
+
+| Table | Date Column | Safe to Archive | Notes |
+|-------|-------------|-----------------|-------|
+| activity_logs | created_at | Yes | Audit trail, archive after retention |
+| attendance | attendance_date | Yes | Historical records |
+| bottle_transactions | transaction_date | Yes | Historical |
+| breeding_records | record_date | Yes | Historical |
+| cattle_health | record_date | Yes | Historical, but keep recent for care continuity |
+| customer_ledger | transaction_date | Partial | Only if invoices paid (financial compliance) |
+| deliveries | delivery_date | Yes | Historical |
+| delivery_items | via delivery_id | Yes | Cascade with deliveries |
+| expenses | expense_date | Partial | Financial records, 7 year retention recommended |
+| feed_consumption | consumption_date | Yes | Historical |
+| invoices | created_at | Partial | Only fully paid invoices |
+| maintenance_records | maintenance_date | Yes | Historical |
+| milk_procurement | procurement_date | Yes | Historical |
+| milk_production | production_date | Yes | Historical |
+| notification_logs | created_at | Yes | Audit trail |
+| payments | payment_date | Partial | Financial records |
+| payroll_records | pay_period_start | Partial | HR/financial records |
+| vendor_payments | payment_date | Partial | Financial records |
 
 ## Implementation Details
 
-### Fix 1: Vendor Balance Update Safety (VendorPaymentsDialog.tsx)
+### 1. New Settings Tab: "Data Management" (Admin Only)
 
-**Problem**: After recording a payment, the vendor's `current_balance` may not update if database triggers aren't set up on the external Supabase.
+Add a new tab in Settings.tsx that only appears for `super_admin` users with:
 
-**Solution**: After inserting a payment, explicitly call `recalculate_vendor_balance` RPC to ensure balance is correct. This is safe because:
-- If triggers exist, it recalculates to same value (harmless)
-- If triggers don't exist, it fixes the balance
+- Dropdown to select retention period (1 year / 2 years / 3 years / 5 years)
+- Data preview showing record counts that would be deleted
+- Confirmation dialog with PIN re-entry for security
+- Export option before deletion (backup safety)
+- Detailed activity logging of what was deleted
 
-**Code Change**:
-```typescript
-// After successful payment insert (line ~174)
-const { data, error } = await supabase
-  .from("vendor_payments")
-  .insert({...})
-  .select()
-  .single();
+### 2. New Edge Function: `archive-old-data`
 
-if (!error && data) {
-  // Ensure vendor balance is recalculated (backup if triggers missing)
-  await supabase.rpc("recalculate_vendor_balance", { 
-    p_vendor_id: vendor.id 
-  });
-  
-  // Continue with expense logging...
-}
+Secure edge function that:
+
+- Verifies caller is `super_admin` (same pattern as delete-user)
+- Accepts retention period and optional table selection
+- Performs deletions in correct order (respecting foreign keys)
+- Logs all actions to `activity_logs`
+- Returns detailed summary of deleted records
+
+### 3. Deletion Order (Foreign Key Aware)
+
+```text
+Step 1: Get delivery IDs older than cutoff
+Step 2: Delete delivery_items (FK to deliveries)
+Step 3: Delete deliveries
+Step 4: Delete invoice_items (if exists) before invoices
+Step 5: Delete payments (FK to invoices) - only for paid invoices
+Step 6: Delete invoices - only fully paid ones
+Step 7: Delete other standalone tables (attendance, logs, etc.)
 ```
 
-**Safety**: Uses `.rpc()` which returns gracefully if function doesn't exist.
+### 4. Safety Measures
 
----
+- **Super Admin only**: Role verified server-side via user_roles table
+- **PIN confirmation**: Require current PIN re-entry before destructive action
+- **Preview mode**: Show what will be deleted before confirming
+- **Export first**: Option to download affected data as JSON/Excel backup
+- **Exclude critical data**: Never delete unpaid invoices, active customers, current cattle
+- **Audit logging**: Every deletion logged with details
 
-### Fix 2: Bulk Delivery Vacation Check (BulkDeliveryActions.tsx)
+### 5. UI Component Structure
 
-**Problem**: Uses `supabase.rpc("is_customer_on_vacation")` which may not exist in all database setups.
-
-**Solution**: Replace RPC call with direct query to `customer_vacations` table. This is:
-- More reliable (works on any Supabase)
-- Same logic, just executed differently
-- No dependency on custom database functions
-
-**Current Code (Lines 77-83)**:
-```typescript
-const { data: vacationCheck } = await supabase
-  .rpc("is_customer_on_vacation", {
-    _customer_id: delivery.customer_id,
-    _check_date: delivery.delivery_date,
-  });
+```text
+Settings.tsx
+   └── TabsContent value="data-management"
+       └── DataArchiveManager.tsx (new component)
+           ├── RetentionPeriodSelector
+           ├── AffectedDataPreview
+           ├── ExportBeforeDeleteButton
+           ├── ConfirmArchiveDialog (with PIN)
+           └── ArchiveProgressDisplay
 ```
 
-**New Code**:
-```typescript
-// Direct query - works on any database
-const { data: vacationCheck } = await supabase
-  .from("customer_vacations")
-  .select("id")
-  .eq("customer_id", delivery.customer_id)
-  .eq("is_active", true)
-  .lte("start_date", delivery.delivery_date)
-  .gte("end_date", delivery.delivery_date)
-  .limit(1)
-  .maybeSingle();
+## Files to Create/Modify
 
-// vacationCheck will be an object if on vacation, null if not
-if (vacationCheck) {
-  skipped++;
-} else {
-  // Mark as delivered...
-}
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/settings/DataArchiveManager.tsx` | CREATE | Main archive management component |
+| `src/pages/Settings.tsx` | MODIFY | Add "Data Management" tab for super_admin |
+| `supabase/functions/archive-old-data/index.ts` | CREATE | Secure edge function for data cleanup |
+| `supabase/config.toml` | MODIFY | Add archive-old-data function config |
+
+## Edge Function Logic
+
+```text
+1. Verify Authorization
+   - Extract JWT from Authorization header
+   - Validate user via supabase.auth.getUser(token)
+   - Check user_roles for super_admin
+
+2. Parse Request
+   - retention_years: 1 | 2 | 3 | 5
+   - mode: "preview" | "execute"
+   - tables: string[] (optional, defaults to all archivable)
+
+3. Calculate Cutoff Date
+   - cutoff = NOW() - (retention_years * 365 days)
+
+4. Preview Mode
+   - For each table, count records older than cutoff
+   - Return summary without deleting
+
+5. Execute Mode (with transaction-like behavior)
+   - Delete in FK-safe order
+   - Track deleted counts per table
+   - Log to activity_logs with full details
+   - Return summary
+
+6. Error Handling
+   - Wrap in try/catch
+   - Partial failures logged but don't stop process
+   - Return detailed error info
 ```
 
----
+## UI Flow
 
-### Fix 3: Procurement Stats Race Condition (MilkProcurement.tsx)
+1. User navigates to Settings > Data Management
+2. System shows current data volume by table
+3. User selects retention period (e.g., "Keep last 2 years")
+4. Click "Preview" to see affected record counts
+5. Click "Export Backup" to download data that will be deleted
+6. Click "Archive Now" button
+7. Confirmation dialog appears with:
+   - Summary of what will be deleted
+   - Warning about irreversibility
+   - PIN re-entry field
+8. After PIN verification, deletion proceeds
+9. Progress bar shows completion
+10. Final summary with counts displayed
+11. Action logged to audit trail
 
-**Problem**: The `activeVendors` stat is calculated inside `fetchProcurements()` using the OLD `vendors` state from before the parallel fetch. Both fetches run simultaneously via `Promise.all()`, so `vendors` state isn't updated yet.
+## Security Considerations
 
-**Current Code (Line 250-257)**:
-```typescript
-setStats({
-  todayTotal,
-  monthTotal,
-  totalPending,
-  activeVendors: vendors.filter((v) => v.is_active).length, // STALE!
-  avgFat,
-  avgRate,
-});
-```
+- Server-side role verification (never trust client)
+- PIN confirmation prevents accidental/unauthorized deletions
+- All actions logged with requestor identity
+- Backup export available before any deletion
+- Deletion cascades handled properly via FK order
+- No way to delete current year's data (minimum 1 year retention)
 
-**Solution**: Refactor to ensure fresh vendor data is used. Two approaches:
+## Testing Checklist
 
-**Approach A (Preferred)**: Calculate `activeVendors` in a separate useEffect that watches `vendors` state:
-```typescript
-// Add new useEffect after vendors is set
-useEffect(() => {
-  setStats(prev => ({
-    ...prev,
-    activeVendors: vendors.filter((v) => v.is_active).length
-  }));
-}, [vendors]);
-```
+After implementation:
 
-**Approach B**: Fetch vendors first, then use the result directly:
-```typescript
-const fetchData = async () => {
-  setLoading(true);
-  const vendorData = await fetchVendorsAndReturn();
-  await fetchProcurements(vendorData);
-  setLoading(false);
-};
-```
-
-**Chosen Solution**: Approach A - simpler, cleaner, less code change.
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/components/procurement/VendorPaymentsDialog.tsx` | Add `recalculate_vendor_balance` RPC call after payment insert |
-| `src/components/deliveries/BulkDeliveryActions.tsx` | Replace RPC with direct query |
-| `src/pages/MilkProcurement.tsx` | Add useEffect to update activeVendors stat |
-
----
-
-## Testing Verification
-
-After implementation, verify:
-
-1. **Vendor Payments**:
-   - Record a payment for a vendor
-   - Check that `current_balance` is updated in the vendor list
-   - Verify the payment appears in history
-
-2. **Bulk Delivery**:
-   - Create a customer vacation schedule for today
-   - Run bulk delivery update
-   - Verify the customer is skipped (not marked delivered)
-   - Verify non-vacation customers are marked delivered
-
-3. **Procurement Stats**:
-   - Add/remove vendors
-   - Check that "Active Vendors" stat updates correctly
-   - No flicker or stale data
-
----
-
-## Code Safety Guarantees
-
-- No breaking changes to existing functionality
-- All changes are additive or replacement (same behavior, different implementation)
-- RPC calls use graceful error handling
-- Direct queries are standard Supabase operations (well-tested)
-- No database schema changes required
+1. Non-admin users cannot see Data Management tab
+2. Preview mode shows correct counts without deleting
+3. Export creates valid JSON/Excel file with affected data
+4. PIN verification works (wrong PIN rejected)
+5. Deletion respects foreign key constraints
+6. Activity log entry created with all details
+7. UI shows progress during long operations
+8. Unpaid invoices are never deleted
