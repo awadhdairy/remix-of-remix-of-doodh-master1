@@ -96,19 +96,29 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (!retention_years || ![1, 2, 3, 5].includes(retention_years)) {
+    if (retention_years === undefined || ![0, 1, 2, 3, 5].includes(retention_years)) {
       return new Response(
-        JSON.stringify({ error: "Invalid retention_years. Use 1, 2, 3, or 5" }),
+        JSON.stringify({ error: "Invalid retention_years. Use 0, 1, 2, 3, or 5" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     // Calculate cutoff date
-    const cutoffDate = new Date();
-    cutoffDate.setFullYear(cutoffDate.getFullYear() - retention_years);
-    const cutoffDateStr = cutoffDate.toISOString().split("T")[0];
+    const isFactoryReset = retention_years === 0;
+    let cutoffDateStr: string;
 
-    console.log(`[ARCHIVE] Mode: ${mode}, Retention: ${retention_years} years, Cutoff: ${cutoffDateStr}`);
+    if (isFactoryReset) {
+      // Set to tomorrow to include today's records (delete everything)
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      cutoffDateStr = tomorrow.toISOString().split("T")[0];
+      console.log(`[ARCHIVE] FACTORY RESET - Deleting ALL records (cutoff: ${cutoffDateStr})`);
+    } else {
+      const cutoffDate = new Date();
+      cutoffDate.setFullYear(cutoffDate.getFullYear() - retention_years);
+      cutoffDateStr = cutoffDate.toISOString().split("T")[0];
+      console.log(`[ARCHIVE] Mode: ${mode}, Retention: ${retention_years} years, Cutoff: ${cutoffDateStr}`);
+    }
 
     // PREVIEW MODE - Count records
     if (mode === "preview") {
@@ -336,11 +346,12 @@ Deno.serve(async (req) => {
       try {
         await supabase.from("activity_logs").insert({
           user_id: userId,
-          action: "data_archived",
+          action: isFactoryReset ? "factory_reset" : "data_archived",
           entity_type: "system",
-          entity_id: "archive",
+          entity_id: isFactoryReset ? "factory_reset" : "archive",
           details: {
             retention_years,
+            is_factory_reset: isFactoryReset,
             cutoff_date: cutoffDateStr,
             deleted,
             total_deleted: totalDeleted,
