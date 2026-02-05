@@ -36,6 +36,19 @@ const DialogContent = React.forwardRef<
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <DialogPrimitive.Content
         ref={ref}
+        onPointerDownOutside={(e) => {
+          const target = e.target as HTMLElement;
+          // Don't close if clicking on portaled select/popover content
+          if (target?.closest('[data-radix-popper-content-wrapper]')) {
+            e.preventDefault();
+          }
+        }}
+        onInteractOutside={(e) => {
+          const target = e.target as HTMLElement;
+          if (target?.closest('[data-radix-popper-content-wrapper]')) {
+            e.preventDefault();
+          }
+        }}
         className={cn(
           "relative grid w-full max-w-lg gap-4 border bg-background p-6 shadow-lg sm:rounded-lg max-h-[90vh] overflow-y-auto",
           className,
