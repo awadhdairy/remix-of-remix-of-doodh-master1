@@ -1,388 +1,203 @@
 
-# Comprehensive Permanent Solution: Single Super Admin Backend System
+# Complete Migration Plan: Lovable Cloud → External Supabase + Vercel
 
-## Problem Summary
+## Your New Supabase Credentials
 
-From the diagnostic SQL results, the database state is **correctly configured**:
-- Auth user `5b2b5877-...` exists with email `7897716792@awadhdairy.com` ✅
-- Profile exists with same ID, phone `7897716792`, role `super_admin` ✅
-- user_roles entry exists with `super_admin` role ✅
+| Item | Value |
+|------|-------|
+| **Project URL** | `https://iupmzocmmjxpeabkmzri.supabase.co` |
+| **Project ID** | `iupmzocmmjxpeabkmzri` |
+| **Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8` |
+| **Service Role** | `sb_secret__Gawy8t5Fxf1l4ZHRqEHRA_kntvL5i0` |
 
-Despite this, the "Only super admin can perform data archival" error persists. This indicates the issue is not in the data but in the **authentication flow or code execution**.
+---
 
-## Root Cause Analysis
+## What I Will Update (Code Changes)
 
-After reviewing all edge functions and the authentication flow:
+### 1. `src/lib/external-supabase.ts`
+- Remove hardcoded fallback URLs pointing to old project
+- Use only environment variables with your new credentials
+- Remove excessive debug logging for production
 
-| Issue | Location | Impact |
-|-------|----------|--------|
-| Environment variable naming mismatch | `archive-old-data` uses `EXTERNAL_SUPABASE_*` fallback | May not find correct env vars |
-| Inconsistent auth patterns | Different functions use slightly different auth approaches | Potential JWT validation failures |
-| No debug logging for role check | `archive-old-data` doesn't log the actual userId being checked | Makes debugging impossible |
-| Stale deployment | Functions may not have been redeployed after code changes | Old code still running |
+### 2. `.env.example`
+- Update with your new project credentials
+- Clear documentation for Vercel setup
 
-## Solution Architecture
+### 3. `DEPLOYMENT_GUIDE.md`
+- Complete rewrite with your new project ID
+- Step-by-step instructions for your specific setup
+
+### 4. `supabase/functions/customer-auth/index.ts`
+- Update ALLOWED_ORIGINS to include your Vercel domain
+
+### 5. Create `VERCEL_ENV_VARS.md`
+- Ready-to-copy environment variables for Vercel
+
+---
+
+## What You Will Do (Manual Steps)
+
+### Step 1: Apply Database Schema
+
+1. Go to your Supabase SQL Editor:
+   ```
+   https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
+   ```
+
+2. Copy the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql`
+
+3. Paste and click "Run"
+
+This creates all 30+ tables, enums, functions, and RLS policies.
+
+### Step 2: Deploy Edge Functions
+
+Run these commands in your project directory:
+
+```bash
+# Install Supabase CLI (if not installed)
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link to YOUR project
+supabase link --project-ref iupmzocmmjxpeabkmzri
+
+# Deploy all 10 edge functions
+supabase functions deploy archive-old-data --no-verify-jwt
+supabase functions deploy auto-deliver-daily --no-verify-jwt
+supabase functions deploy change-pin --no-verify-jwt
+supabase functions deploy create-user --no-verify-jwt
+supabase functions deploy customer-auth --no-verify-jwt
+supabase functions deploy delete-user --no-verify-jwt
+supabase functions deploy health-check --no-verify-jwt
+supabase functions deploy reset-user-pin --no-verify-jwt
+supabase functions deploy setup-external-db --no-verify-jwt
+supabase functions deploy update-user-status --no-verify-jwt
+```
+
+### Step 3: Bootstrap Admin Account
+
+After functions are deployed, run:
+
+```bash
+curl -X POST "https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/setup-external-db"
+```
+
+Expected response:
+```json
+{
+  "success": true,
+  "message": "Database setup complete",
+  "admin_id": "uuid-here",
+  "admin_phone": "7897716792",
+  "data_seeded": true
+}
+```
+
+### Step 4: Configure Supabase Authentication
+
+In Supabase Dashboard > Authentication > Settings:
+
+1. **Site URL**: `https://your-vercel-domain.vercel.app`
+2. **Redirect URLs** (add all):
+   - `https://your-vercel-domain.vercel.app/auth`
+   - `https://your-vercel-domain.vercel.app/customer/auth`
+   - `https://your-vercel-domain.vercel.app/customer/dashboard`
+   - `http://localhost:5173/auth` (for local development)
+
+### Step 5: Vercel Deployment
+
+1. Push your code to GitHub
+
+2. In Vercel Dashboard > Project Settings > Environment Variables, add:
+
+| Variable | Value |
+|----------|-------|
+| `VITE_SUPABASE_URL` | `https://iupmzocmmjxpeabkmzri.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | (same as ANON_KEY) |
+| `VITE_SUPABASE_PROJECT_ID` | `iupmzocmmjxpeabkmzri` |
+
+3. Build Settings:
+   - Framework: Vite
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+
+4. Deploy!
+
+### Step 6: Verify Deployment
+
+1. Health Check:
+```bash
+curl "https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/health-check"
+```
+
+2. Admin Login:
+   - URL: `https://your-vercel-domain.vercel.app/auth`
+   - Phone: `7897716792`
+   - PIN: `101101`
+
+---
+
+## Architecture After Migration
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                    PERMANENT ADMIN SYSTEM                        │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  SINGLE SOURCE OF TRUTH: auth.users table                       │
-│  ├── ID: auto-generated UUID                                    │
-│  ├── Email: {phone}@awadhdairy.com                              │
-│  └── Password: 6-digit PIN                                      │
-│                                                                 │
-│  LINKED DATA (must have matching ID):                           │
-│  ├── profiles.id = auth.users.id                                │
-│  ├── user_roles.user_id = auth.users.id                         │
-│  └── auth_sessions.user_id = auth.users.id                      │
-│                                                                 │
-│  PERMANENT ADMIN (hardcoded in setup-external-db):              │
-│  ├── Phone: 7897716792                                          │
-│  ├── PIN: 101101                                                │
-│  ├── Role: super_admin                                          │
-│  └── Email: 7897716792@awadhdairy.com                           │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------+
+|              100% INDEPENDENT ARCHITECTURE                    |
++--------------------------------------------------------------+
+|                                                              |
+|  Vercel (Frontend)                                           |
+|       |                                                      |
+|       +---> Database Queries ---> YOUR Supabase              |
+|       |     (iupmzocmmjxpeabkmzri)                          |
+|       |                                                      |
+|       +---> Edge Functions ---> YOUR Supabase                |
+|             /functions/v1/*                                  |
+|                                                              |
+|  Supabase Edge Functions use BUILT-IN env vars:              |
+|    - SUPABASE_URL (auto-provided)                           |
+|    - SUPABASE_ANON_KEY (auto-provided)                      |
+|    - SUPABASE_SERVICE_ROLE_KEY (auto-provided)              |
+|                                                              |
+|  Lovable Cloud: ZERO INVOLVEMENT                            |
+|                                                              |
++--------------------------------------------------------------+
 ```
 
-## Implementation Plan
+---
 
-### Phase 1: Standardize Edge Function Authentication Pattern
+## Files Summary
 
-All edge functions will use the **exact same** authentication pattern for consistency:
+| File | Action |
+|------|--------|
+| `src/lib/external-supabase.ts` | Update - remove hardcoded fallbacks |
+| `.env.example` | Update - your new credentials |
+| `DEPLOYMENT_GUIDE.md` | Rewrite - complete guide for your project |
+| `supabase/functions/customer-auth/index.ts` | Update - add your Vercel domain |
+| `VERCEL_ENV_VARS.md` | Create - ready-to-copy env vars |
 
-```typescript
-// Standard Auth Pattern (to be used in ALL edge functions)
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+---
 
-// Admin client for database operations
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+## Success Criteria
 
-// Get authorization header
-const authHeader = req.headers.get('Authorization');
-if (!authHeader?.startsWith('Bearer ')) {
-  return errorResponse(401, 'Authorization required');
-}
+After completing this migration:
 
-// Create user client and validate JWT
-const token = authHeader.replace('Bearer ', '');
-const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  global: { headers: { Authorization: `Bearer ${token}` } }
-});
+1. All database operations go to `iupmzocmmjxpeabkmzri.supabase.co`
+2. All Edge Functions run on your Supabase project
+3. All authentication uses your Supabase Auth
+4. The app works 100% on Vercel + your Supabase
+5. No requests go to Lovable Cloud
+6. You can fully disconnect from Lovable
 
-// CRITICAL: Pass token to getUser for proper validation
-const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-if (userError || !user) {
-  return errorResponse(401, 'Invalid or expired session');
-}
+---
 
-const userId = user.id;
+## Default Admin Credentials
 
-// Role check with detailed logging
-console.log(`[FUNCTION] User authenticated: ${userId} (${user.email})`);
+| Item | Value |
+|------|-------|
+| Phone | `7897716792` |
+| PIN | `101101` |
 
-const { data: roleData, error: roleError } = await supabaseAdmin
-  .from('user_roles')
-  .select('role')
-  .eq('user_id', userId)
-  .eq('role', 'super_admin')
-  .limit(1);
-
-console.log(`[FUNCTION] Role check - Found: ${roleData?.length || 0} rows, Error: ${roleError?.message || 'none'}`);
-
-if (!roleData || roleData.length === 0) {
-  return errorResponse(403, 'Only super admin can perform this action');
-}
-```
-
-### Phase 2: Fix archive-old-data Edge Function
-
-**File**: `supabase/functions/archive-old-data/index.ts`
-
-**Changes**:
-1. Remove `EXTERNAL_SUPABASE_*` fallbacks (use standard `SUPABASE_*` only)
-2. Add `token` parameter to `getUser()` call for explicit JWT verification
-3. Add comprehensive debug logging
-4. Add pre-flight checks before operations
-
-### Phase 3: Update setup-external-db for Robustness
-
-**File**: `supabase/functions/setup-external-db/index.ts`
-
-**Changes**:
-1. Add validation that admin was created successfully
-2. Return comprehensive status including verification queries
-3. Add idempotency guarantees
-
-### Phase 4: Create Health Check with Admin Verification
-
-**File**: `supabase/functions/health-check/index.ts`
-
-**Changes**:
-1. Add authenticated admin verification endpoint
-2. Return complete system status including admin account health
-
-### Phase 5: SQL Validation Queries (For External Supabase)
-
-Provide SQL commands to verify and fix any remaining issues:
-
-```sql
--- Comprehensive Admin Verification Query
-SELECT 
-  'VERIFICATION' as check_type,
-  CASE 
-    WHEN au.id IS NOT NULL 
-     AND p.id IS NOT NULL 
-     AND ur.user_id IS NOT NULL 
-     AND ur.role = 'super_admin'
-    THEN 'PASS'
-    ELSE 'FAIL'
-  END as status,
-  au.id as auth_id,
-  au.email,
-  p.phone,
-  p.role as profile_role,
-  ur.role as user_roles_role,
-  p.is_active
-FROM auth.users au
-LEFT JOIN public.profiles p ON p.id = au.id
-LEFT JOIN public.user_roles ur ON ur.user_id = au.id
-WHERE au.email = '7897716792@awadhdairy.com';
-```
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/archive-old-data/index.ts` | Standardize auth, add logging, remove EXTERNAL_ fallbacks |
-| `supabase/functions/setup-external-db/index.ts` | Add verification return, ensure idempotency |
-| `supabase/functions/health-check/index.ts` | Add authenticated admin verification endpoint |
-| `src/lib/external-supabase.ts` | Add debug logging for auth token retrieval |
-| `EXTERNAL_SUPABASE_SCHEMA.sql` | Add admin verification function |
-
-## Detailed Code Changes
-
-### 1. archive-old-data/index.ts - Complete Rewrite of Auth Section
-
-**Remove lines 37-88** and replace with standardized pattern:
-
-```typescript
-// Use Supabase's built-in environment variables (auto-provided by Supabase)
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
-  console.error("[ARCHIVE] Missing Supabase configuration");
-  throw new Error("Missing Supabase configuration");
-}
-
-// Admin client for database operations
-const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-// Get authorization header
-const authHeader = req.headers.get("Authorization");
-if (!authHeader || !authHeader.startsWith("Bearer ")) {
-  console.log("[ARCHIVE] No authorization header provided");
-  return new Response(
-    JSON.stringify({ error: "Authorization required" }),
-    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
-
-// Create user client and validate JWT
-const token = authHeader.replace("Bearer ", "");
-const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-  global: { headers: { Authorization: `Bearer ${token}` } }
-});
-
-// CRITICAL: Pass token explicitly to getUser for proper JWT validation
-const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-
-if (userError || !user) {
-  console.log(`[ARCHIVE] Auth failed: ${userError?.message || 'No user returned'}`);
-  return new Response(
-    JSON.stringify({ error: "Invalid or expired session" }),
-    { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
-
-const userId = user.id;
-console.log(`[ARCHIVE] User authenticated: ${userId} (${user.email})`);
-
-// Verify super_admin role with detailed logging
-const { data: roleData, error: roleError } = await supabaseAdmin
-  .from("user_roles")
-  .select("role")
-  .eq("user_id", userId)
-  .eq("role", "super_admin")
-  .limit(1);
-
-console.log(`[ARCHIVE] Role check for ${userId}:`);
-console.log(`[ARCHIVE]   - Rows found: ${roleData?.length || 0}`);
-console.log(`[ARCHIVE]   - Error: ${roleError?.message || 'none'}`);
-
-// Also check profile for debugging
-const { data: profileData } = await supabaseAdmin
-  .from("profiles")
-  .select("id, phone, role, is_active")
-  .eq("id", userId)
-  .single();
-
-console.log(`[ARCHIVE] Profile check:`, JSON.stringify(profileData));
-
-if (!roleData || roleData.length === 0) {
-  console.log(`[ARCHIVE] DENIED - User ${userId} is not super_admin`);
-  return new Response(
-    JSON.stringify({ 
-      error: "Only super admin can perform data archival",
-      debug: {
-        userId,
-        email: user.email,
-        roleDataLength: roleData?.length || 0,
-        profileExists: !!profileData,
-        profileRole: profileData?.role
-      }
-    }),
-    { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
-
-console.log(`[ARCHIVE] GRANTED - User ${userId} verified as super_admin`);
-```
-
-### 2. health-check/index.ts - Add Admin Verification Endpoint
-
-Add new authenticated endpoint to verify admin account health:
-
-```typescript
-// Handle authenticated verification request
-if (req.method === "POST") {
-  const authHeader = req.headers.get("Authorization");
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "");
-    
-    // Verify the requesting user
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
-    });
-    
-    const { data: { user }, error } = await supabaseClient.auth.getUser(token);
-    
-    if (user && !error) {
-      // Get complete user status
-      const { data: profile } = await supabaseAdmin
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-        
-      const { data: role } = await supabaseAdmin
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", user.id)
-        .single();
-      
-      return new Response(
-        JSON.stringify({
-          authenticated: true,
-          user: {
-            id: user.id,
-            email: user.email,
-            profile: profile ? { 
-              phone: profile.phone,
-              role: profile.role,
-              is_active: profile.is_active 
-            } : null,
-            user_role: role?.role || null
-          }
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-  }
-}
-```
-
-### 3. external-supabase.ts - Add Debug Logging
-
-```typescript
-export async function invokeExternalFunctionWithSession<T = unknown>(
-  functionName: string,
-  body: Record<string, unknown> = {}
-): Promise<{ data: T | null; error: Error | null }> {
-  // Get Supabase Auth session
-  const { data: { session }, error: sessionError } = await externalSupabase.auth.getSession();
-  
-  if (sessionError) {
-    console.warn('[External] Session error:', sessionError.message);
-  }
-  
-  const authToken = session?.access_token;
-  
-  // Debug logging for troubleshooting
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`[External] Invoking ${functionName}`);
-    console.log(`[External] Auth token present: ${!!authToken}`);
-    console.log(`[External] Token preview: ${authToken?.slice(0, 20)}...`);
-  }
-  
-  return invokeExternalFunction<T>(functionName, body, authToken || undefined);
-}
-```
-
-## Post-Deployment Verification
-
-After deploying all changes, run this verification:
-
-### Step 1: Verify Edge Function Deployment
-```bash
-# On external Supabase project
-supabase functions list --project-ref ohrytohcbbkorivsuukm
-```
-
-### Step 2: Test Health Check
-```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check" \
-  -H "Content-Type: application/json"
-```
-
-### Step 3: Login and Test Archive
-1. Go to Vercel deployment
-2. Login with `7897716792` / `101101`
-3. Navigate to Settings → Data Management
-4. Click "Preview Data"
-5. Check browser console for detailed logs
-6. Check Supabase Edge Function logs for `[ARCHIVE]` entries
-
-## Deployment Commands
-
-After code changes are made, redeploy to external Supabase:
-
-```bash
-cd your-project
-
-# Link to external Supabase project
-supabase link --project-ref ohrytohcbbkorivsuukm
-
-# Deploy all functions with --no-verify-jwt flag
-supabase functions deploy archive-old-data --no-verify-jwt
-supabase functions deploy health-check --no-verify-jwt
-supabase functions deploy setup-external-db --no-verify-jwt
-```
-
-## Summary
-
-This solution:
-1. **Standardizes** all edge function authentication to use the same pattern
-2. **Adds comprehensive logging** to identify exactly where failures occur
-3. **Removes inconsistent** environment variable fallbacks
-4. **Adds debug output** in error responses for troubleshooting
-5. **Provides verification** endpoints and SQL queries
-6. **Ensures idempotency** - running setup multiple times is safe
-
-After implementing these changes and redeploying to your external Supabase, the permanent admin account will work reliably across all functions.
+These are hardcoded in the setup function and will be your initial super admin login.
