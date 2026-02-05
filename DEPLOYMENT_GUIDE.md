@@ -1,69 +1,81 @@
-# Awadh Dairy - Deployment Guide (Vercel + External Supabase)
+# Awadh Dairy - Complete Deployment Guide
 
-Complete guide to deploy Awadh Dairy on Vercel (frontend) with External Supabase (backend).
+**100% Independent: Vercel (Frontend) + Supabase (Backend)**
 
-**This project is 100% independent from Lovable Cloud after deployment.**
+No Lovable Cloud dependency. Full control of your own infrastructure.
 
 ---
 
-## Your Project Credentials
+## 📋 Project Credentials
 
-| Credential | Value |
-|------------|-------|
-| **Project URL** | `https://ohrytohcbbkorivsuukm.supabase.co` |
-| **Project ID** | `ohrytohcbbkorivsuukm` |
-| **Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
-| **Vercel Domain** | `awadhdairy-remix.vercel.app` |
+| Item | Value |
+|------|-------|
+| **Project URL** | `https://iupmzocmmjxpeabkmzri.supabase.co` |
+| **Project ID** | `iupmzocmmjxpeabkmzri` |
+| **Anon Key** | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8` |
 | **Admin Phone** | `7897716792` |
 | **Admin PIN** | `101101` |
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                 INDEPENDENT ARCHITECTURE                     │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│  Frontend (Vercel)                                           │
-│       │                                                      │
-│       ├──► Direct DB queries ──► YOUR Supabase               │
-│       │                              ohrytohcbbkorivsuukm    │
-│       │                                                      │
-│       └──► Edge function calls ──► YOUR Supabase             │
-│            (via EXTERNAL_FUNCTIONS_URL)                      │
-│                      │                                       │
-│                      ▼                                       │
-│            Functions use built-in SUPABASE_* vars            │
-│            (auto-provided by Supabase - no secrets needed)   │
-│                                                              │
-│  Lovable = NOT INVOLVED                                      │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│           100% INDEPENDENT ARCHITECTURE                      │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  VERCEL (Frontend)                                          │
+│       │                                                     │
+│       ├──► Database Queries ──► YOUR SUPABASE               │
+│       │    (via VITE_SUPABASE_URL)    (iupmzocmmjxpeabkmzri)│
+│       │                                                     │
+│       └──► Edge Functions ──► YOUR SUPABASE                 │
+│            /functions/v1/*                                  │
+│                                                             │
+│  Edge Functions use BUILT-IN env vars (auto-provided):      │
+│    • SUPABASE_URL                                           │
+│    • SUPABASE_ANON_KEY                                      │
+│    • SUPABASE_SERVICE_ROLE_KEY                              │
+│                                                             │
+│  NO LOVABLE CLOUD INVOLVEMENT                               │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Quick Start
+## 🚀 Step 1: Apply Database Schema
 
-### 1. Apply Database Schema
+1. Open Supabase SQL Editor:
+   ```
+   https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
+   ```
 
-Run in Supabase SQL Editor: `https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql`
+2. Copy the **entire contents** of `EXTERNAL_SUPABASE_SCHEMA.sql`
 
-Copy the entire contents of `EXTERNAL_SUPABASE_SCHEMA.sql` and execute.
+3. Paste into the SQL Editor and click **Run**
 
-### 2. Deploy Edge Functions
+This creates all tables, enums, functions, triggers, and RLS policies.
+
+---
+
+## 🔧 Step 2: Deploy Edge Functions
+
+Run these commands in your terminal (from project directory):
 
 ```bash
-# Install Supabase CLI
+# Install Supabase CLI (if not already installed)
 npm install -g supabase
 
-# Login and link to YOUR project
+# Login to Supabase
 supabase login
-supabase link --project-ref ohrytohcbbkorivsuukm
 
-# Deploy all functions (they use built-in Supabase env vars)
+# Link to your project
+supabase link --project-ref iupmzocmmjxpeabkmzri
+
+# Deploy all edge functions
+supabase functions deploy archive-old-data --no-verify-jwt
 supabase functions deploy auto-deliver-daily --no-verify-jwt
 supabase functions deploy change-pin --no-verify-jwt
 supabase functions deploy create-user --no-verify-jwt
@@ -75,15 +87,17 @@ supabase functions deploy setup-external-db --no-verify-jwt
 supabase functions deploy update-user-status --no-verify-jwt
 ```
 
-### 3. Bootstrap Admin
+---
 
-After deploying functions, run:
+## 👤 Step 3: Bootstrap Admin Account
+
+After functions are deployed, create the initial admin:
 
 ```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/setup-external-db"
+curl -X POST "https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/setup-external-db"
 ```
 
-Expected response:
+**Expected Response:**
 ```json
 {
   "success": true,
@@ -94,96 +108,71 @@ Expected response:
 }
 ```
 
-### 4. Configure Authentication
+---
 
-In Supabase Dashboard → Authentication → Settings:
+## 🔐 Step 4: Configure Supabase Authentication
 
-- **Site URL**: `https://awadhdairy-remix.vercel.app`
-- **Redirect URLs**:
-  - `https://awadhdairy-remix.vercel.app/auth`
-  - `https://awadhdairy-remix.vercel.app/customer/auth`
-  - `https://awadhdairy-remix.vercel.app/customer/dashboard`
+Go to **Supabase Dashboard → Authentication → URL Configuration**:
+
+1. **Site URL**: `https://YOUR-VERCEL-DOMAIN.vercel.app`
+
+2. **Redirect URLs** (add all):
+   - `https://YOUR-VERCEL-DOMAIN.vercel.app/auth`
+   - `https://YOUR-VERCEL-DOMAIN.vercel.app/customer/auth`
+   - `https://YOUR-VERCEL-DOMAIN.vercel.app/customer/dashboard`
+   - `http://localhost:5173/auth` (for local development)
 
 ---
 
-## Vercel Deployment
+## 🌐 Step 5: Deploy to Vercel
 
-### Environment Variables
+### 5.1 Environment Variables
+
+In **Vercel Dashboard → Project Settings → Environment Variables**, add:
 
 | Variable | Value |
 |----------|-------|
-| `VITE_SUPABASE_URL` | `https://ohrytohcbbkorivsuukm.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg` |
-| `VITE_SUPABASE_PROJECT_ID` | `ohrytohcbbkorivsuukm` |
+| `VITE_SUPABASE_URL` | `https://iupmzocmmjxpeabkmzri.supabase.co` |
+| `VITE_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8` |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | *(same as ANON_KEY above)* |
+| `VITE_SUPABASE_PROJECT_ID` | `iupmzocmmjxpeabkmzri` |
 
-### Build Settings
+### 5.2 Build Settings
 
-- **Framework**: Vite
-- **Build Command**: `npm run build`
-- **Output Directory**: `dist`
+| Setting | Value |
+|---------|-------|
+| Framework Preset | Vite |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
 
----
+### 5.3 Deploy
 
-## Edge Functions - No Secrets Required!
-
-Edge functions now use Supabase's **built-in environment variables** which are automatically available:
-
-| Variable | Description |
-|----------|-------------|
-| `SUPABASE_URL` | Your project URL (auto-provided) |
-| `SUPABASE_ANON_KEY` | Anonymous key (auto-provided) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (auto-provided) |
-
-**No manual secret configuration needed!** When you deploy functions to your Supabase project, these variables are automatically available.
+Push to GitHub → Vercel auto-deploys on commit.
 
 ---
 
-## Daily Automation (Optional)
-
-### Option A: pg_cron in Supabase
-
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
-SELECT cron.schedule(
-  'auto-deliver-daily',
-  '30 4 * * *',
-  $$SELECT extensions.http_post(
-    'https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/auto-deliver-daily',
-    '{}',
-    'application/json'
-  )$$
-);
-```
-
-### Option B: Manual Trigger
-
-```bash
-curl -X POST "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/auto-deliver-daily"
-```
-
----
-
-## Test Your Deployment
+## ✅ Step 6: Verify Deployment
 
 ### Health Check
 ```bash
-curl "https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/health-check"
+curl "https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/health-check"
 ```
 
-### Admin Login
-1. Visit: `https://awadhdairy-remix.vercel.app/auth`
-2. Enter: Phone `7897716792`, PIN `101101`
-3. Dashboard should load
+### Admin Login Test
+1. Visit: `https://YOUR-VERCEL-DOMAIN.vercel.app/auth`
+2. Enter Phone: `7897716792`
+3. Enter PIN: `101101`
+4. Dashboard should load
 
 ---
 
-## Edge Function URLs
+## 📌 Edge Function URLs
 
-Base URL: `https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/`
+Base URL: `https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/`
 
-| Function | URL |
-|----------|-----|
+| Function | Endpoint |
+|----------|----------|
+| archive-old-data | `/functions/v1/archive-old-data` |
 | auto-deliver-daily | `/functions/v1/auto-deliver-daily` |
 | change-pin | `/functions/v1/change-pin` |
 | create-user | `/functions/v1/create-user` |
@@ -196,47 +185,63 @@ Base URL: `https://ohrytohcbbkorivsuukm.supabase.co/functions/v1/`
 
 ---
 
-## Troubleshooting
+## ⏰ Optional: Daily Automation (pg_cron)
 
-### "Invalid API key" Error
-- Verify environment variables in Vercel
-- Redeploy after adding variables
+```sql
+-- Enable pg_cron extension
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 
-### Edge Functions Return 500
-- Check function logs: `supabase functions logs <function-name> --project-ref ohrytohcbbkorivsuukm`
-- Ensure database schema is applied
-
-### CORS Errors
-- Verify your domain is in ALLOWED_ORIGINS in `customer-auth/index.ts`
+-- Schedule auto-delivery at 4:30 AM IST daily
+SELECT cron.schedule(
+  'auto-deliver-daily',
+  '30 4 * * *',
+  $$SELECT extensions.http_post(
+    'https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/auto-deliver-daily',
+    '{}',
+    'application/json'
+  )$$
+);
+```
 
 ---
 
-## Backup & Restore
+## 🔍 Troubleshooting
+
+### "Invalid API key" Error
+- Verify Vercel environment variables are set correctly
+- Redeploy after adding/updating variables
+
+### Edge Functions Return 500
+- Check logs: `supabase functions logs <function-name> --project-ref iupmzocmmjxpeabkmzri`
+- Verify database schema is applied
+
+### CORS Errors
+- Add your Vercel domain to `ALLOWED_ORIGINS` in `supabase/functions/customer-auth/index.ts`
+- Redeploy the function
+
+### Login Not Working
+- Ensure `setup-external-db` function was called successfully
+- Check if profiles and user_roles tables have data
+
+---
+
+## 💾 Backup & Restore
 
 ### Export Database
 ```bash
-supabase db dump -f backup.sql --project-ref ohrytohcbbkorivsuukm
+supabase db dump -f backup.sql --project-ref iupmzocmmjxpeabkmzri
 ```
 
 ### Restore Database
 ```bash
-supabase db push --project-ref ohrytohcbbkorivsuukm < backup.sql
+supabase db push --project-ref iupmzocmmjxpeabkmzri < backup.sql
 ```
 
 ---
 
-## Key Differences from Previous Setup
+## 🔗 Quick Links
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| Edge functions | Ran on Lovable Cloud | Run on YOUR Supabase |
-| Secrets | Stored in Lovable | Auto-provided by Supabase |
-| Service role key | Manual secret management | Automatic via `SUPABASE_SERVICE_ROLE_KEY` |
-| Deployment | Lovable deployer | `supabase functions deploy` |
-| Independence | Required Lovable | 100% independent |
-
----
-
-## Supabase Dashboard
-
-https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm
+- **Supabase Dashboard**: https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri
+- **SQL Editor**: https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
+- **Edge Functions**: https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/functions
+- **Authentication Settings**: https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/auth/url-configuration

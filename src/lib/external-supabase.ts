@@ -1,10 +1,19 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 
-// External Supabase credentials - configured via environment variables
-// These should be set in Vercel (production) or .env (local development)
-const EXTERNAL_URL = import.meta.env.VITE_SUPABASE_URL || 'https://ohrytohcbbkorivsuukm.supabase.co';
-const EXTERNAL_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ocnl0b2hjYmJrb3JpdnN1dWttIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTI0ODUsImV4cCI6MjA4NTY4ODQ4NX0.IRvIKtTaxZ5MYm6Ju30cxHMQG5xCq9tWJOfSFbNAIUg';
+// External Supabase Configuration
+// All credentials MUST be provided via environment variables
+// No hardcoded fallbacks - this ensures 100% independence from any other project
+const EXTERNAL_URL = import.meta.env.VITE_SUPABASE_URL;
+const EXTERNAL_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+// Validate required environment variables
+if (!EXTERNAL_URL) {
+  throw new Error('Missing required environment variable: VITE_SUPABASE_URL');
+}
+if (!EXTERNAL_ANON_KEY) {
+  throw new Error('Missing required environment variable: VITE_SUPABASE_ANON_KEY');
+}
 
 // Create the external Supabase client with proper typing
 export const externalSupabase = createClient<Database>(EXTERNAL_URL, EXTERNAL_ANON_KEY, {
@@ -88,19 +97,13 @@ export async function invokeExternalFunctionWithSession<T = unknown>(
   const { data: { session }, error: sessionError } = await externalSupabase.auth.getSession();
   
   if (sessionError) {
-    console.warn('[External] Session error:', sessionError.message);
+    console.warn('Session error:', sessionError.message);
   }
   
   const authToken = session?.access_token;
   
-  // Debug logging for troubleshooting auth issues
-  console.log(`[External] Invoking ${functionName}`);
-  console.log(`[External] Auth token present: ${!!authToken}`);
-  console.log(`[External] User ID: ${session?.user?.id || 'none'}`);
-  console.log(`[External] User email: ${session?.user?.email || 'none'}`);
-  
   if (!authToken) {
-    console.warn(`[External] No auth token available for ${functionName}`);
+    console.warn(`No auth token available for ${functionName}`);
   }
   
   return invokeExternalFunction<T>(functionName, body, authToken || undefined);
