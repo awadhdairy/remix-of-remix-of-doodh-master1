@@ -1,28 +1,42 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 
-// External Supabase Configuration - 100% Independent
+// =============================================================================
+// EXTERNAL SUPABASE CONFIGURATION - 100% Independent of Lovable Cloud
+// =============================================================================
+//
+// PROBLEM: Lovable "Secrets" are only available in Edge Functions (Deno env).
+// They are NOT available as import.meta.env.* in the frontend Vite build.
+// The auto-generated .env file points to the old Lovable Cloud project.
+//
+// SOLUTION: Detect environment and use hardcoded values for Lovable preview,
+// use VITE_* env vars for Vercel production deployment.
+// =============================================================================
+
+// Detect if running in Lovable preview environment
+const isLovablePreview = typeof window !== 'undefined' &&
+  window.location.hostname.includes('lovableproject.com');
+
+// Your External Supabase Project Credentials (iupmzocmmjxpeabkmzri)
+// These are PUBLIC anon keys - safe to include in frontend code
+const HARDCODED_EXTERNAL_URL = 'https://iupmzocmmjxpeabkmzri.supabase.co';
+const HARDCODED_EXTERNAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8';
+
 // Priority order:
-// 1. EXTERNAL_SUPABASE_* secrets (for Lovable preview - these are editable)
-// 2. VITE_SUPABASE_* env vars (for Vercel production deployment)
-const EXTERNAL_URL = 
-  import.meta.env.EXTERNAL_SUPABASE_URL || 
-  import.meta.env.VITE_SUPABASE_URL;
+// 1. Hardcoded for Lovable preview (bypasses broken .env)
+// 2. VITE_* env vars (for Vercel production deployment)
+const EXTERNAL_URL = isLovablePreview
+  ? HARDCODED_EXTERNAL_URL
+  : (import.meta.env.VITE_SUPABASE_URL || HARDCODED_EXTERNAL_URL);
 
-const EXTERNAL_ANON_KEY = 
-  import.meta.env.EXTERNAL_SUPABASE_ANON_KEY || 
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-// Validate required environment variables
-if (!EXTERNAL_URL) {
-  throw new Error('Missing required environment variable: EXTERNAL_SUPABASE_URL or VITE_SUPABASE_URL');
-}
-if (!EXTERNAL_ANON_KEY) {
-  throw new Error('Missing required environment variable: EXTERNAL_SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY');
-}
+const EXTERNAL_ANON_KEY = isLovablePreview
+  ? HARDCODED_EXTERNAL_ANON_KEY
+  : (import.meta.env.VITE_SUPABASE_ANON_KEY ||
+     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+     HARDCODED_EXTERNAL_ANON_KEY);
 
 // Log which project is being used (helpful for debugging)
+console.log('[Supabase] Environment:', isLovablePreview ? 'Lovable Preview' : 'Production');
 console.log('[Supabase] Connecting to:', EXTERNAL_URL.replace(/https?:\/\//, '').split('.')[0]);
 
 // Create the external Supabase client with proper typing
