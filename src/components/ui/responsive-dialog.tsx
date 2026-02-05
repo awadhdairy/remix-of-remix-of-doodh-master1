@@ -62,7 +62,7 @@ export function ResponsiveDialogContent({ children, className, ...props }: Respo
   }
 
   return (
-    <DialogContent className={cn("max-h-[90vh] overflow-hidden flex flex-col", className)} {...props}>
+    <DialogContent className={cn("max-h-[90vh] flex flex-col", className)} {...props}>
       {children}
     </DialogContent>
   );
