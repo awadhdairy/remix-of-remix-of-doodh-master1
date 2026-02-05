@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
 
 CREATE TABLE IF NOT EXISTS public.customer_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL UNIQUE REFERENCES public.customers(id),
+  customer_id UUID NOT NULL UNIQUE REFERENCES public.customers(id) ON DELETE CASCADE,
   user_id UUID,
   phone TEXT NOT NULL UNIQUE,
   pin_hash TEXT,
@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS public.customer_products (
 
 CREATE TABLE IF NOT EXISTS public.customer_vacations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   reason TEXT,
@@ -291,7 +291,7 @@ CREATE TABLE IF NOT EXISTS public.customer_vacations (
 
 CREATE TABLE IF NOT EXISTS public.customer_ledger (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   transaction_date DATE NOT NULL DEFAULT CURRENT_DATE,
   transaction_type TEXT NOT NULL,
   description TEXT NOT NULL,
@@ -309,7 +309,7 @@ CREATE TABLE IF NOT EXISTS public.customer_ledger (
 
 CREATE TABLE IF NOT EXISTS public.deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   delivery_date DATE NOT NULL,
   status public.delivery_status DEFAULT 'pending',
   delivery_time TIMESTAMPTZ,
@@ -331,7 +331,7 @@ CREATE TABLE IF NOT EXISTS public.delivery_items (
 CREATE TABLE IF NOT EXISTS public.route_stops (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   route_id UUID NOT NULL REFERENCES public.routes(id),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   stop_order INTEGER NOT NULL,
   estimated_arrival_time TIME,
   notes TEXT,
@@ -345,7 +345,7 @@ CREATE TABLE IF NOT EXISTS public.route_stops (
 CREATE TABLE IF NOT EXISTS public.invoices (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   invoice_number TEXT NOT NULL UNIQUE,
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   billing_period_start DATE NOT NULL,
   billing_period_end DATE NOT NULL,
   total_amount NUMERIC NOT NULL,
@@ -364,7 +364,7 @@ CREATE TABLE IF NOT EXISTS public.invoices (
 
 CREATE TABLE IF NOT EXISTS public.payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   invoice_id UUID REFERENCES public.invoices(id),
   amount NUMERIC NOT NULL,
   payment_date DATE NOT NULL,
@@ -548,7 +548,7 @@ CREATE TABLE IF NOT EXISTS public.bottles (
 
 CREATE TABLE IF NOT EXISTS public.customer_bottles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  customer_id UUID NOT NULL REFERENCES public.customers(id),
+  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
   bottle_id UUID NOT NULL REFERENCES public.bottles(id),
   quantity_pending INTEGER DEFAULT 0,
   last_issued_date DATE,
@@ -560,7 +560,7 @@ CREATE TABLE IF NOT EXISTS public.customer_bottles (
 CREATE TABLE IF NOT EXISTS public.bottle_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   bottle_id UUID NOT NULL REFERENCES public.bottles(id),
-  customer_id UUID REFERENCES public.customers(id),
+  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
   transaction_type TEXT NOT NULL,
   transaction_date DATE NOT NULL,
   quantity INTEGER NOT NULL,
@@ -2245,4 +2245,70 @@ $$;
 -- 
 -- To check for orphaned data without cleaning:
 -- SELECT public.check_orphaned_data();
+-- ============================================================================
+
+-- ============================================================================
+-- SECTION 20: MIGRATION - Fix Customer Foreign Key Cascades
+-- ============================================================================
+-- Run this section ONLY if you have an existing database that needs the 
+-- ON DELETE CASCADE constraint added to customer-related foreign keys.
+-- This fixes the "violates foreign key constraint" error when deleting customers.
+-- ============================================================================
+
+-- customer_accounts
+ALTER TABLE public.customer_accounts 
+  DROP CONSTRAINT IF EXISTS customer_accounts_customer_id_fkey,
+  ADD CONSTRAINT customer_accounts_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- customer_vacations
+ALTER TABLE public.customer_vacations 
+  DROP CONSTRAINT IF EXISTS customer_vacations_customer_id_fkey,
+  ADD CONSTRAINT customer_vacations_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- customer_ledger
+ALTER TABLE public.customer_ledger 
+  DROP CONSTRAINT IF EXISTS customer_ledger_customer_id_fkey,
+  ADD CONSTRAINT customer_ledger_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- deliveries
+ALTER TABLE public.deliveries 
+  DROP CONSTRAINT IF EXISTS deliveries_customer_id_fkey,
+  ADD CONSTRAINT deliveries_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- route_stops
+ALTER TABLE public.route_stops 
+  DROP CONSTRAINT IF EXISTS route_stops_customer_id_fkey,
+  ADD CONSTRAINT route_stops_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- invoices
+ALTER TABLE public.invoices 
+  DROP CONSTRAINT IF EXISTS invoices_customer_id_fkey,
+  ADD CONSTRAINT invoices_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- payments
+ALTER TABLE public.payments 
+  DROP CONSTRAINT IF EXISTS payments_customer_id_fkey,
+  ADD CONSTRAINT payments_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- customer_bottles
+ALTER TABLE public.customer_bottles 
+  DROP CONSTRAINT IF EXISTS customer_bottles_customer_id_fkey,
+  ADD CONSTRAINT customer_bottles_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- bottle_transactions
+ALTER TABLE public.bottle_transactions 
+  DROP CONSTRAINT IF EXISTS bottle_transactions_customer_id_fkey,
+  ADD CONSTRAINT bottle_transactions_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- ============================================================================
+-- End of Migration Section
 -- ============================================================================
