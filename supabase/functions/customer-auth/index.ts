@@ -7,6 +7,7 @@ const corsHeaders = {
 
 // Allowed origins for redirect validation (prevents open redirect attacks)
 const ALLOWED_ORIGINS = [
+  'https://awadhdairyfinal.vercel.app',
   'https://awadh-dairy.vercel.app',
   'https://awadhdairy.vercel.app',
   'http://localhost:5173',
