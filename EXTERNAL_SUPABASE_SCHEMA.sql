@@ -419,7 +419,7 @@ CREATE TABLE IF NOT EXISTS public.shifts (
 
 CREATE TABLE IF NOT EXISTS public.employee_shifts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  employee_id UUID NOT NULL REFERENCES public.employees(id),
+  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   shift_id UUID NOT NULL REFERENCES public.shifts(id),
   effective_from DATE NOT NULL,
   effective_to DATE,
@@ -428,7 +428,7 @@ CREATE TABLE IF NOT EXISTS public.employee_shifts (
 
 CREATE TABLE IF NOT EXISTS public.attendance (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  employee_id UUID NOT NULL REFERENCES public.employees(id),
+  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   attendance_date DATE NOT NULL,
   status TEXT DEFAULT 'present',
   check_in TIME,
@@ -440,7 +440,7 @@ CREATE TABLE IF NOT EXISTS public.attendance (
 
 CREATE TABLE IF NOT EXISTS public.payroll_records (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  employee_id UUID NOT NULL REFERENCES public.employees(id),
+  employee_id UUID NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
   pay_period_start DATE NOT NULL,
   pay_period_end DATE NOT NULL,
   base_salary NUMERIC DEFAULT 0,
@@ -2310,5 +2310,41 @@ ALTER TABLE public.bottle_transactions
     FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
 
 -- ============================================================================
--- End of Migration Section
+-- End of Customer Migration Section
+-- ============================================================================
+
+-- ============================================================================
+-- SECTION 21: MIGRATION - Fix Employee Foreign Key Cascades
+-- ============================================================================
+-- Run this section ONLY if you have an existing database that needs the 
+-- ON DELETE CASCADE constraint added to employee-related foreign keys.
+-- This fixes the "violates foreign key constraint" error when deleting employees.
+-- ============================================================================
+
+-- attendance
+ALTER TABLE public.attendance 
+  DROP CONSTRAINT IF EXISTS attendance_employee_id_fkey,
+  ADD CONSTRAINT attendance_employee_id_fkey 
+    FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+-- payroll_records
+ALTER TABLE public.payroll_records 
+  DROP CONSTRAINT IF EXISTS payroll_records_employee_id_fkey,
+  ADD CONSTRAINT payroll_records_employee_id_fkey 
+    FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+-- employee_shifts
+ALTER TABLE public.employee_shifts 
+  DROP CONSTRAINT IF EXISTS employee_shifts_employee_id_fkey,
+  ADD CONSTRAINT employee_shifts_employee_id_fkey 
+    FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+-- bottle_transactions (staff_id - SET NULL instead of CASCADE)
+ALTER TABLE public.bottle_transactions 
+  DROP CONSTRAINT IF EXISTS bottle_transactions_staff_id_fkey,
+  ADD CONSTRAINT bottle_transactions_staff_id_fkey 
+    FOREIGN KEY (staff_id) REFERENCES public.employees(id) ON DELETE SET NULL;
+
+-- ============================================================================
+-- End of Employee Migration Section
 -- ============================================================================
