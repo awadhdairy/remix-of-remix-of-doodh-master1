@@ -2,7 +2,7 @@
 -- AWADH DAIRY - COMPLETE EXTERNAL SUPABASE SCHEMA
 -- ============================================================================
 -- Run this script in your external Supabase SQL Editor:
--- https://supabase.com/dashboard/project/ohrytohcbbkorivsuukm/sql
+-- https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
 -- ============================================================================
 
 -- Enable required extensions
