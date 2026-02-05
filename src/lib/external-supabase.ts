@@ -1,19 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '@/integrations/supabase/types';
 
-// External Supabase Configuration
-// All credentials MUST be provided via environment variables
-// No hardcoded fallbacks - this ensures 100% independence from any other project
-const EXTERNAL_URL = import.meta.env.VITE_SUPABASE_URL;
-const EXTERNAL_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// External Supabase Configuration - 100% Independent
+// Priority order:
+// 1. EXTERNAL_SUPABASE_* secrets (for Lovable preview - these are editable)
+// 2. VITE_SUPABASE_* env vars (for Vercel production deployment)
+const EXTERNAL_URL = 
+  import.meta.env.EXTERNAL_SUPABASE_URL || 
+  import.meta.env.VITE_SUPABASE_URL;
+
+const EXTERNAL_ANON_KEY = 
+  import.meta.env.EXTERNAL_SUPABASE_ANON_KEY || 
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 // Validate required environment variables
 if (!EXTERNAL_URL) {
-  throw new Error('Missing required environment variable: VITE_SUPABASE_URL');
+  throw new Error('Missing required environment variable: EXTERNAL_SUPABASE_URL or VITE_SUPABASE_URL');
 }
 if (!EXTERNAL_ANON_KEY) {
-  throw new Error('Missing required environment variable: VITE_SUPABASE_ANON_KEY');
+  throw new Error('Missing required environment variable: EXTERNAL_SUPABASE_ANON_KEY or VITE_SUPABASE_ANON_KEY');
 }
+
+// Log which project is being used (helpful for debugging)
+console.log('[Supabase] Connecting to:', EXTERNAL_URL.replace(/https?:\/\//, '').split('.')[0]);
 
 // Create the external Supabase client with proper typing
 export const externalSupabase = createClient<Database>(EXTERNAL_URL, EXTERNAL_ANON_KEY, {
