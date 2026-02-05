@@ -60,7 +60,7 @@ export default function RoutesPage() {
   // Route form
   const [routeName, setRouteName] = useState("");
   const [routeArea, setRouteArea] = useState("");
-  const [assignedStaff, setAssignedStaff] = useState("");
+  const [assignedStaff, setAssignedStaff] = useState("__unassigned__");
   const [sequenceOrder, setSequenceOrder] = useState("");
   
   // Stop form
@@ -175,7 +175,7 @@ export default function RoutesPage() {
   const resetRouteForm = () => {
     setRouteName("");
     setRouteArea("");
-    setAssignedStaff("");
+    setAssignedStaff("__unassigned__");
     setSequenceOrder("");
   };
 
