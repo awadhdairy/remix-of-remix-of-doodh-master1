@@ -65,8 +65,14 @@ Deno.serve(async (req) => {
 
     // Create user client and validate JWT
     const token = authHeader.replace("Bearer ", "");
-    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+      global: {
+        headers: { Authorization: `Bearer ${token}` },
+      },
     });
 
     // CRITICAL: Pass token explicitly to getUser for proper JWT validation
