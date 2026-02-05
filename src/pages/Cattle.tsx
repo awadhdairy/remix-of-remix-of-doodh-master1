@@ -438,7 +438,7 @@ export default function CattlePage() {
                 <div className="space-y-2">
                   <Label htmlFor="sire_id">Sire (Father)</Label>
                   <Select
-                    value={formData.sire_id}
+                    value={formData.sire_id || "none"}
                     onValueChange={(v) =>
                       setFormData({ ...formData, sire_id: v === "none" ? "" : v })
                     }
@@ -461,7 +461,7 @@ export default function CattlePage() {
                 <div className="space-y-2">
                   <Label htmlFor="dam_id">Dam (Mother)</Label>
                   <Select
-                    value={formData.dam_id}
+                    value={formData.dam_id || "none"}
                     onValueChange={(v) =>
                       setFormData({ ...formData, dam_id: v === "none" ? "" : v })
                     }
