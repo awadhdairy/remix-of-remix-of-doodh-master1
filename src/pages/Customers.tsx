@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Edit, Trash2, Phone, MapPin, Loader2, Palmtree, BookOpen, Eye } from "lucide-react";
+import { Users, Edit, Trash2, Phone, MapPin, Loader2, Palmtree, BookOpen, Eye, Route } from "lucide-react";
 import { VacationManager } from "@/components/customers/VacationManager";
 import { CustomerLedger } from "@/components/customers/CustomerLedger";
 import { CustomerAccountApprovals } from "@/components/customers/CustomerAccountApprovals";
@@ -51,6 +51,14 @@ interface Customer {
   is_active: boolean;
   created_at: string;
   notes: string | null;
+  route_id: string | null;
+  routes?: { name: string; area: string | null } | null;
+}
+
+interface RouteOption {
+  id: string;
+  name: string;
+  area: string | null;
 }
 
 const emptyFormData = {
@@ -62,6 +70,7 @@ const emptyFormData = {
   subscription_type: "daily",
   billing_cycle: "monthly",
   notes: "",
+  route_id: "",
 };
 
 interface CustomerProduct {
@@ -86,9 +95,11 @@ export default function CustomersPage() {
   const [dialogTab, setDialogTab] = useState<"details" | "subscription">("details");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+  const [routes, setRoutes] = useState<RouteOption[]>([]);
 
   useEffect(() => {
     fetchCustomers();
+    fetchRoutes();
     if (searchParams.get("action") === "add") {
       setDialogOpen(true);
       setSearchParams({});
@@ -100,7 +111,7 @@ export default function CustomersPage() {
     
     // Fetch customers and their subscribed products in parallel
     const [customersRes, productsRes] = await Promise.all([
-      supabase.from("customers").select("*").order("name"),
+      supabase.from("customers").select("*, routes(name, area)").order("name"),
       supabase
         .from("customer_products")
         .select(`
@@ -140,6 +151,26 @@ export default function CustomersPage() {
     setLoading(false);
   };
 
+  const fetchRoutes = async () => {
+    const { data } = await supabase
+      .from("routes")
+      .select("id, name, area")
+      .eq("is_active", true)
+      .order("name");
+    if (data) setRoutes(data);
+  };
+
+  // Auto-suggest route based on area match
+  const suggestRouteForArea = (area: string): string | null => {
+    if (!area || routes.length === 0) return null;
+    const areaLower = area.toLowerCase();
+    const match = routes.find(r => 
+      r.area?.toLowerCase().includes(areaLower) ||
+      areaLower.includes(r.area?.toLowerCase() || '')
+    );
+    return match?.id || null;
+  };
+
   const handleOpenDialog = async (customer?: Customer) => {
     if (customer) {
       setSelectedCustomer(customer);
@@ -152,6 +183,7 @@ export default function CustomersPage() {
         subscription_type: customer.subscription_type,
         billing_cycle: customer.billing_cycle,
         notes: "",
+        route_id: customer.route_id || "",
       });
       
       // Load existing subscription products for this customer
@@ -266,6 +298,7 @@ export default function CustomersPage() {
       subscription_type: subscriptionTypeMap[subscriptionData.frequency] || formData.subscription_type,
       billing_cycle: formData.billing_cycle,
       notes: notesWithSchedule,
+      route_id: formData.route_id || null,
     };
 
     if (selectedCustomer) {
@@ -368,6 +401,30 @@ export default function CustomersPage() {
         if (productError) {
           console.error("Error adding subscription products:", productError);
           // Don't fail the whole operation, just log it
+        }
+      }
+
+      // Add customer to route_stops if route is assigned
+      if (formData.route_id) {
+        try {
+          // Get next stop order for this route
+          const { data: existingStops } = await supabase
+            .from("route_stops")
+            .select("stop_order")
+            .eq("route_id", formData.route_id)
+            .order("stop_order", { ascending: false })
+            .limit(1);
+          
+          const nextOrder = (existingStops?.[0]?.stop_order || 0) + 1;
+          
+          await supabase.from("route_stops").insert({
+            route_id: formData.route_id,
+            customer_id: newCustomer.id,
+            stop_order: nextOrder,
+          });
+        } catch (routeStopError) {
+          console.warn("Could not add to route_stops:", routeStopError);
+          // Don't fail the whole operation
         }
       }
 
@@ -494,6 +551,17 @@ export default function CustomersPage() {
       header: "Frequency",
       render: (item: Customer) => (
         <span className="capitalize text-sm">{item.subscription_type}</span>
+      ),
+    },
+    {
+      key: "route",
+      header: "Route",
+      render: (item: Customer) => (
+        <span className="text-sm">
+          {item.routes?.name || (
+            <span className="text-muted-foreground text-xs">No route</span>
+          )}
+        </span>
       ),
     },
     {
@@ -793,6 +861,40 @@ export default function CustomersPage() {
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="route">Delivery Route</Label>
+                  <Select
+                    value={formData.route_id}
+                    onValueChange={(v) => setFormData({ ...formData, route_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select route (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No route assigned</SelectItem>
+                      {routes.map((route) => (
+                        <SelectItem key={route.id} value={route.id}>
+                          {route.name} {route.area && `(${route.area})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formData.area && !formData.route_id && suggestRouteForArea(formData.area) && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-primary"
+                      onClick={() => {
+                        const suggested = suggestRouteForArea(formData.area);
+                        if (suggested) setFormData({ ...formData, route_id: suggested });
+                      }}
+                    >
+                      💡 Suggest: {routes.find(r => r.id === suggestRouteForArea(formData.area))?.name}
+                    </Button>
+                  )}
+                </div>
+
                 <div className="flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancel
@@ -920,6 +1022,40 @@ export default function CustomersPage() {
                       <SelectItem value="monthly">Monthly</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="route_edit">Delivery Route</Label>
+                  <Select
+                    value={formData.route_id}
+                    onValueChange={(v) => setFormData({ ...formData, route_id: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select route (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">No route assigned</SelectItem>
+                      {routes.map((route) => (
+                        <SelectItem key={route.id} value={route.id}>
+                          {route.name} {route.area && `(${route.area})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formData.area && !formData.route_id && suggestRouteForArea(formData.area) && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs text-primary"
+                      onClick={() => {
+                        const suggested = suggestRouteForArea(formData.area);
+                        if (suggested) setFormData({ ...formData, route_id: suggested });
+                      }}
+                    >
+                      💡 Suggest: {routes.find(r => r.id === suggestRouteForArea(formData.area))?.name}
+                    </Button>
+                  )}
                 </div>
 
                 <div className="space-y-2">
