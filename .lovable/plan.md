@@ -1,166 +1,214 @@
 
 
-# Fix Foreign Key Cascade for Customer Deletion
+# Add Employee Management (Add/Edit/Delete) for Admins
 
-## Problem Identified
+## Overview
 
-When trying to delete a customer, the database throws:
-```
-update or delete on table "customers" violates foreign key constraint 
-"customer_ledger_customer_id_fkey" on table "customer_ledger"
-```
+Implement comprehensive employee CRUD (Create, Read, Update, Delete) functionality for admin users on the Employees page. This follows the existing patterns from User Management while ensuring proper security with role-based access control.
 
-This is because **9 tables** reference `customers.id` without `ON DELETE CASCADE`, meaning the database prevents deleting a customer that has related records.
+## Current State Analysis
 
-## Root Cause
+| Aspect | Current State |
+|--------|---------------|
+| **Employee List** | View-only with detail dialog |
+| **Add Employee** | Not available |
+| **Edit Employee** | Not available |
+| **Delete Employee** | Not available |
+| **Role Check** | No admin verification |
 
-The `EXTERNAL_SUPABASE_SCHEMA.sql` file is missing `ON DELETE CASCADE` on multiple foreign key constraints. The Lovable Cloud migrations have this configured correctly, but the external Supabase schema doesn't match.
+The User Management page (`UserManagement.tsx`) provides a good pattern to follow for CRUD operations with dialogs and role-based access.
 
-## Tables Affected
+## Implementation Plan
 
-| Table | Current FK Definition | Status |
-|-------|----------------------|--------|
-| `customer_products` | `REFERENCES customers(id) ON DELETE CASCADE` | ✅ OK |
-| `customer_accounts` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `customer_vacations` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `customer_ledger` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `deliveries` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `route_stops` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `invoices` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `payments` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `customer_bottles` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
-| `bottle_transactions` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+### Part 1: Create Employee Form Dialog Component
 
-## Solution
+**New File: `src/components/employees/EmployeeFormDialog.tsx`**
 
-### Part 1: Update Schema File (Code Change)
-
-Update `EXTERNAL_SUPABASE_SCHEMA.sql` to add `ON DELETE CASCADE` to all customer foreign keys:
+A reusable dialog component for both adding and editing employees:
 
 ```text
-Line 236:
-Before: customer_id UUID NOT NULL UNIQUE REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL UNIQUE REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 283:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 294:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 312:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 334:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 348:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 367:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 551:
-Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
-After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
-
-Line 563:
-Before: customer_id UUID REFERENCES public.customers(id),
-After:  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
+- Props: open, onOpenChange, employee (null for add, data for edit), onSuccess
+- Form fields:
+  - Name (required)
+  - Phone (10 digits, validated)
+  - Role (dropdown: farm_worker, delivery_staff, vet_staff, etc.)
+  - Salary (numeric)
+  - Joining Date (date picker)
+  - Address (optional textarea)
+  - Is Active (toggle switch)
+- Validation before submit
+- Different button text for Add vs Edit mode
 ```
 
-### Part 2: Fix Existing Database (Manual SQL)
+### Part 2: Create Delete Confirmation Dialog
 
-Since the external database already exists, you need to **run migration SQL** to alter the existing foreign keys.
+**New File: `src/components/employees/DeleteEmployeeDialog.tsx`**
 
-Add a new section in schema file or run this SQL directly on external Supabase:
+A confirmation dialog with:
+- Employee name prominently displayed
+- Warning about data cascade (attendance, payroll records)
+- Confirm/Cancel buttons
+- Loading state during deletion
+
+### Part 3: Update Employees Page
+
+**File: `src/pages/Employees.tsx`**
+
+Changes needed:
+
+1. **Add Role Check at Top**
+   ```typescript
+   const { role } = useUserRole();
+   const isAdmin = role === 'super_admin' || role === 'manager';
+   ```
+
+2. **Add State for Dialogs**
+   ```typescript
+   const [addDialogOpen, setAddDialogOpen] = useState(false);
+   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
+   const [deleteEmployee, setDeleteEmployee] = useState<Employee | null>(null);
+   ```
+
+3. **Add "Add Employee" Button (Admin Only)**
+   - In the Employees tab header, add button visible only for admin roles
+
+4. **Add Action Column to Employee Table**
+   ```typescript
+   // Only show if isAdmin
+   {
+     key: "actions",
+     header: "Actions",
+     render: (row: Employee) => (
+       <div className="flex gap-2">
+         <Button size="sm" variant="outline" onClick={() => setEditEmployee(row)}>
+           <Pencil /> Edit
+         </Button>
+         <Button size="sm" variant="destructive" onClick={() => setDeleteEmployee(row)}>
+           <Trash2 /> Delete
+         </Button>
+       </div>
+     )
+   }
+   ```
+
+5. **CRUD Handler Functions**
+   ```typescript
+   const handleAddEmployee = async (data) => {
+     const { error } = await supabase.from("employees").insert(data);
+     if (!error) { toast.success("Employee added"); fetchData(); }
+   };
+   
+   const handleEditEmployee = async (id, data) => {
+     const { error } = await supabase.from("employees").update(data).eq("id", id);
+     if (!error) { toast.success("Employee updated"); fetchData(); }
+   };
+   
+   const handleDeleteEmployee = async (id) => {
+     const { error } = await supabase.from("employees").delete().eq("id", id);
+     if (!error) { toast.success("Employee deleted"); fetchData(); }
+   };
+   ```
+
+6. **Include Dialog Components**
+   - Add EmployeeFormDialog for add/edit
+   - Add DeleteEmployeeDialog for delete confirmation
+
+### Part 4: Database Cascade Configuration
+
+**File: `EXTERNAL_SUPABASE_SCHEMA.sql`**
+
+Add `ON DELETE CASCADE` to employee-related foreign keys to ensure clean deletion:
 
 ```sql
--- Drop and recreate foreign keys with ON DELETE CASCADE
-
--- customer_accounts
-ALTER TABLE public.customer_accounts 
-  DROP CONSTRAINT IF EXISTS customer_accounts_customer_id_fkey,
-  ADD CONSTRAINT customer_accounts_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- customer_vacations
-ALTER TABLE public.customer_vacations 
-  DROP CONSTRAINT IF EXISTS customer_vacations_customer_id_fkey,
-  ADD CONSTRAINT customer_vacations_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- customer_ledger
-ALTER TABLE public.customer_ledger 
-  DROP CONSTRAINT IF EXISTS customer_ledger_customer_id_fkey,
-  ADD CONSTRAINT customer_ledger_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- deliveries
-ALTER TABLE public.deliveries 
-  DROP CONSTRAINT IF EXISTS deliveries_customer_id_fkey,
-  ADD CONSTRAINT deliveries_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- route_stops
-ALTER TABLE public.route_stops 
-  DROP CONSTRAINT IF EXISTS route_stops_customer_id_fkey,
-  ADD CONSTRAINT route_stops_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- invoices
-ALTER TABLE public.invoices 
-  DROP CONSTRAINT IF EXISTS invoices_customer_id_fkey,
-  ADD CONSTRAINT invoices_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- payments
-ALTER TABLE public.payments 
-  DROP CONSTRAINT IF EXISTS payments_customer_id_fkey,
-  ADD CONSTRAINT payments_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- customer_bottles
-ALTER TABLE public.customer_bottles 
-  DROP CONSTRAINT IF EXISTS customer_bottles_customer_id_fkey,
-  ADD CONSTRAINT customer_bottles_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
-
--- bottle_transactions
-ALTER TABLE public.bottle_transactions 
-  DROP CONSTRAINT IF EXISTS bottle_transactions_customer_id_fkey,
-  ADD CONSTRAINT bottle_transactions_customer_id_fkey 
-    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+-- Tables referencing employees that need cascade:
+- attendance.employee_id
+- payroll_records.employee_id
+- employee_shifts.employee_id
+- bottle_transactions.staff_id (nullable, SET NULL instead)
 ```
 
----
+Also provide migration SQL for existing databases.
 
-## Implementation Summary
+### Part 5: Link to User Accounts (Optional Enhancement)
 
-| Task | Location | Action |
-|------|----------|--------|
-| Update schema file | `EXTERNAL_SUPABASE_SCHEMA.sql` | Add `ON DELETE CASCADE` to 9 FK definitions |
-| Add migration section | End of `EXTERNAL_SUPABASE_SCHEMA.sql` | Add ALTER TABLE statements for existing DBs |
-| Fix live database | External Supabase SQL Editor | Run the ALTER TABLE SQL above |
+When creating an employee, optionally link them to an existing user profile:
+- Add dropdown to select from existing profiles
+- This allows matching employees to their login accounts
 
 ---
 
-## Behavior After Fix
+## File Changes Summary
 
-When a customer is deleted:
-- All their ledger entries will be automatically deleted
-- All their deliveries and delivery items will be automatically deleted
-- All their invoices and payments will be automatically deleted
-- All their vacation records will be automatically deleted
-- All their bottle records will be automatically deleted
-- All their account records will be automatically deleted
-- All their route stops will be automatically deleted
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/employees/EmployeeFormDialog.tsx` | Create | Add/Edit form dialog |
+| `src/components/employees/DeleteEmployeeDialog.tsx` | Create | Delete confirmation dialog |
+| `src/pages/Employees.tsx` | Modify | Add CRUD buttons, handlers, role check |
+| `EXTERNAL_SUPABASE_SCHEMA.sql` | Modify | Add ON DELETE CASCADE for employee FKs |
 
-This is the expected behavior for maintaining referential integrity.
+---
+
+## Security Considerations
+
+1. **Role-Based Access**
+   - Only `super_admin` and `manager` can add/edit/delete employees
+   - Regular staff can only view employee list
+   - Check handled on frontend AND database via RLS policies
+
+2. **RLS Policies Already in Place**
+   - `is_manager_or_admin(auth.uid())` checks exist for INSERT, UPDATE, DELETE
+   - View access allowed for broader roles (accountant, auditor for read)
+
+3. **Validation**
+   - Phone number: 10 digits
+   - Role: Must be valid user_role enum value
+   - Salary: Positive number
+   - Name: Required, non-empty
+
+---
+
+## UI/UX Enhancements
+
+1. **Responsive Design**
+   - Use `ResponsiveDialog` for mobile-friendly modals
+   - Form inputs work well on touch screens
+
+2. **Visual Feedback**
+   - Loading states during operations
+   - Success/error toast notifications
+   - Disabled buttons during submission
+
+3. **Confirmation Before Destructive Actions**
+   - Delete requires explicit confirmation
+   - Shows employee name and warns about related data
+
+---
+
+## Manual SQL Required
+
+After code changes, run this on your external Supabase SQL Editor to add cascades:
+
+```sql
+-- Add ON DELETE CASCADE for employee foreign keys
+ALTER TABLE public.attendance 
+  DROP CONSTRAINT IF EXISTS attendance_employee_id_fkey,
+  ADD CONSTRAINT attendance_employee_id_fkey 
+    FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+ALTER TABLE public.payroll_records 
+  DROP CONSTRAINT IF EXISTS payroll_records_employee_id_fkey,
+  ADD CONSTRAINT payroll_records_employee_id_fkey 
+    FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+ALTER TABLE public.employee_shifts 
+  DROP CONSTRAINT IF EXISTS employee_shifts_employee_id_fkey,
+  ADD CONSTRAINT employee_shifts_employee_id_fkey 
+    FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+-- Set staff_id to NULL on employee delete (bottle_transactions)
+ALTER TABLE public.bottle_transactions 
+  DROP CONSTRAINT IF EXISTS bottle_transactions_staff_id_fkey,
+  ADD CONSTRAINT bottle_transactions_staff_id_fkey 
+    FOREIGN KEY (staff_id) REFERENCES public.employees(id) ON DELETE SET NULL;
+```
 
