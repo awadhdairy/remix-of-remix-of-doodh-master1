@@ -101,7 +101,7 @@ export default function RoutesPage() {
     const { error } = await supabase.from("routes").insert({
       name: routeName,
       area: routeArea || null,
-      assigned_staff: assignedStaff || null,
+      assigned_staff: assignedStaff === "__unassigned__" ? null : (assignedStaff || null),
       sequence_order: sequenceOrder ? parseInt(sequenceOrder) : null,
     });
 
@@ -312,7 +312,7 @@ export default function RoutesPage() {
                 <Select value={assignedStaff} onValueChange={setAssignedStaff}>
                   <SelectTrigger><SelectValue placeholder="Select staff" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Unassigned</SelectItem>
+                    <SelectItem value="__unassigned__">Unassigned</SelectItem>
                     {employees.map(emp => (
                       <SelectItem key={emp.id} value={emp.user_id || emp.id}>{emp.name}</SelectItem>
                     ))}
