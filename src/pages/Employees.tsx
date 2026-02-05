@@ -2,11 +2,14 @@ import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
+import { useUserRole } from "@/hooks/useUserRole";
 import { useAutoAttendance } from "@/hooks/useAutoAttendance";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { EmployeeDetailDialog } from "@/components/employees/EmployeeDetailDialog";
+import { EmployeeFormDialog } from "@/components/employees/EmployeeFormDialog";
+import { DeleteEmployeeDialog } from "@/components/employees/DeleteEmployeeDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +23,7 @@ import {
 } from "@/components/ui/responsive-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Calendar, DollarSign, Clock, Users, CheckCircle, XCircle, Loader2, Eye } from "lucide-react";
+import { Plus, Calendar, DollarSign, Clock, Users, CheckCircle, XCircle, Loader2, Eye, Pencil, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface Employee {
@@ -81,6 +84,9 @@ const roleLabels: Record<string, string> = {
 export default function EmployeesPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { role } = useUserRole();
+  const isAdmin = role === 'super_admin' || role === 'manager';
+  
   // Auto-create today's attendance for all active employees (present by default)
   useAutoAttendance();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -93,6 +99,11 @@ export default function EmployeesPage() {
   const [payrollDialogOpen, setPayrollDialogOpen] = useState(false);
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] = useState<Employee | null>(null);
   const [employeeDetailOpen, setEmployeeDetailOpen] = useState(false);
+  
+  // Employee CRUD dialogs
+  const [addEmployeeDialogOpen, setAddEmployeeDialogOpen] = useState(false);
+  const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
+  const [deleteEmployee, setDeleteEmployee] = useState<Employee | null>(null);
   
   // Form states
   const [selectedEmployee, setSelectedEmployee] = useState("");
@@ -366,6 +377,28 @@ export default function EmployeesPage() {
         </Badge>
       )
     },
+    ...(isAdmin ? [{
+      key: "actions" as const,
+      header: "Actions",
+      render: (row: Employee) => (
+        <div className="flex items-center gap-2">
+          <Button 
+            size="sm" 
+            variant="outline" 
+            onClick={(e) => { e.stopPropagation(); setEditEmployee(row); }}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+          <Button 
+            size="sm" 
+            variant="destructive" 
+            onClick={(e) => { e.stopPropagation(); setDeleteEmployee(row); }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      )
+    }] : []),
   ];
 
   // Stats
@@ -442,10 +475,17 @@ export default function EmployeesPage() {
         </TabsList>
 
         <TabsContent value="employees" className="space-y-4">
+          {isAdmin && (
+            <div className="flex justify-end">
+              <Button onClick={() => setAddEmployeeDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" /> Add Employee
+              </Button>
+            </div>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>All Employees</CardTitle>
-              <CardDescription>View and manage all employees</CardDescription>
+              <CardDescription>View and manage all employees{isAdmin && " • Click Edit/Delete to manage"}</CardDescription>
             </CardHeader>
             <CardContent>
               <DataTable data={employees} columns={employeeColumns} searchable searchPlaceholder="Search employees..." />
@@ -607,6 +647,27 @@ export default function EmployeesPage() {
         employee={selectedEmployeeDetail}
         open={employeeDetailOpen}
         onOpenChange={setEmployeeDetailOpen}
+      />
+
+      {/* Add/Edit Employee Dialog */}
+      <EmployeeFormDialog
+        open={addEmployeeDialogOpen || !!editEmployee}
+        onOpenChange={(open) => {
+          if (!open) {
+            setAddEmployeeDialogOpen(false);
+            setEditEmployee(null);
+          }
+        }}
+        employee={editEmployee}
+        onSuccess={fetchData}
+      />
+
+      {/* Delete Employee Dialog */}
+      <DeleteEmployeeDialog
+        open={!!deleteEmployee}
+        onOpenChange={(open) => !open && setDeleteEmployee(null)}
+        employee={deleteEmployee}
+        onSuccess={fetchData}
       />
     </div>
   );
