@@ -1,135 +1,166 @@
 
 
-# Add Missing `verify_pin` Function to Codebase
+# Fix Foreign Key Cascade for Customer Deletion
 
-## Summary
+## Problem Identified
 
-The `verify_pin` database function is missing from `EXTERNAL_SUPABASE_SCHEMA.sql`, causing the "Incorrect PIN" error during factory reset. This function is required by the `archive-old-data` edge function for PIN verification.
+When trying to delete a customer, the database throws:
+```
+update or delete on table "customers" violates foreign key constraint 
+"customer_ledger_customer_id_fkey" on table "customer_ledger"
+```
 
-## Changes Required
+This is because **9 tables** reference `customers.id` without `ON DELETE CASCADE`, meaning the database prevents deleting a customer that has related records.
 
-### 1. Update `EXTERNAL_SUPABASE_SCHEMA.sql`
+## Root Cause
 
-**Location:** Section 14: Authentication Functions (after line 738, before `staff_login`)
+The `EXTERNAL_SUPABASE_SCHEMA.sql` file is missing `ON DELETE CASCADE` on multiple foreign key constraints. The Lovable Cloud migrations have this configured correctly, but the external Supabase schema doesn't match.
 
-Add the `verify_pin` function:
+## Tables Affected
+
+| Table | Current FK Definition | Status |
+|-------|----------------------|--------|
+| `customer_products` | `REFERENCES customers(id) ON DELETE CASCADE` | ✅ OK |
+| `customer_accounts` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `customer_vacations` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `customer_ledger` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `deliveries` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `route_stops` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `invoices` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `payments` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `customer_bottles` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+| `bottle_transactions` | `REFERENCES customers(id)` | ❌ Missing CASCADE |
+
+## Solution
+
+### Part 1: Update Schema File (Code Change)
+
+Update `EXTERNAL_SUPABASE_SCHEMA.sql` to add `ON DELETE CASCADE` to all customer foreign keys:
+
+```text
+Line 236:
+Before: customer_id UUID NOT NULL UNIQUE REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL UNIQUE REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 283:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 294:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 312:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 334:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 348:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 367:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 551:
+Before: customer_id UUID NOT NULL REFERENCES public.customers(id),
+After:  customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE CASCADE,
+
+Line 563:
+Before: customer_id UUID REFERENCES public.customers(id),
+After:  customer_id UUID REFERENCES public.customers(id) ON DELETE CASCADE,
+```
+
+### Part 2: Fix Existing Database (Manual SQL)
+
+Since the external database already exists, you need to **run migration SQL** to alter the existing foreign keys.
+
+Add a new section in schema file or run this SQL directly on external Supabase:
 
 ```sql
--- Verify PIN for authentication (used by edge functions)
-CREATE OR REPLACE FUNCTION public.verify_pin(_phone TEXT, _pin TEXT)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public', 'extensions'
-AS $$
-DECLARE
-  _user_id UUID;
-  _locked_until TIMESTAMPTZ;
-  _failed_count INTEGER;
-BEGIN
-  -- Check if account is locked
-  SELECT locked_until, failed_count INTO _locked_until, _failed_count
-  FROM public.auth_attempts WHERE phone = _phone;
-  
-  IF _locked_until IS NOT NULL AND _locked_until > NOW() THEN
-    RAISE EXCEPTION 'Account temporarily locked. Try again later.';
-  END IF;
-  
-  -- Verify PIN using pgcrypto
-  SELECT id INTO _user_id
-  FROM public.profiles
-  WHERE phone = _phone
-    AND pin_hash = crypt(_pin, pin_hash);
-  
-  IF _user_id IS NULL THEN
-    -- Increment failed attempts
-    INSERT INTO public.auth_attempts (phone, failed_count, last_attempt)
-    VALUES (_phone, 1, NOW())
-    ON CONFLICT (phone) DO UPDATE
-    SET failed_count = auth_attempts.failed_count + 1,
-        last_attempt = NOW(),
-        locked_until = CASE
-          WHEN auth_attempts.failed_count >= 4 THEN NOW() + INTERVAL '15 minutes'
-          ELSE NULL
-        END;
-    RETURN NULL;
-  ELSE
-    -- Reset attempts on success
-    DELETE FROM public.auth_attempts WHERE phone = _phone;
-    RETURN _user_id;
-  END IF;
-END;
-$$;
+-- Drop and recreate foreign keys with ON DELETE CASCADE
+
+-- customer_accounts
+ALTER TABLE public.customer_accounts 
+  DROP CONSTRAINT IF EXISTS customer_accounts_customer_id_fkey,
+  ADD CONSTRAINT customer_accounts_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- customer_vacations
+ALTER TABLE public.customer_vacations 
+  DROP CONSTRAINT IF EXISTS customer_vacations_customer_id_fkey,
+  ADD CONSTRAINT customer_vacations_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- customer_ledger
+ALTER TABLE public.customer_ledger 
+  DROP CONSTRAINT IF EXISTS customer_ledger_customer_id_fkey,
+  ADD CONSTRAINT customer_ledger_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- deliveries
+ALTER TABLE public.deliveries 
+  DROP CONSTRAINT IF EXISTS deliveries_customer_id_fkey,
+  ADD CONSTRAINT deliveries_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- route_stops
+ALTER TABLE public.route_stops 
+  DROP CONSTRAINT IF EXISTS route_stops_customer_id_fkey,
+  ADD CONSTRAINT route_stops_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- invoices
+ALTER TABLE public.invoices 
+  DROP CONSTRAINT IF EXISTS invoices_customer_id_fkey,
+  ADD CONSTRAINT invoices_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- payments
+ALTER TABLE public.payments 
+  DROP CONSTRAINT IF EXISTS payments_customer_id_fkey,
+  ADD CONSTRAINT payments_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- customer_bottles
+ALTER TABLE public.customer_bottles 
+  DROP CONSTRAINT IF EXISTS customer_bottles_customer_id_fkey,
+  ADD CONSTRAINT customer_bottles_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
+
+-- bottle_transactions
+ALTER TABLE public.bottle_transactions 
+  DROP CONSTRAINT IF EXISTS bottle_transactions_customer_id_fkey,
+  ADD CONSTRAINT bottle_transactions_customer_id_fkey 
+    FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE CASCADE;
 ```
 
 ---
 
-### 2. Update Edge Function Error Handling
+## Implementation Summary
 
-**File:** `supabase/functions/archive-old-data/index.ts`
-
-Update PIN verification to capture and log RPC errors (around line 275):
-
-```typescript
-// Before
-const { data: verifiedUserId } = await supabaseAdmin.rpc("verify_pin", {...});
-
-// After
-const { data: verifiedUserId, error: verifyError } = await supabaseAdmin.rpc("verify_pin", {...});
-
-if (verifyError) {
-  console.error(`[ARCHIVE] PIN verification error: ${verifyError.message}`);
-  if (verifyError.message.includes('locked')) {
-    return Response with 429 "Account temporarily locked"
-  }
-  return Response with 500 "PIN verification failed: {error}"
-}
-```
+| Task | Location | Action |
+|------|----------|--------|
+| Update schema file | `EXTERNAL_SUPABASE_SCHEMA.sql` | Add `ON DELETE CASCADE` to 9 FK definitions |
+| Add migration section | End of `EXTERNAL_SUPABASE_SCHEMA.sql` | Add ALTER TABLE statements for existing DBs |
+| Fix live database | External Supabase SQL Editor | Run the ALTER TABLE SQL above |
 
 ---
 
-## Files to Modify
+## Behavior After Fix
 
-| File | Change |
-|------|--------|
-| `EXTERNAL_SUPABASE_SCHEMA.sql` | Add `verify_pin` function after line 738 |
-| `supabase/functions/archive-old-data/index.ts` | Add error capture for `verify_pin` RPC call |
+When a customer is deleted:
+- All their ledger entries will be automatically deleted
+- All their deliveries and delivery items will be automatically deleted
+- All their invoices and payments will be automatically deleted
+- All their vacation records will be automatically deleted
+- All their bottle records will be automatically deleted
+- All their account records will be automatically deleted
+- All their route stops will be automatically deleted
 
----
-
-## Immediate Action Required
-
-After I apply the code changes, you must:
-
-1. **Run the SQL on your external Supabase** (one-time fix for existing deployment):
-   ```
-   https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
-   ```
-
-2. **Clear any lockouts**:
-   ```sql
-   DELETE FROM public.auth_attempts WHERE phone = '7897716792';
-   ```
-
-3. **Test the function**:
-   ```sql
-   SELECT public.verify_pin('7897716792', '101101');
-   ```
-   Should return a UUID.
-
-4. **Pull changes and redeploy**:
-   ```bash
-   git pull origin main
-   supabase functions deploy archive-old-data --no-verify-jwt
-   ```
-
----
-
-## Technical Details
-
-- **Function Purpose:** Verifies staff PIN with brute-force protection (5 attempts → 15 min lockout)
-- **Return Value:** Returns user UUID on success, NULL on wrong PIN
-- **Raises Exception:** When account is locked
-- **Security:** Uses `pgcrypto` extension for secure password hashing via `crypt()` function
-- **Search Path:** Set to `'public', 'extensions'` to ensure `pgcrypto` functions are accessible
+This is the expected behavior for maintaining referential integrity.
 
