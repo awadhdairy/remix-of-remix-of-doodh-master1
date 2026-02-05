@@ -737,6 +737,52 @@ BEGIN
 END;
 $$;
 
+-- Verify PIN for authentication (used by edge functions)
+CREATE OR REPLACE FUNCTION public.verify_pin(_phone TEXT, _pin TEXT)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  _user_id UUID;
+  _locked_until TIMESTAMPTZ;
+  _failed_count INTEGER;
+BEGIN
+  -- Check if account is locked
+  SELECT locked_until, failed_count INTO _locked_until, _failed_count
+  FROM public.auth_attempts WHERE phone = _phone;
+  
+  IF _locked_until IS NOT NULL AND _locked_until > NOW() THEN
+    RAISE EXCEPTION 'Account temporarily locked. Try again later.';
+  END IF;
+  
+  -- Verify PIN using pgcrypto
+  SELECT id INTO _user_id
+  FROM public.profiles
+  WHERE phone = _phone
+    AND pin_hash = crypt(_pin, pin_hash);
+  
+  IF _user_id IS NULL THEN
+    -- Increment failed attempts
+    INSERT INTO public.auth_attempts (phone, failed_count, last_attempt)
+    VALUES (_phone, 1, NOW())
+    ON CONFLICT (phone) DO UPDATE
+    SET failed_count = auth_attempts.failed_count + 1,
+        last_attempt = NOW(),
+        locked_until = CASE
+          WHEN auth_attempts.failed_count >= 4 THEN NOW() + INTERVAL '15 minutes'
+          ELSE NULL
+        END;
+    RETURN NULL;
+  ELSE
+    -- Reset attempts on success
+    DELETE FROM public.auth_attempts WHERE phone = _phone;
+    RETURN _user_id;
+  END IF;
+END;
+$$;
+
 -- ============================================================================
 -- SECTION 14: AUTHENTICATION FUNCTIONS
 -- ============================================================================

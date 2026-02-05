@@ -272,10 +272,28 @@ Deno.serve(async (req) => {
         );
       }
 
-      const { data: verifiedUserId } = await supabaseAdmin.rpc("verify_pin", {
+      console.log(`[ARCHIVE] Verifying PIN for phone: ${userProfile.phone.slice(0, 4)}****`);
+      
+      const { data: verifiedUserId, error: verifyError } = await supabaseAdmin.rpc("verify_pin", {
         _phone: userProfile.phone,
         _pin: pin,
       });
+
+      console.log(`[ARCHIVE] verify_pin result: userId=${verifiedUserId}, error=${verifyError?.message || 'none'}`);
+
+      if (verifyError) {
+        console.error(`[ARCHIVE] PIN verification error: ${verifyError.message}`);
+        if (verifyError.message.includes('locked')) {
+          return new Response(
+            JSON.stringify({ error: "Account temporarily locked. Try again in 15 minutes." }),
+            { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        return new Response(
+          JSON.stringify({ error: `PIN verification failed: ${verifyError.message}` }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
       if (!verifiedUserId || verifiedUserId !== userId) {
         return new Response(
