@@ -35,38 +35,20 @@ Deno.serve(async (req) => {
 
   try {
     // ============================================================
-    // EXTERNAL SUPABASE CONNECTION - Uses your external project
+    // Use Supabase's built-in environment variables
+    // These are automatically provided when deployed to any Supabase project
     // ============================================================
-    // 
-    // IMPORTANT: Since all data lives in your EXTERNAL Supabase project
-    // (iupmzocmmjxpeabkmzri), we must connect to it directly.
-    // The SUPABASE_URL env vars point to Lovable Cloud which has NO data.
-    //
-    // For Vercel deployment: Set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY in env vars
-    // For Lovable preview: Uses hardcoded values (anon key only - limited functionality)
-    // ============================================================
-    
-    const EXTERNAL_URL = "https://iupmzocmmjxpeabkmzri.supabase.co";
-    const EXTERNAL_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8";
-    
-    // Get service role key from environment (set in Vercel or Supabase secrets)
-    const externalServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
-    
-    if (!externalServiceKey) {
-      console.error("[ARCHIVE] Missing EXTERNAL_SUPABASE_SERVICE_ROLE_KEY secret");
-      console.error("[ARCHIVE] This edge function requires the external Supabase service role key");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+
+    if (!supabaseUrl || !supabaseServiceKey || !supabaseAnonKey) {
+      console.error("[ARCHIVE] Missing Supabase configuration");
       return new Response(
-        JSON.stringify({ 
-          error: "Server configuration error - missing external database credentials",
-          hint: "Set EXTERNAL_SUPABASE_SERVICE_ROLE_KEY in Lovable Cloud secrets"
-        }),
+        JSON.stringify({ error: "Server configuration error" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const supabaseUrl = EXTERNAL_URL;
-    const supabaseServiceKey = externalServiceKey;
-    const supabaseAnonKey = EXTERNAL_ANON_KEY;
 
     // Admin client for database operations (bypasses RLS) - connects to EXTERNAL Supabase
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
