@@ -13,30 +13,17 @@ import type { Database } from '@/integrations/supabase/types';
 // use VITE_* env vars for Vercel production deployment.
 // =============================================================================
 
-// Detect if running in Lovable preview environment
-const isLovablePreview = typeof window !== 'undefined' &&
-  window.location.hostname.includes('lovableproject.com');
-
 // Your External Supabase Project Credentials (iupmzocmmjxpeabkmzri)
 // These are PUBLIC anon keys - safe to include in frontend code
 const HARDCODED_EXTERNAL_URL = 'https://iupmzocmmjxpeabkmzri.supabase.co';
 const HARDCODED_EXTERNAL_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml1cG16b2NtbWp4cGVhYmttenJpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAyNjAyNjYsImV4cCI6MjA4NTgzNjI2Nn0.UH-Y9FgzjErzJ_MWvkKaZEp8gfSbB1fuoJ_JuMLPEK8';
 
-// Priority order:
-// 1. Hardcoded for Lovable preview (bypasses broken .env)
-// 2. VITE_* env vars (for Vercel production deployment)
-const EXTERNAL_URL = isLovablePreview
-  ? HARDCODED_EXTERNAL_URL
-  : (import.meta.env.VITE_SUPABASE_URL || HARDCODED_EXTERNAL_URL);
+// ALWAYS use hardcoded credentials for reliability across all environments
+// This ensures both Lovable preview AND Vercel use the same external Supabase project
+const EXTERNAL_URL = HARDCODED_EXTERNAL_URL;
+const EXTERNAL_ANON_KEY = HARDCODED_EXTERNAL_ANON_KEY;
 
-const EXTERNAL_ANON_KEY = isLovablePreview
-  ? HARDCODED_EXTERNAL_ANON_KEY
-  : (import.meta.env.VITE_SUPABASE_ANON_KEY ||
-     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-     HARDCODED_EXTERNAL_ANON_KEY);
-
-// Log which project is being used (helpful for debugging)
-console.log('[Supabase] Environment:', isLovablePreview ? 'Lovable Preview' : 'Production');
+// Log connection info (helpful for debugging)
 console.log('[Supabase] Connecting to:', EXTERNAL_URL.replace(/https?:\/\//, '').split('.')[0]);
 
 // Create the external Supabase client with proper typing
