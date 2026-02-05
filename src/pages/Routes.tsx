@@ -302,17 +302,17 @@ export default function RoutesPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Route Name *</Label>
-                <Input value={routeName} onChange={e => setRouteName(e.target.value)} placeholder="e.g., Morning Route A" />
+                <Label htmlFor="route-name">Route Name *</Label>
+                <Input id="route-name" value={routeName} onChange={e => setRouteName(e.target.value)} placeholder="e.g., Morning Route A" />
               </div>
               <div className="space-y-2">
-                <Label>Area</Label>
-                <Input value={routeArea} onChange={e => setRouteArea(e.target.value)} placeholder="e.g., Sector 5-10" />
+                <Label htmlFor="route-area">Area</Label>
+                <Input id="route-area" value={routeArea} onChange={e => setRouteArea(e.target.value)} placeholder="e.g., Sector 5-10" />
               </div>
               <div className="space-y-2">
-                <Label>Assign to Staff</Label>
+                <Label htmlFor="assign-staff">Assign to Staff</Label>
                 <Select value={assignedStaff} onValueChange={setAssignedStaff}>
-                  <SelectTrigger><SelectValue placeholder="Select staff" /></SelectTrigger>
+                  <SelectTrigger id="assign-staff"><SelectValue placeholder="Select staff" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__unassigned__">Unassigned</SelectItem>
                     {employees.map(emp => (
@@ -322,8 +322,8 @@ export default function RoutesPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Sequence Order</Label>
-                <Input type="number" value={sequenceOrder} onChange={e => setSequenceOrder(e.target.value)} placeholder="Route priority" />
+                <Label htmlFor="sequence-order">Sequence Order</Label>
+                <Input id="sequence-order" type="number" value={sequenceOrder} onChange={e => setSequenceOrder(e.target.value)} placeholder="Route priority" />
               </div>
               <Button className="w-full" onClick={handleCreateRoute}>Create Route</Button>
             </div>
@@ -341,10 +341,13 @@ export default function RoutesPage() {
             </DialogHeader>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Route *</Label>
+                <Label htmlFor="stop-route">Route *</Label>
                 <Select value={stopRouteId} onValueChange={setStopRouteId}>
-                  <SelectTrigger><SelectValue placeholder="Select route" /></SelectTrigger>
+                  <SelectTrigger id="stop-route"><SelectValue placeholder="Select route" /></SelectTrigger>
                   <SelectContent>
+                    {routes.filter(r => r.is_active).length === 0 && (
+                      <SelectItem value="__no_routes__" disabled>No routes available</SelectItem>
+                    )}
                     {routes.filter(r => r.is_active).map(route => (
                       <SelectItem key={route.id} value={route.id}>{route.name}</SelectItem>
                     ))}
@@ -352,10 +355,13 @@ export default function RoutesPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Customer *</Label>
+                <Label htmlFor="stop-customer">Customer *</Label>
                 <Select value={stopCustomerId} onValueChange={setStopCustomerId}>
-                  <SelectTrigger><SelectValue placeholder="Select customer" /></SelectTrigger>
+                  <SelectTrigger id="stop-customer"><SelectValue placeholder="Select customer" /></SelectTrigger>
                   <SelectContent>
+                    {customers.length === 0 && (
+                      <SelectItem value="__no_customers__" disabled>No customers available</SelectItem>
+                    )}
                     {customers.map(customer => (
                       <SelectItem key={customer.id} value={customer.id}>
                         {customer.name} {customer.area && `(${customer.area})`}
@@ -366,12 +372,12 @@ export default function RoutesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Stop Order *</Label>
-                  <Input type="number" value={stopOrder} onChange={e => setStopOrder(e.target.value)} placeholder="1, 2, 3..." />
+                  <Label htmlFor="stop-order">Stop Order *</Label>
+                  <Input id="stop-order" type="number" value={stopOrder} onChange={e => setStopOrder(e.target.value)} placeholder="1, 2, 3..." />
                 </div>
                 <div className="space-y-2">
-                  <Label>Est. Arrival Time</Label>
-                  <Input type="time" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} />
+                  <Label htmlFor="estimated-time">Est. Arrival Time</Label>
+                  <Input id="estimated-time" type="time" value={estimatedTime} onChange={e => setEstimatedTime(e.target.value)} />
                 </div>
               </div>
               <Button className="w-full" onClick={handleCreateStop}>Add Stop</Button>
