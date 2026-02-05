@@ -158,7 +158,7 @@ export function EmployeeFormDialog({ open, onOpenChange, employee, onSuccess }: 
           </ResponsiveDialogTitle>
         </ResponsiveDialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-4 py-4 overflow-y-auto max-h-[60vh]">
           <div className="space-y-2">
             <Label htmlFor="name">Name *</Label>
             <Input
