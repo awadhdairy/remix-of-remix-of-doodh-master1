@@ -189,13 +189,14 @@ CREATE TABLE IF NOT EXISTS public.milk_production (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   cattle_id UUID NOT NULL REFERENCES public.cattle(id),
   production_date DATE NOT NULL,
-  session TEXT NOT NULL,
+  session TEXT NOT NULL CHECK (session IN ('morning', 'evening')),
   quantity_liters NUMERIC NOT NULL,
   fat_percentage NUMERIC,
   snf_percentage NUMERIC,
   quality_notes TEXT,
   recorded_by UUID,
-  created_at TIMESTAMPTZ DEFAULT now()
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(cattle_id, production_date, session)
 );
 
 -- ============================================================================
