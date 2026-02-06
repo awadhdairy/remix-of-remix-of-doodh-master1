@@ -2247,6 +2247,7 @@ export type Database = {
         Args: { _phone: string; _pin: string }
         Returns: Json
       }
+      get_customer_id_from_session: { Args: never; Returns: string }
       has_any_role: {
         Args: {
           _roles: Database["public"]["Enums"]["user_role"][]
