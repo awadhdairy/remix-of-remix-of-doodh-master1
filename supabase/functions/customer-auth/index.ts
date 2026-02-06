@@ -356,6 +356,15 @@ Deno.serve(async (req) => {
               );
             }
 
+            // CRITICAL: Also link user_id on retry path
+            if (retrySession.user) {
+              await supabaseAdmin
+                .from('customer_accounts')
+                .update({ user_id: retrySession.user.id })
+                .eq('customer_id', account.customer_id);
+              console.log(`Linked auth user ${retrySession.user.id} to customer ${account.customer_id} (retry path)`);
+            }
+
             return new Response(
               JSON.stringify({
                 success: true,
@@ -372,8 +381,9 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Update user metadata to ensure customer_id is always present
+        // CRITICAL: Always update user metadata AND link user_id on every login
         if (session.user) {
+          // Update auth user metadata with customer_id
           await supabaseAdmin.auth.admin.updateUserById(session.user.id, {
             user_metadata: {
               ...session.user.user_metadata,
@@ -382,6 +392,18 @@ Deno.serve(async (req) => {
               is_customer: true
             }
           });
+
+          // CRITICAL: Always link user_id in customer_accounts - this enables RLS policies
+          const { error: linkError } = await supabaseAdmin
+            .from('customer_accounts')
+            .update({ user_id: session.user.id })
+            .eq('customer_id', account.customer_id);
+
+          if (linkError) {
+            console.error('Failed to link user_id to customer_account:', linkError);
+          } else {
+            console.log(`Linked auth user ${session.user.id} to customer ${account.customer_id}`);
+          }
         }
 
         return new Response(
