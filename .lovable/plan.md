@@ -1,140 +1,162 @@
 
-# Fix Customer Portal Loading Issues
+# Fix RLS Policy for External Supabase - Customer Products
 
 ## Problem Summary
 
-The Customer Portal shows empty cards and "Not logged in" errors because:
+The "Failed to update subscription - new row violates row-level security policy" error is occurring because:
 
-1. **Customer ID not persisted after login**: The login response includes `customer_id`, but it's not being saved to the auth context properly
-2. **User metadata not being read correctly**: The `useCustomerAuth` hook relies on `user_metadata.customer_id` which may not exist
-3. **RLS policies blocking data access**: Without a valid `customerId`, data queries fail or return empty
-
----
-
-## Root Causes Identified
-
-| Issue | Location | Root Cause |
-|-------|----------|------------|
-| Empty dashboard | `CustomerDashboard.tsx` | `customerId` is null, so `fetchDashboardData()` returns early |
-| Products not showing | `CustomerProducts.tsx` | `customerId` is null, `fetchData()` returns early |
-| PIN change fails | `useCustomerAuth.tsx:158` | `customerId` is null, returns "Not logged in" |
-| Subscription empty | `CustomerSubscription.tsx` | `customerId` is null |
-
-**Core Issue**: After login, `customer_id` from the API response is passed to `useCustomerAuth.login()` but the hook's `setCustomerId()` is only called when the session has `user_metadata.is_customer`. The session set via `setSession()` doesn't automatically include the updated metadata.
+1. This project uses **External Supabase** (project `iupmzocmmjxpeabkmzri`), NOT Lovable Cloud
+2. The migrations I created were applied to the Lovable Cloud database, which is NOT being used
+3. The External Supabase database still has the old RLS policies that require `customer_accounts.user_id = auth.uid()`
+4. The `user_id` column in `customer_accounts` is NULL because it wasn't being linked during customer login
 
 ---
 
-## Solution
+## Solution Overview
 
-### Fix 1: Update useCustomerAuth Hook
+You need to manually run SQL commands in your **External Supabase SQL Editor** to fix this issue.
 
-Modify the `login` function to:
-1. Store `customer_id` from the API response directly using `setCustomerId()`
-2. Fetch `customerData` immediately after login
-3. Not rely solely on `onAuthStateChange` for customer data
-
-**Changes to `src/hooks/useCustomerAuth.tsx`:**
-
-```typescript
-// In login function, after setSession, add:
-if (data.customer_id) {
-  setCustomerId(data.customer_id);
-  // Immediately fetch customer data
-  fetchCustomerData(data.customer_id);
-}
-```
-
-### Fix 2: Persist customerId in localStorage
-
-To survive page refreshes, store `customerId` in localStorage and restore it on mount:
-
-```typescript
-// On login success:
-localStorage.setItem('customer_id', data.customer_id);
-setCustomerId(data.customer_id);
-
-// On mount/getSession:
-const storedCustomerId = localStorage.getItem('customer_id');
-if (storedCustomerId) {
-  setCustomerId(storedCustomerId);
-  fetchCustomerData(storedCustomerId);
-}
-
-// On logout:
-localStorage.removeItem('customer_id');
-```
-
-### Fix 3: Update the Edge Function to Include customer_id in User Metadata
-
-Ensure the auth user creation/update includes `customer_id` in metadata so the JWT token contains it:
-
-**In `customer-auth/index.ts`:**
-
-When creating or updating auth user, ensure metadata includes:
-```typescript
-user_metadata: {
-  phone,
-  customer_id: account.customer_id,
-  is_customer: true
-}
-```
+**External Supabase SQL Editor URL:**
+https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
 
 ---
 
-## Files to Modify
+## SQL Migration to Run
 
-| File | Changes |
-|------|---------|
-| `src/hooks/useCustomerAuth.tsx` | Store customerId from login response, persist in localStorage, restore on mount |
-| `supabase/functions/customer-auth/index.ts` | Ensure user metadata always has customer_id on login |
+Copy and paste this SQL into your External Supabase SQL Editor:
 
----
+```text
+-- ============================================================================
+-- FIX: Customer Products RLS Policy
+-- Run in: https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
+-- ============================================================================
 
-## Technical Implementation Details
+-- Step 1: Create a secure function to get customer_id from auth session
+CREATE OR REPLACE FUNCTION public.get_customer_id_from_session()
+RETURNS UUID
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _customer_id UUID;
+BEGIN
+  -- Get customer_id from customer_accounts linked to auth user
+  SELECT ca.customer_id INTO _customer_id
+  FROM public.customer_accounts ca
+  WHERE ca.user_id = auth.uid();
+  
+  RETURN _customer_id;
+END;
+$$;
 
-### useCustomerAuth.tsx Changes
+-- Step 2: Drop old RLS policies on customer_products (if they exist)
+DROP POLICY IF EXISTS "Customers can manage own subscriptions" ON public.customer_products;
+DROP POLICY IF EXISTS "Customers can read own products" ON public.customer_products;
+DROP POLICY IF EXISTS "Customers can view own products" ON public.customer_products;
+DROP POLICY IF EXISTS "Customers can add own products" ON public.customer_products;
+DROP POLICY IF EXISTS "Customers can update own products" ON public.customer_products;
+DROP POLICY IF EXISTS "Customers can delete own products" ON public.customer_products;
 
-1. **Add localStorage persistence** for `customerId`
-2. **Set customerId directly** from login response (not just from metadata)
-3. **Restore customerId on mount** from localStorage
-4. **Clear customerId on logout** from localStorage
+-- Step 3: Create new secure RLS policies
+CREATE POLICY "Customers can view own products" 
+ON public.customer_products 
+FOR SELECT 
+USING (
+  customer_id = public.get_customer_id_from_session()
+  OR public.is_manager_or_admin(auth.uid())
+  OR public.has_role(auth.uid(), 'delivery_staff')
+  OR public.has_role(auth.uid(), 'auditor')
+);
 
-### Edge Function Changes
+CREATE POLICY "Customers can add own products"
+ON public.customer_products
+FOR INSERT
+WITH CHECK (
+  customer_id = public.get_customer_id_from_session()
+  OR public.is_manager_or_admin(auth.uid())
+);
 
-1. **After successful login**, update the auth user's metadata to include `customer_id`:
+CREATE POLICY "Customers can update own products"
+ON public.customer_products
+FOR UPDATE
+USING (
+  customer_id = public.get_customer_id_from_session()
+  OR public.is_manager_or_admin(auth.uid())
+);
 
-```typescript
-// Before returning success, ensure metadata is up to date
-await supabaseAdmin.auth.admin.updateUserById(session.user.id, {
-  user_metadata: {
-    ...session.user.user_metadata,
-    customer_id: account.customer_id,
-    is_customer: true,
-    phone
-  }
-});
+CREATE POLICY "Customers can delete own products"
+ON public.customer_products
+FOR DELETE
+USING (
+  customer_id = public.get_customer_id_from_session()
+  OR public.is_manager_or_admin(auth.uid())
+);
+
+-- Step 4: Verify the policies were created
+SELECT policyname FROM pg_policies WHERE tablename = 'customer_products';
 ```
 
 ---
 
-## Expected Behavior After Fix
+## Additional Step: Fix Missing user_id in customer_accounts
 
-1. **Login**: Customer logs in → `customer_id` stored in context AND localStorage
-2. **Dashboard**: `customerId` available → data fetches work → cards display data
-3. **Products**: Products load from database (RLS allows authenticated users)
-4. **Subscription**: Customer's subscribed products load correctly
-5. **PIN Change**: `customerId` available → PIN change works
-6. **Page Refresh**: `customerId` restored from localStorage → session persists
+The Edge Function should be updating `customer_accounts.user_id` when customers log in, but if there are existing customers who logged in before the fix, their `user_id` will still be NULL.
+
+**After the customer logs out and logs back in**, the Edge Function will link their `user_id` to their `customer_accounts` record.
+
+**To verify the fix is working**, run this query after a customer logs in:
+
+```text
+SELECT 
+  ca.phone,
+  ca.customer_id,
+  ca.user_id,
+  c.name as customer_name
+FROM customer_accounts ca
+JOIN customers c ON c.id = ca.customer_id
+WHERE ca.is_approved = true;
+```
+
+The `user_id` column should now be populated after the customer logs in.
 
 ---
 
-## Testing Checklist
+## Summary of Actions Required
 
-- [ ] Customer can login with phone + PIN
-- [ ] Dashboard shows balance, delivery stats, subscriptions
-- [ ] Products page shows available products with pricing
-- [ ] Subscription page shows customer's subscribed products
-- [ ] Customer can add/remove products from subscription
-- [ ] Customer can change PIN successfully
-- [ ] Session persists after page refresh
-- [ ] Logout clears session completely
+| Step | Action | Location |
+|------|--------|----------|
+| 1 | Run the SQL migration above | External Supabase SQL Editor |
+| 2 | Redeploy the `customer-auth` Edge Function | Your CLI or Supabase Dashboard |
+| 3 | Ask customer to logout and login again | Customer Portal |
+| 4 | Verify `user_id` is populated | External Supabase SQL Editor |
+
+---
+
+## Edge Function Deployment Command
+
+Make sure the Edge Function is deployed to your External Supabase project:
+
+```bash
+supabase functions deploy customer-auth --project-ref iupmzocmmjxpeabkmzri --no-verify-jwt
+```
+
+---
+
+## Why This Happens
+
+The RLS security check flow is:
+
+1. Customer makes a request (e.g., add product to subscription)
+2. Supabase checks RLS policies on `customer_products` table
+3. Policy calls `get_customer_id_from_session()` which looks up `customer_accounts.user_id = auth.uid()`
+4. If `user_id` is NULL (not linked), the function returns NULL
+5. Policy check fails: `NULL = customer_id` is always false
+6. RLS violation error is thrown
+
+After applying the fix and the customer logs in again, the Edge Function will:
+1. Create/update the auth user in Supabase Auth
+2. Store the auth user's ID in `customer_accounts.user_id`
+3. Now `get_customer_id_from_session()` will return the correct `customer_id`
+4. RLS check passes
