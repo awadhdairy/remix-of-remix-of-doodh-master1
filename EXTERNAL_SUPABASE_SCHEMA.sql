@@ -2248,6 +2248,70 @@ $$;
 -- ============================================================================
 
 -- ============================================================================
+-- SECTION 22: CUSTOMER PORTAL HELPER FUNCTIONS
+-- ============================================================================
+
+-- Helper function to hash PIN for customer accounts (used by edge functions)
+CREATE OR REPLACE FUNCTION public.hash_pin_for_customer(_pin TEXT)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+BEGIN
+  RETURN crypt(_pin, gen_salt('bf'));
+END;
+$$;
+
+-- Auto-create customer account for existing customers using default PIN
+CREATE OR REPLACE FUNCTION public.auto_create_customer_account_if_exists(
+  _phone TEXT,
+  _pin TEXT
+)
+RETURNS JSON
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE
+  _customer RECORD;
+  _existing_account RECORD;
+BEGIN
+  -- Check if account already exists
+  SELECT * INTO _existing_account FROM customer_accounts WHERE phone = _phone;
+  IF _existing_account IS NOT NULL THEN
+    RETURN json_build_object('exists', true, 'has_account', true);
+  END IF;
+  
+  -- Check if customer exists with this phone (pre-registered by admin)
+  SELECT * INTO _customer FROM customers WHERE phone = _phone AND is_active = true;
+  
+  IF _customer IS NOT NULL THEN
+    -- Create auto-approved account with provided PIN
+    INSERT INTO customer_accounts (
+      customer_id, phone, pin_hash, is_approved, approval_status
+    ) VALUES (
+      _customer.id, 
+      _phone, 
+      crypt(_pin, gen_salt('bf')), 
+      true, 
+      'approved'
+    );
+    
+    RETURN json_build_object(
+      'exists', true,
+      'has_account', false,
+      'auto_created', true,
+      'customer_id', _customer.id,
+      'customer_name', _customer.name
+    );
+  END IF;
+  
+  RETURN json_build_object('exists', false);
+END;
+$$;
+
+-- ============================================================================
 -- SECTION 20: MIGRATION - Fix Customer Foreign Key Cascades
 -- ============================================================================
 -- Run this section ONLY if you have an existing database that needs the 

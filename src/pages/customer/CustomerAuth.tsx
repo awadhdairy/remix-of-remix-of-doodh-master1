@@ -230,6 +230,13 @@ export default function CustomerAuth() {
                         )}
                       />
 
+                      <div className="bg-muted/50 border border-border rounded-lg p-3 text-sm">
+                        <p className="text-muted-foreground">
+                          <span className="font-medium text-foreground">Existing customer?</span>{' '}
+                          Use PIN <span className="font-mono font-bold text-primary">000000</span> for your first login.
+                        </p>
+                      </div>
+
                       <Button type="submit" className="w-full" disabled={loading}>
                         {loading ? 'Logging in...' : 'Login'}
                         <ArrowRight className="ml-2 h-4 w-4" />

@@ -6,10 +6,10 @@ import { FarmDashboard } from "@/components/dashboard/FarmDashboard";
 import { AccountantDashboard } from "@/components/dashboard/AccountantDashboard";
 import { VetDashboard } from "@/components/dashboard/VetDashboard";
 import { AuditorDashboard } from "@/components/dashboard/AuditorDashboard";
+import { CustomerAccountApprovals } from "@/components/customers/CustomerAccountApprovals";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/common/LoadingSkeleton";
 import { motion } from "framer-motion";
-
 const roleLabels: Record<string, string> = {
   super_admin: "Super Admin",
   manager: "Manager",
@@ -90,10 +90,17 @@ export default function Dashboard() {
     }
   };
 
+  const isAdminOrManager = role === 'super_admin' || role === 'manager';
+
   return (
     <div className="space-y-6">
+      {/* Customer Account Approvals - Only for admins/managers */}
+      {isAdminOrManager && (
+        <CustomerAccountApprovals />
+      )}
+
       {/* Header */}
-      <motion.div 
+      <motion.div
         className="flex flex-col gap-2"
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}

@@ -27,6 +27,18 @@ function getSafeRedirectUrl(origin: string | null, path: string): string {
   return path; // Relative path as fallback
 }
 
+// Helper function to hash PIN using Supabase RPC
+async function hashPin(supabase: any, pin: string): Promise<string> {
+  // Use crypt function via SQL - this generates a bcrypt hash
+  const { data, error } = await supabase.rpc('hash_pin_for_customer', { _pin: pin });
+  if (error || !data) {
+    // Fallback: let the database handle it during insert
+    console.warn('Could not pre-hash PIN, will use trigger/default');
+    return pin;
+  }
+  return data;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -143,28 +155,104 @@ Deno.serve(async (req) => {
           );
         }
 
-        // Verify PIN using database function
-        const { data: verifyResult, error: verifyError } = await supabaseAdmin.rpc('verify_customer_pin', {
-          _phone: phone,
-          _pin: pin
-        });
+        const DEFAULT_CUSTOMER_PIN = "000000";
 
-        if (verifyError) {
-          console.error('PIN verification error:', verifyError);
-          return new Response(
-            JSON.stringify({ success: false, error: verifyError.message }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
+        // First, check if customer_account exists for this phone
+        const { data: existingAccount } = await supabaseAdmin
+          .from('customer_accounts')
+          .select('customer_id, is_approved, user_id, pin_hash')
+          .eq('phone', phone)
+          .single();
+
+        let account: { customer_id: string; is_approved: boolean; user_id: string | null } | null = null;
+
+        if (existingAccount) {
+          // Account exists - verify PIN using database function
+          const { data: verifyResult, error: verifyError } = await supabaseAdmin.rpc('verify_customer_pin', {
+            _phone: phone,
+            _pin: pin
+          });
+
+          if (verifyError) {
+            console.error('PIN verification error:', verifyError);
+            return new Response(
+              JSON.stringify({ success: false, error: verifyError.message }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          if (!verifyResult || verifyResult.length === 0) {
+            return new Response(
+              JSON.stringify({ success: false, error: 'Invalid phone number or PIN' }),
+              { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          account = verifyResult[0];
+        } else {
+          // No account exists - check if customer exists in customers table (pre-registered by admin)
+          const { data: existingCustomer } = await supabaseAdmin
+            .from('customers')
+            .select('id, name, phone, is_active')
+            .eq('phone', phone)
+            .eq('is_active', true)
+            .single();
+
+          if (existingCustomer) {
+            // Customer exists but no account - check for default PIN
+            if (pin === DEFAULT_CUSTOMER_PIN) {
+              console.log(`Auto-creating account for existing customer: ${existingCustomer.name} (${phone})`);
+              
+              // Create customer_account with the default PIN (hashed)
+              const { error: createAccountError } = await supabaseAdmin
+                .from('customer_accounts')
+                .insert({
+                  customer_id: existingCustomer.id,
+                  phone: phone,
+                  pin_hash: await hashPin(supabaseAdmin, pin),
+                  is_approved: true,
+                  approval_status: 'approved'
+                });
+
+              if (createAccountError) {
+                console.error('Error creating customer account:', createAccountError);
+                return new Response(
+                  JSON.stringify({ success: false, error: 'Failed to create account' }),
+                  { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                );
+              }
+
+              account = {
+                customer_id: existingCustomer.id,
+                is_approved: true,
+                user_id: null
+              };
+            } else {
+              // Customer exists but wrong PIN - tell them to use default
+              return new Response(
+                JSON.stringify({ 
+                  success: false, 
+                  error: 'Use PIN 000000 for your first login as an existing customer',
+                  hint: 'existing_customer_first_login'
+                }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+          } else {
+            // No customer and no account - invalid credentials
+            return new Response(
+              JSON.stringify({ success: false, error: 'Invalid phone number or PIN' }),
+              { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
         }
 
-        if (!verifyResult || verifyResult.length === 0) {
+        if (!account) {
           return new Response(
-            JSON.stringify({ success: false, error: 'Invalid phone number or PIN' }),
+            JSON.stringify({ success: false, error: 'Account not found' }),
             { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-
-        const account = verifyResult[0];
 
         if (!account.is_approved) {
           return new Response(
