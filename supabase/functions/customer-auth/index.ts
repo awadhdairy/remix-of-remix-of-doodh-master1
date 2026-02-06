@@ -331,10 +331,16 @@ Deno.serve(async (req) => {
           const existingUser = userData?.users?.find(u => u.email === email);
           
           if (existingUser) {
-            // Update password AND confirm email
+            // Update password, confirm email, AND ensure metadata has customer_id
             await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
               password: pin,
-              email_confirm: true
+              email_confirm: true,
+              user_metadata: {
+                ...existingUser.user_metadata,
+                phone,
+                customer_id: account.customer_id,
+                is_customer: true
+              }
             });
 
             // Retry login
@@ -364,6 +370,18 @@ Deno.serve(async (req) => {
             JSON.stringify({ success: false, error: 'Authentication failed' }),
             { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
+        }
+
+        // Update user metadata to ensure customer_id is always present
+        if (session.user) {
+          await supabaseAdmin.auth.admin.updateUserById(session.user.id, {
+            user_metadata: {
+              ...session.user.user_metadata,
+              phone,
+              customer_id: account.customer_id,
+              is_customer: true
+            }
+          });
         }
 
         return new Response(
