@@ -91,6 +91,17 @@ Deno.serve(async (req) => {
 
         if (error) {
           console.error('Registration error:', error);
+          // Check if it's a duplicate key error
+          if (error.message.includes('duplicate key') || error.message.includes('already exists')) {
+            return new Response(
+              JSON.stringify({ 
+                success: false, 
+                error: 'An account with this phone number already exists. Please login instead.',
+                has_account: true
+              }),
+              { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
           return new Response(
             JSON.stringify({ success: false, error: error.message }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
