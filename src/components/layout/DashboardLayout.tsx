@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileNavbar } from "@/components/mobile/MobileNavbar";
-import { QuickActionFab } from "@/components/mobile/QuickActionFab";
 import { useCapacitor } from "@/hooks/useCapacitor";
 
 export function DashboardLayout() {
@@ -109,12 +108,7 @@ export function DashboardLayout() {
       </main>
 
       {/* Mobile Navigation */}
-      {isMobile && !keyboardVisible && (
-        <>
-          <MobileNavbar />
-          <QuickActionFab />
-        </>
-      )}
+      {isMobile && !keyboardVisible && <MobileNavbar />}
     </div>
   );
 }
