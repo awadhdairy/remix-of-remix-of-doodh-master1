@@ -1,31 +1,16 @@
-
 # Fix RLS Policy for External Supabase - Customer Products
 
-## Problem Summary
-
-The "Failed to update subscription - new row violates row-level security policy" error is occurring because:
-
-1. This project uses **External Supabase** (project `iupmzocmmjxpeabkmzri`), NOT Lovable Cloud
-2. The migrations I created were applied to the Lovable Cloud database, which is NOT being used
-3. The External Supabase database still has the old RLS policies that require `customer_accounts.user_id = auth.uid()`
-4. The `user_id` column in `customer_accounts` is NULL because it wasn't being linked during customer login
+**Status: ✅ APPROVED - Ready to Execute**
 
 ---
 
-## Solution Overview
+## Action Required: Run SQL in External Supabase
 
-You need to manually run SQL commands in your **External Supabase SQL Editor** to fix this issue.
+**URL:** https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
 
-**External Supabase SQL Editor URL:**
-https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
+Copy and paste this SQL:
 
----
-
-## SQL Migration to Run
-
-Copy and paste this SQL into your External Supabase SQL Editor:
-
-```text
+```sql
 -- ============================================================================
 -- FIX: Customer Products RLS Policy
 -- Run in: https://supabase.com/dashboard/project/iupmzocmmjxpeabkmzri/sql
@@ -46,6 +31,20 @@ BEGIN
   SELECT ca.customer_id INTO _customer_id
   FROM public.customer_accounts ca
   WHERE ca.user_id = auth.uid();
+  
+  IF _customer_id IS NOT NULL THEN
+    RETURN _customer_id;
+  END IF;
+  
+  -- Fallback: Check auth_sessions for customer session
+  SELECT s.user_id INTO _customer_id
+  FROM public.auth_sessions s
+  WHERE s.user_id IN (
+    SELECT ca2.customer_id FROM public.customer_accounts ca2 
+    WHERE ca2.user_id = auth.uid()
+  )
+  AND s.user_type = 'customer'
+  AND s.expires_at > NOW();
   
   RETURN _customer_id;
 END;
@@ -100,63 +99,23 @@ SELECT policyname FROM pg_policies WHERE tablename = 'customer_products';
 
 ---
 
-## Additional Step: Fix Missing user_id in customer_accounts
+## After Running SQL
 
-The Edge Function should be updating `customer_accounts.user_id` when customers log in, but if there are existing customers who logged in before the fix, their `user_id` will still be NULL.
-
-**After the customer logs out and logs back in**, the Edge Function will link their `user_id` to their `customer_accounts` record.
-
-**To verify the fix is working**, run this query after a customer logs in:
-
-```text
-SELECT 
-  ca.phone,
-  ca.customer_id,
-  ca.user_id,
-  c.name as customer_name
+1. **Customer must logout and login again** - This links their auth user ID to customer_accounts
+2. **Verify the fix** by running:
+```sql
+SELECT ca.phone, ca.customer_id, ca.user_id, c.name 
 FROM customer_accounts ca
 JOIN customers c ON c.id = ca.customer_id
 WHERE ca.is_approved = true;
 ```
 
-The `user_id` column should now be populated after the customer logs in.
+The `user_id` column should now be populated after login.
 
 ---
 
-## Summary of Actions Required
-
-| Step | Action | Location |
-|------|--------|----------|
-| 1 | Run the SQL migration above | External Supabase SQL Editor |
-| 2 | Redeploy the `customer-auth` Edge Function | Your CLI or Supabase Dashboard |
-| 3 | Ask customer to logout and login again | Customer Portal |
-| 4 | Verify `user_id` is populated | External Supabase SQL Editor |
-
----
-
-## Edge Function Deployment Command
-
-Make sure the Edge Function is deployed to your External Supabase project:
+## Edge Function Deployment (if needed)
 
 ```bash
 supabase functions deploy customer-auth --project-ref iupmzocmmjxpeabkmzri --no-verify-jwt
 ```
-
----
-
-## Why This Happens
-
-The RLS security check flow is:
-
-1. Customer makes a request (e.g., add product to subscription)
-2. Supabase checks RLS policies on `customer_products` table
-3. Policy calls `get_customer_id_from_session()` which looks up `customer_accounts.user_id = auth.uid()`
-4. If `user_id` is NULL (not linked), the function returns NULL
-5. Policy check fails: `NULL = customer_id` is always false
-6. RLS violation error is thrown
-
-After applying the fix and the customer logs in again, the Edge Function will:
-1. Create/update the auth user in Supabase Auth
-2. Store the auth user's ID in `customer_accounts.user_id`
-3. Now `get_customer_id_from_session()` will return the correct `customer_id`
-4. RLS check passes
