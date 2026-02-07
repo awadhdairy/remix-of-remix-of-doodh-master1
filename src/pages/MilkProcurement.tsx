@@ -171,13 +171,20 @@ export default function MilkProcurementPage() {
     fetchData();
   }, [dateRange, sortBy, sortOrder]);
 
-  // Fix: Update activeVendors stat when vendors state changes (avoids race condition)
+  // Fix: Update stats when vendors state changes (fixes race condition for totalPending)
   useEffect(() => {
-    setStats(prev => ({
-      ...prev,
-      activeVendors: vendors.filter((v) => v.is_active).length
-    }));
-  }, [vendors]);
+    if (vendors.length > 0 || !loading) {
+      const totalPending = vendors
+        .filter(v => v.is_active && Number(v.current_balance) > 0)
+        .reduce((sum, v) => sum + Number(v.current_balance), 0);
+      
+      setStats(prev => ({
+        ...prev,
+        activeVendors: vendors.filter((v) => v.is_active).length,
+        totalPending: totalPending,
+      }));
+    }
+  }, [vendors, loading]);
 
   const fetchData = async () => {
     setLoading(true);
