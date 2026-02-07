@@ -67,11 +67,18 @@ async function fetchDashboardData() {
     .from("customers")
     .select("is_active");
 
+  // This month's invoices for revenue calculation
   const invoicesPromise = supabase
     .from("invoices")
     .select("final_amount, paid_amount")
     .gte("created_at", monthStart)
     .lte("created_at", monthEnd);
+  
+  // FIX: ALL unpaid invoices for accurate pending amount (not just this month)
+  const unpaidInvoicesPromise = supabase
+    .from("invoices")
+    .select("final_amount, paid_amount")
+    .neq("payment_status", "paid");
 
   const breedingPromise = supabase
     .from("breeding_records")
@@ -87,6 +94,7 @@ async function fetchDashboardData() {
     cattleRes,
     customersRes,
     invoicesRes,
+    unpaidInvoicesRes,
     breedingRes,
     healthRes,
   ] = await Promise.all([
@@ -95,6 +103,7 @@ async function fetchDashboardData() {
     cattlePromise,
     customersPromise,
     invoicesPromise,
+    unpaidInvoicesPromise,
     breedingPromise,
     healthPromise,
   ]);
@@ -104,6 +113,7 @@ async function fetchDashboardData() {
   const cattleData = cattleRes.data || [];
   const customers = customersRes.data || [];
   const invoices = invoicesRes.data || [];
+  const unpaidInvoices = unpaidInvoicesRes.data || [];
   const breedingData = breedingRes.data || [];
   const healthData = healthRes.data || [];
 
@@ -132,7 +142,8 @@ async function fetchDashboardData() {
     totalCustomers: customers.length,
     activeCustomers: customers.filter(c => c.is_active).length,
     monthlyRevenue: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
-    pendingAmount: invoices.reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount)), 0),
+    // FIX: Calculate pending from ALL unpaid invoices, not just this month
+    pendingAmount: unpaidInvoices.reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0),
     lastProductionDate,
   };
 
