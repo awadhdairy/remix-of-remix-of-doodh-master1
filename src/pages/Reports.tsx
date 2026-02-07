@@ -15,7 +15,9 @@ import {
   TrendingUp, 
   TrendingDown,
   Database,
-  Loader2
+  Loader2,
+  Milk,
+  Wallet
 } from "lucide-react";
 import { 
   BarChart, 
@@ -43,6 +45,7 @@ export default function ReportsPage() {
   const [expenseData, setExpenseData] = useState<any[]>([]);
   const [cattleStats, setCattleStats] = useState<any>({});
   const [customerStats, setCustomerStats] = useState<any>({});
+  const [procurementStats, setProcurementStats] = useState<any>({});
 
   const canAccessBackup = role === "super_admin" || role === "manager";
 
@@ -60,7 +63,7 @@ export default function ReportsPage() {
 
     try {
       // Fetch all data in parallel for faster loading
-      const [productionRes, invoicesRes, expensesRes, cattleRes, customersRes] = await Promise.all([
+      const [productionRes, invoicesRes, expensesRes, cattleRes, customersRes, procurementRes, vendorsRes] = await Promise.all([
         supabase
           .from("milk_production")
           .select("production_date, session, quantity_liters")
@@ -74,7 +77,17 @@ export default function ReportsPage() {
           .select("category, amount, expense_date")
           .gte("expense_date", format(startOfMonth(new Date()), "yyyy-MM-dd")),
         supabase.from("cattle").select("status, lactation_status"),
-        supabase.from("customers").select("is_active, credit_balance, advance_balance")
+        supabase.from("customers").select("is_active, credit_balance, advance_balance"),
+        // NEW: Fetch procurement data for this month
+        supabase
+          .from("milk_procurement")
+          .select("quantity_liters, total_amount, procurement_date")
+          .gte("procurement_date", format(startOfMonth(new Date()), "yyyy-MM-dd")),
+        // NEW: Fetch vendor balances for outstanding payables
+        supabase
+          .from("milk_vendors")
+          .select("current_balance, is_active")
+          .eq("is_active", true),
       ]);
 
       // Process production data
@@ -132,6 +145,20 @@ export default function ReportsPage() {
         active: customers.filter(c => c.is_active).length,
         totalDue: customers.reduce((sum, c) => sum + Number(c.credit_balance), 0),
         totalAdvance: customers.reduce((sum, c) => sum + Number(c.advance_balance), 0),
+      });
+      
+      // NEW: Process procurement stats
+      const procurement = procurementRes.data || [];
+      const vendors = vendorsRes.data || [];
+      const monthlyProcuredLiters = procurement.reduce((sum, p) => sum + Number(p.quantity_liters), 0);
+      const monthlyProcurementCost = procurement.reduce((sum, p) => sum + Number(p.total_amount || 0), 0);
+      const vendorPayables = vendors.reduce((sum, v) => sum + Math.max(0, Number(v.current_balance || 0)), 0);
+      
+      setProcurementStats({
+        monthlyLiters: monthlyProcuredLiters,
+        monthlyCost: monthlyProcurementCost,
+        vendorPayables: vendorPayables,
+        activeVendors: vendors.length,
       });
     } catch (error) {
       console.error("Error fetching report data:", error);
@@ -216,6 +243,7 @@ export default function ReportsPage() {
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="daily">Daily Data</TabsTrigger>
           <TabsTrigger value="production">Production</TabsTrigger>
+          <TabsTrigger value="procurement">Procurement</TabsTrigger>
           <TabsTrigger value="financial">Financial</TabsTrigger>
           <TabsTrigger value="cattle">Cattle</TabsTrigger>
           <TabsTrigger value="customers">Customers</TabsTrigger>
@@ -271,6 +299,57 @@ export default function ReportsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="procurement">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Milk className="h-5 w-5 text-info" />
+                  Monthly Procurement Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-info/10 rounded-lg">
+                    <span>Total Procured</span>
+                    <span className="text-2xl font-bold text-info">{procurementStats.monthlyLiters?.toFixed(0) || 0} L</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-3 rounded-lg border">
+                      <p className="text-sm text-muted-foreground">Procurement Cost</p>
+                      <p className="text-xl font-bold">₹{(procurementStats.monthlyCost || 0).toLocaleString()}</p>
+                    </div>
+                    <div className="p-3 rounded-lg border">
+                      <p className="text-sm text-muted-foreground">Active Vendors</p>
+                      <p className="text-xl font-bold text-success">{procurementStats.activeVendors || 0}</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5 text-warning" />
+                  Vendor Payables
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center p-3 bg-warning/10 rounded-lg">
+                    <span>Outstanding Balance</span>
+                    <span className="text-2xl font-bold text-warning">₹{(procurementStats.vendorPayables || 0).toLocaleString()}</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Total amount owed to milk vendors. This is calculated from vendor current balances and accounts for all partial payments.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="financial">

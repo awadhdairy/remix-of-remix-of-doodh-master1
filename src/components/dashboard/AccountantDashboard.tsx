@@ -27,6 +27,7 @@ interface AccountingStats {
   overdueInvoices: number;
   totalPaid: number;
   netProfit: number;
+  vendorPayables: number; // NEW: Amounts owed to milk vendors
 }
 
 interface OverdueInvoice {
@@ -51,7 +52,7 @@ export function AccountantDashboard() {
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
-    const [invoicesRes, expensesRes, paymentsRes, overdueRes] = await Promise.all([
+    const [invoicesRes, expensesRes, paymentsRes, overdueRes, vendorBalanceRes] = await Promise.all([
       supabase
         .from("invoices")
         .select("final_amount, paid_amount, payment_status")
@@ -81,12 +82,18 @@ export function AccountantDashboard() {
         .lt("due_date", todayStr)
         .order("due_date")
         .limit(5),
+      // FIX: Fetch vendor payables (amounts owed to milk vendors)
+      supabase
+        .from("milk_vendors")
+        .select("current_balance")
+        .eq("is_active", true),
     ]);
 
     const invoices = invoicesRes.data || [];
     const expenses = expensesRes.data || [];
     const payments = paymentsRes.data || [];
     const overdue = overdueRes.data || [];
+    const vendorBalances = vendorBalanceRes.data || [];
 
     const monthlyRevenue = invoices.reduce((sum, i) => sum + Number(i.final_amount), 0);
     const monthlyExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -94,6 +101,10 @@ export function AccountantDashboard() {
     const pendingPayments = invoices
       .filter(i => i.payment_status !== "paid")
       .reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0);
+
+    // FIX: Calculate vendor payables (amounts owed to milk vendors)
+    const vendorPayables = vendorBalances
+      .reduce((sum, v) => sum + Math.max(0, Number(v.current_balance || 0)), 0);
 
     // Count overdue as invoices past due date that aren't fully paid
     const overdueCount = overdue.length;
@@ -105,6 +116,7 @@ export function AccountantDashboard() {
       overdueInvoices: overdueCount,
       totalPaid,
       netProfit: monthlyRevenue - monthlyExpenses,
+      vendorPayables, // NEW: Track vendor payables
     });
 
     setOverdueInvoices(
@@ -183,14 +195,30 @@ export function AccountantDashboard() {
           delay={200}
         />
         <StatCard
-          title="Net Profit"
-          value={`₹${(stats?.netProfit || 0).toLocaleString()}`}
-          subtitle="Revenue - Expenses"
-          icon={Receipt}
-          variant={(stats?.netProfit || 0) >= 0 ? "success" : "warning"}
+          title="Vendor Payables"
+          value={`₹${(stats?.vendorPayables || 0).toLocaleString()}`}
+          subtitle="Due to milk vendors"
+          icon={TrendingDown}
+          variant={(stats?.vendorPayables || 0) > 0 ? "warning" : "info"}
           delay={300}
         />
       </div>
+      
+      {/* Net Profit Card - Full Width */}
+      <Card className="bg-gradient-to-r from-primary/10 to-success/10 border-primary/20">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Net Profit (This Month)</p>
+              <p className={`text-2xl font-bold ${(stats?.netProfit || 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
+                ₹{(stats?.netProfit || 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-muted-foreground">Revenue - Expenses</p>
+            </div>
+            <Receipt className="h-8 w-8 text-primary/50" />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Overdue Invoices */}
       <Card>

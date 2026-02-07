@@ -241,11 +241,14 @@ export default function MilkProcurementPage() {
       const monthRecords = (data || []).filter(
         (p) => p.procurement_date >= monthStart && p.procurement_date <= monthEnd
       );
-      const pendingRecords = (data || []).filter((p) => p.payment_status === "pending");
-
       const todayTotal = todayRecords.reduce((sum, p) => sum + Number(p.quantity_liters), 0);
       const monthTotal = monthRecords.reduce((sum, p) => sum + Number(p.quantity_liters), 0);
-      const totalPending = pendingRecords.reduce((sum, p) => sum + Number(p.total_amount || 0), 0);
+      
+      // FIX: Calculate pending from vendor balances (authoritative source)
+      // This correctly accounts for partial payments and all time ranges
+      const totalPending = vendors
+        .filter(v => v.is_active && Number(v.current_balance) > 0)
+        .reduce((sum, v) => sum + Number(v.current_balance), 0);
 
       const fatRecords = (data || []).filter((p) => p.fat_percentage);
       const avgFat = fatRecords.length
