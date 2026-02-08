@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { DataArchiveManager } from "@/components/settings/DataArchiveManager";
 import { DataIntegrityManager } from "@/components/settings/DataIntegrityManager";
+import { TelegramSettings } from "@/components/settings/TelegramSettings";
 import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound, Database, ShieldCheck } from "lucide-react";
 
 interface DairySettings {
@@ -502,23 +503,7 @@ export default function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="notifications">
-          <Card>
-            <CardHeader>
-              <CardTitle>Notification Preferences</CardTitle>
-              <CardDescription>
-                Configure how you receive alerts and reminders
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Bell className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium">Coming Soon</h3>
-                <p className="text-muted-foreground max-w-sm">
-                  SMS and WhatsApp notification settings will be available in a future update
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <TelegramSettings />
         </TabsContent>
 
         {/* Data Management Tab - Super Admin Only */}

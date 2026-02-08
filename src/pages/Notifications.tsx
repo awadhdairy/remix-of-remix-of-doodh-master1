@@ -46,6 +46,7 @@ const channelColors: Record<string, string> = {
   sms: "bg-info",
   whatsapp: "bg-success",
   email: "bg-breeding-pregnancy",
+  telegram: "bg-[#0088cc]",
 };
 
 const statusColors: Record<string, string> = {
@@ -357,6 +358,7 @@ export default function NotificationsPage() {
                         <SelectItem value="sms">SMS</SelectItem>
                         <SelectItem value="whatsapp">WhatsApp</SelectItem>
                         <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="telegram">Telegram</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

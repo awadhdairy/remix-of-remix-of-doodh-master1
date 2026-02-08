@@ -1,1 +1,10 @@
 project_id = "iupmzocmmjxpeabkmzri"
+
+[functions.send-telegram]
+verify_jwt = false
+
+[functions.telegram-daily-summary]
+verify_jwt = false
+
+[functions.telegram-event-notify]
+verify_jwt = false
