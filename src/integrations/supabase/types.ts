@@ -1952,6 +1952,57 @@ export type Database = {
         }
         Relationships: []
       }
+      telegram_config: {
+        Row: {
+          chat_id: string
+          chat_name: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          large_payment_threshold: number | null
+          notify_daily_summary: boolean | null
+          notify_deliveries: boolean | null
+          notify_health_alerts: boolean | null
+          notify_inventory_alerts: boolean | null
+          notify_payments: boolean | null
+          notify_procurement: boolean | null
+          notify_production: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          chat_id: string
+          chat_name?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          large_payment_threshold?: number | null
+          notify_daily_summary?: boolean | null
+          notify_deliveries?: boolean | null
+          notify_health_alerts?: boolean | null
+          notify_inventory_alerts?: boolean | null
+          notify_payments?: boolean | null
+          notify_procurement?: boolean | null
+          notify_production?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          chat_id?: string
+          chat_name?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          large_payment_threshold?: number | null
+          notify_daily_summary?: boolean | null
+          notify_deliveries?: boolean | null
+          notify_health_alerts?: boolean | null
+          notify_inventory_alerts?: boolean | null
+          notify_payments?: boolean | null
+          notify_procurement?: boolean | null
+          notify_production?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null

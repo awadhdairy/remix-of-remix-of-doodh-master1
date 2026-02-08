@@ -1,0 +1,45 @@
+name: Telegram Daily Summary
+
+on:
+  schedule:
+    # 2:30 PM UTC = 8:00 PM IST
+    - cron: '30 14 * * *'
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (logs only)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  send-daily-summary:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Send Daily Summary via Telegram
+        env:
+          EXTERNAL_SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.EXTERNAL_SUPABASE_ANON_KEY }}
+        run: |
+          echo "Triggering Telegram Daily Summary..."
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            "${EXTERNAL_SUPABASE_URL}/functions/v1/telegram-daily-summary" \
+            -d '{}')
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n -1)
+          
+          echo "Response Code: $HTTP_CODE"
+          echo "Response Body: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "Error: Function returned $HTTP_CODE"
+            exit 1
+          fi
+          
+          echo "Daily summary sent successfully!"
