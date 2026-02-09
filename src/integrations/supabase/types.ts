@@ -2313,6 +2313,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      hash_pin_for_customer: { Args: { _pin: string }; Returns: string }
       is_authenticated: { Args: never; Returns: boolean }
       is_customer_on_vacation: {
         Args: { _check_date?: string; _customer_id: string }

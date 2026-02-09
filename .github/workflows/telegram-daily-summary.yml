@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Send Daily Summary via Telegram
         env:
-          EXTERNAL_SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.EXTERNAL_SUPABASE_ANON_KEY }}
         run: |
           echo "Triggering Telegram Daily Summary..."
@@ -28,7 +28,7 @@ jobs:
             -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
-            "${EXTERNAL_SUPABASE_URL}/functions/v1/telegram-daily-summary" \
+            "${SUPABASE_URL}/functions/v1/telegram-daily-summary" \
             -d '{}')
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)

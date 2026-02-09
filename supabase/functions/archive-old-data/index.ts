@@ -1,10 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.89.0";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts";
 
 // Tables that can be archived with their date columns
 const ARCHIVABLE_TABLES = [
@@ -29,9 +24,11 @@ const ARCHIVABLE_TABLES = [
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const corsResponse = handleCorsPrelight(req);
+  if (corsResponse) return corsResponse;
+  
+  const origin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
 
   try {
     // ============================================================
