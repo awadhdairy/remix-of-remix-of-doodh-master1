@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useInventoryData, FeedItem, FeedFormData } from "@/hooks/useInventoryData";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { InventoryPageSkeleton } from "@/components/common/PageSkeletons";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -30,6 +31,7 @@ const emptyFormData: FeedFormData = { name: "", category: "green_fodder", unit: 
 
 export default function InventoryPage() {
   const { items, consumption, isLoading, createItem, updateItem, updateStock, isCreating, isUpdating, isUpdatingStock } = useInventoryData();
+  const { notifyLowInventory } = useTelegramNotify();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [stockDialogOpen, setStockDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<FeedItem | null>(null);
@@ -49,7 +51,30 @@ export default function InventoryPage() {
 
   const handleStockUpdate = () => {
     if (!selectedItem || !stockChange.quantity) return;
-    updateStock({ item: selectedItem, type: stockChange.type as "add" | "consume", quantity: parseFloat(stockChange.quantity) }, { onSuccess: () => { setStockDialogOpen(false); setStockChange({ type: "add", quantity: "" }); setSelectedItem(null); } });
+    const quantity = parseFloat(stockChange.quantity);
+    const type = stockChange.type as "add" | "consume";
+    
+    // Calculate what the new stock will be after this update
+    const newStock = type === "add" 
+      ? selectedItem.current_stock + quantity 
+      : Math.max(0, selectedItem.current_stock - quantity);
+    
+    updateStock({ item: selectedItem, type, quantity }, { 
+      onSuccess: () => { 
+        // Check if stock fell below minimum level after consume
+        if (type === "consume" && newStock <= selectedItem.min_stock_level) {
+          notifyLowInventory({
+            item_name: selectedItem.name,
+            current_stock: newStock,
+            min_level: selectedItem.min_stock_level,
+            unit: selectedItem.unit,
+          });
+        }
+        setStockDialogOpen(false); 
+        setStockChange({ type: "add", quantity: "" }); 
+        setSelectedItem(null); 
+      } 
+    });
   };
 
   const lowStockItems = items.filter((i) => i.current_stock <= i.min_stock_level);

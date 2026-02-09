@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
@@ -60,6 +61,7 @@ export default function ProductionPage() {
   const [session, setSession] = useState<"morning" | "evening">("morning");
   const [entries, setEntries] = useState<Record<string, { quantity: string; fat: string; snf: string; notes: string }>>({});
   const { toast } = useToast();
+  const { notifyProductionRecorded } = useTelegramNotify();
 
   // Filter & Sort state
   const [dateRange, setDateRange] = useState<DateRange>("30");
@@ -203,6 +205,15 @@ export default function ProductionPage() {
         title: "Production saved",
         description: `${records.length} entries saved for ${session} session`,
       });
+      
+      // Send Telegram notification
+      const totalQuantity = records.reduce((sum, r) => sum + r.quantity_liters, 0);
+      notifyProductionRecorded({
+        session: session,
+        quantity: totalQuantity,
+        cattle_count: records.length,
+      });
+      
       setDialogOpen(false);
       fetchData();
     }
