@@ -11,10 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Health Check Endpoint
+        env:
+          SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
         run: |
           # Ping the health-check edge function to keep the database active
           response=$(curl -s -w "\n%{http_code}" \
-            "https://iupmzocmmjxpeabkmzri.supabase.co/functions/v1/health-check")
+            "${SUPABASE_URL}/functions/v1/health-check")
           
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)

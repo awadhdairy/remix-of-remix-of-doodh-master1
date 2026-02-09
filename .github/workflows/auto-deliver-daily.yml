@@ -1,0 +1,37 @@
+name: Auto Deliver Daily
+
+on:
+  schedule:
+    # 4:30 AM UTC = 10:00 AM IST
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  auto-deliver:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Trigger Auto Delivery
+        env:
+          SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
+        run: |
+          echo "Triggering Auto Delivery for $(date -u +%Y-%m-%d)..."
+          
+          response=$(curl -s -w "\n%{http_code}" \
+            -X POST \
+            -H "Content-Type: application/json" \
+            "${SUPABASE_URL}/functions/v1/auto-deliver-daily" \
+            -d '{}')
+          
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -n -1)
+          
+          echo "Response Code: $http_code"
+          echo "Response Body: $body"
+          
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Auto-delivery completed successfully"
+          else
+            echo "❌ Auto-delivery failed with status $http_code"
+            exit 1
+          fi

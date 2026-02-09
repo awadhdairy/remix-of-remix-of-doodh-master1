@@ -1,9 +1,5 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { getCorsHeaders, handleCorsPrelight } from "../_shared/cors.ts"
 
 // PERMANENT ADMIN CREDENTIALS - hardcoded for reliability
 // No bootstrap environment variables needed
@@ -114,9 +110,12 @@ async function cleanupOrphanedData(supabaseAdmin: SupabaseClient, targetPhone: s
  * This function is idempotent - running it multiple times is safe
  */
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+  // Handle CORS preflight
+  const corsResponse = handleCorsPrelight(req);
+  if (corsResponse) return corsResponse;
+  
+  const origin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
 
   try {
     // Use Supabase's built-in environment variables (auto-provided by Supabase)

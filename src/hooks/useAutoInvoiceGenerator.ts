@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { format, endOfMonth, addDays } from "date-fns";
-import { getProductPrice } from "@/lib/supabase-helpers";
 
 interface DeliveryItem {
   product_id: string;
@@ -32,34 +31,42 @@ interface InvoiceGenerationResult {
 
 /**
  * Auto-generates invoices from delivery data
+ * 
+ * Issue 9.1 Fix: Batch operations to eliminate N+1 query pattern
+ * 
  * Algorithm:
- * 1. Aggregate delivered items for each customer in billing period
+ * 1. Aggregate delivered items for each customer in billing period (batch fetch)
  * 2. Calculate totals with customer-specific pricing
- * 3. Apply any applicable discounts
- * 4. Generate invoice with unique number
+ * 3. Generate invoice numbers in sequence
+ * 4. Bulk insert invoices
  */
 export function useAutoInvoiceGenerator() {
   /**
-   * Generate invoice number with format: INV-YYYYMM-XXX
+   * Generate invoice number with format: INV-YYYYMM-XXXX
+   * Uses a base count and increments for each invoice in the batch
    */
-  const generateInvoiceNumber = useCallback(async (): Promise<string> => {
+  const generateInvoiceNumbers = useCallback(async (count: number): Promise<string[]> => {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const prefix = `INV-${year}${month}`;
 
     // Get count of existing invoices with same prefix
-    const { count } = await supabase
+    const { count: existingCount } = await supabase
       .from("invoices")
       .select("id", { count: "exact", head: true })
       .like("invoice_number", `${prefix}%`);
 
-    const sequence = String((count || 0) + 1).padStart(3, "0");
-    return `${prefix}-${sequence}`;
+    const baseSequence = (existingCount || 0) + 1;
+    
+    // Generate all invoice numbers at once
+    return Array.from({ length: count }, (_, i) => 
+      `${prefix}-${String(baseSequence + i).padStart(4, "0")}`
+    );
   }, []);
 
   /**
-   * Calculate customer invoice data from deliveries
+   * Calculate customer invoice data from deliveries (single customer)
    */
   const calculateCustomerInvoice = useCallback(async (
     customerId: string,
@@ -113,32 +120,6 @@ export function useAutoInvoiceGenerator() {
       });
     });
 
-    // If no items, calculate from subscription prices
-    if (itemsMap.size === 0 && deliveries.length > 0) {
-      const { data: subscriptions } = await supabase
-        .from("customer_products")
-        .select(`
-          product_id,
-          quantity,
-          custom_price,
-          product:product_id (base_price)
-        `)
-        .eq("customer_id", customerId)
-        .eq("is_active", true);
-
-      subscriptions?.forEach(sub => {
-        const price = sub.custom_price || getProductPrice(sub.product);
-        const itemTotal = price * sub.quantity * deliveries.length;
-        itemsMap.set(sub.product_id, {
-          product_id: sub.product_id,
-          quantity: sub.quantity * deliveries.length,
-          unit_price: price,
-          total_amount: itemTotal,
-        });
-        totalAmount += itemTotal;
-      });
-    }
-
     return {
       customer_id: customerId,
       customer_name: customer?.name || "Unknown",
@@ -150,6 +131,12 @@ export function useAutoInvoiceGenerator() {
 
   /**
    * Generate invoices for all customers for a billing period
+   * 
+   * Optimized with batch operations:
+   * 1. Single query to fetch all deliveries with items
+   * 2. Single query to get existing invoices
+   * 3. Process in memory
+   * 4. Bulk insert invoices
    */
   const generateMonthlyInvoices = useCallback(async (
     year: number,
@@ -167,17 +154,17 @@ export function useAutoInvoiceGenerator() {
       invoices: [],
     };
 
-    // Fetch current UPI handle from dairy settings
-    const { data: dairySettings } = await supabase
-      .from("dairy_settings")
-      .select("upi_handle")
-      .limit(1)
-      .single();
-    
-    const currentUpiHandle = dairySettings?.upi_handle || null;
-
     try {
-      // Get all active customers
+      // BATCH FETCH 1: Get current UPI handle from dairy settings
+      const { data: dairySettings } = await supabase
+        .from("dairy_settings")
+        .select("upi_handle")
+        .limit(1)
+        .single();
+      
+      const currentUpiHandle = dairySettings?.upi_handle || null;
+
+      // BATCH FETCH 2: Get all active customers
       const { data: customers, error: custError } = await supabase
         .from("customers")
         .select("id, name")
@@ -188,7 +175,14 @@ export function useAutoInvoiceGenerator() {
         return result;
       }
 
-      // Check for existing invoices in this period
+      if (!customers || customers.length === 0) {
+        return result;
+      }
+
+      const customerIds = customers.map(c => c.id);
+      const customerMap = new Map(customers.map(c => [c.id, c.name]));
+
+      // BATCH FETCH 3: Get all existing invoices for this period in one query
       const { data: existingInvoices } = await supabase
         .from("invoices")
         .select("customer_id")
@@ -197,60 +191,138 @@ export function useAutoInvoiceGenerator() {
 
       const existingCustomerIds = new Set(existingInvoices?.map(i => i.customer_id) || []);
 
-      for (const customer of customers || []) {
-        // Skip if invoice already exists
-        if (existingCustomerIds.has(customer.id)) {
-          result.skipped++;
-          continue;
-        }
-
-        const invoiceData = await calculateCustomerInvoice(customer.id, periodStart, periodEnd);
-        
-        if (!invoiceData || invoiceData.total_amount === 0) {
-          result.skipped++;
-          continue;
-        }
-
-        const invoiceNumber = await generateInvoiceNumber();
-
-        const { error: insertError } = await supabase.from("invoices").insert({
-          invoice_number: invoiceNumber,
-          customer_id: customer.id,
-          billing_period_start: periodStart,
-          billing_period_end: periodEnd,
-          total_amount: invoiceData.total_amount,
-          tax_amount: 0,
-          discount_amount: 0,
-          final_amount: invoiceData.total_amount,
-          paid_amount: 0,
-          payment_status: "pending",
-          due_date: dueDate,
-          upi_handle: currentUpiHandle,
-        });
-
-        if (insertError) {
-          result.errors.push(`Failed to create invoice for ${customer.name}: ${insertError.message}`);
-        } else {
-          result.generated++;
-          result.total_amount += invoiceData.total_amount;
-          result.invoices.push({
-            customer_name: customer.name,
-            amount: invoiceData.total_amount,
-            invoice_number: invoiceNumber,
-          });
-        }
+      // Filter customers who need invoices
+      const customersToInvoice = customerIds.filter(id => !existingCustomerIds.has(id));
+      
+      if (customersToInvoice.length === 0) {
+        result.skipped = customers.length;
+        return result;
       }
 
+      // BATCH FETCH 4: Get ALL deliveries with items for ALL customers in one query
+      const { data: allDeliveries, error: deliveryError } = await supabase
+        .from("deliveries")
+        .select(`
+          id,
+          customer_id,
+          delivery_date,
+          status,
+          delivery_items (
+            product_id,
+            quantity,
+            unit_price,
+            total_amount
+          )
+        `)
+        .in("customer_id", customersToInvoice)
+        .eq("status", "delivered")
+        .gte("delivery_date", periodStart)
+        .lte("delivery_date", periodEnd);
+
+      if (deliveryError) {
+        result.errors.push(`Failed to fetch deliveries: ${deliveryError.message}`);
+        return result;
+      }
+
+      // Group deliveries by customer in memory
+      const deliveriesByCustomer = new Map<string, typeof allDeliveries>();
+      (allDeliveries || []).forEach(delivery => {
+        const existing = deliveriesByCustomer.get(delivery.customer_id) || [];
+        existing.push(delivery);
+        deliveriesByCustomer.set(delivery.customer_id, existing);
+      });
+
+      // Calculate invoice data for each customer (in memory - no queries)
+      const invoiceDataList: Array<{
+        customer_id: string;
+        customer_name: string;
+        total_amount: number;
+      }> = [];
+
+      for (const customerId of customersToInvoice) {
+        const customerDeliveries = deliveriesByCustomer.get(customerId);
+        
+        if (!customerDeliveries || customerDeliveries.length === 0) {
+          result.skipped++;
+          continue;
+        }
+
+        // Calculate total from delivery items
+        let totalAmount = 0;
+        customerDeliveries.forEach(delivery => {
+          (delivery.delivery_items || []).forEach((item: DeliveryItem) => {
+            totalAmount += item.total_amount;
+          });
+        });
+
+        if (totalAmount === 0) {
+          result.skipped++;
+          continue;
+        }
+
+        invoiceDataList.push({
+          customer_id: customerId,
+          customer_name: customerMap.get(customerId) || "Unknown",
+          total_amount: totalAmount,
+        });
+      }
+
+      if (invoiceDataList.length === 0) {
+        return result;
+      }
+
+      // BATCH: Generate all invoice numbers at once
+      const invoiceNumbers = await generateInvoiceNumbers(invoiceDataList.length);
+
+      // BATCH INSERT: Prepare all invoices for bulk insert
+      const invoicesToInsert = invoiceDataList.map((data, index) => ({
+        invoice_number: invoiceNumbers[index],
+        customer_id: data.customer_id,
+        billing_period_start: periodStart,
+        billing_period_end: periodEnd,
+        total_amount: data.total_amount,
+        tax_amount: 0,
+        discount_amount: 0,
+        final_amount: data.total_amount,
+        paid_amount: 0,
+        payment_status: "pending" as const,
+        due_date: dueDate,
+        upi_handle: currentUpiHandle,
+      }));
+
+      // Single bulk insert for all invoices
+      const { error: insertError } = await supabase
+        .from("invoices")
+        .insert(invoicesToInsert);
+
+      if (insertError) {
+        result.errors.push(`Failed to insert invoices: ${insertError.message}`);
+        return result;
+      }
+
+      // Update result
+      result.generated = invoiceDataList.length;
+      result.total_amount = invoiceDataList.reduce((sum, d) => sum + d.total_amount, 0);
+      result.invoices = invoiceDataList.map((data, index) => ({
+        customer_name: data.customer_name,
+        amount: data.total_amount,
+        invoice_number: invoiceNumbers[index],
+      }));
+
       return result;
-    } catch (error: any) {
-      result.errors.push(`Unexpected error: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      result.errors.push(`Unexpected error: ${errorMessage}`);
       return result;
     }
-  }, [calculateCustomerInvoice, generateInvoiceNumber]);
+  }, [generateInvoiceNumbers]);
 
   return {
     generateMonthlyInvoices,
     calculateCustomerInvoice,
-    generateInvoiceNumber,
+    generateInvoiceNumber: async () => {
+      const numbers = await generateInvoiceNumbers(1);
+      return numbers[0];
+    },
   };
 }
