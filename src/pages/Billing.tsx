@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
@@ -90,6 +91,7 @@ export default function BillingPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   
   const { toast } = useToast();
+  const { notifyPaymentReceived, notifyLargeTransaction } = useTelegramNotify();
 
   useEffect(() => {
     fetchData();
@@ -209,6 +211,25 @@ export default function BillingPage() {
         title: "Payment recorded",
         description: `₹${amount.toLocaleString("en-IN")} payment recorded`,
       });
+      
+      // Send Telegram notification
+      notifyPaymentReceived({
+        amount: amount,
+        customer_name: selectedInvoice.customer?.name || "Customer",
+        payment_mode: "cash",
+        reference: selectedInvoice.invoice_number,
+      });
+      
+      // Notify for large transactions (₹10,000+)
+      if (amount >= 10000) {
+        notifyLargeTransaction({
+          amount: amount,
+          customer_name: selectedInvoice.customer?.name || "Customer",
+          payment_mode: "cash",
+          reference: selectedInvoice.invoice_number,
+        });
+      }
+      
       setPaymentDialogOpen(false);
       setPaymentAmount("");
       setSelectedInvoice(null);

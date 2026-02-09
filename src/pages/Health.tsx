@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useHealthData, HealthRecordWithCattle, HealthFormData } from "@/hooks/useHealthData";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { HealthPageSkeleton } from "@/components/common/PageSkeletons";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -71,6 +72,7 @@ export default function HealthPage() {
     sortBy,
     sortOrder,
   });
+  const { notifyHealthAlert } = useTelegramNotify();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [typeFilter, setTypeFilter] = useState("all");
   const [formData, setFormData] = useState<HealthFormData>(emptyFormData);
@@ -81,10 +83,23 @@ export default function HealthPage() {
 
   const handleSave = () => {
     if (!formData.cattle_id || !formData.title) return;
+    
+    const selectedCattle = cattle.find(c => c.id === formData.cattle_id);
+    
     createRecord({ formData, cattleList: cattle }, {
       onSuccess: () => {
         setDialogOpen(false);
         setFormData(emptyFormData);
+        
+        // Send health alert notification for disease or treatment records
+        if (formData.record_type === "disease" || formData.record_type === "treatment") {
+          notifyHealthAlert({
+            tag_number: selectedCattle?.tag_number || "Unknown",
+            name: selectedCattle?.name || undefined,
+            title: formData.title,
+            description: formData.description || undefined,
+          });
+        }
       },
     });
   };

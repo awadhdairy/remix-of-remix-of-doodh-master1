@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
@@ -165,6 +166,7 @@ export default function MilkProcurementPage() {
   });
 
   const { toast } = useToast();
+  const { notifyProcurementRecorded } = useTelegramNotify();
   
   // Fetch data when filters change
   useEffect(() => {
@@ -422,6 +424,15 @@ export default function MilkProcurementPage() {
           title: "Procurement recorded",
           description: `${quantity}L from ${vendor?.name || "vendor"}`,
         });
+        
+        // Send Telegram notification
+        notifyProcurementRecorded({
+          vendor_name: vendor?.name || "Unknown",
+          quantity: quantity,
+          rate: rate || 0,
+          total_amount: totalAmount || 0,
+        });
+        
         setProcurementDialogOpen(false);
         fetchData();
       }

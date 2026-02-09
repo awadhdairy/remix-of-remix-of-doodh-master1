@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -69,6 +70,7 @@ export default function DeliveriesPage() {
     status: "pending" as "pending" | "delivered" | "missed" | "partial",
   });
   const { toast } = useToast();
+  const { notifyDeliveryCompleted } = useTelegramNotify();
 
   useEffect(() => {
     fetchData();
@@ -185,6 +187,20 @@ export default function DeliveriesPage() {
         variant: "destructive",
       });
     } else {
+      // Send notification when delivery is marked as delivered
+      if (newStatus === "delivered") {
+        const currentStats = {
+          delivered: deliveries.filter(d => d.status === "delivered").length + 1,
+          total: deliveries.length,
+          pending: deliveries.filter(d => d.status === "pending").length - 1,
+        };
+        notifyDeliveryCompleted({
+          route_name: "Default Route",
+          completed_count: currentStats.delivered,
+          total_count: currentStats.total,
+          pending_count: currentStats.pending,
+        });
+      }
       fetchData();
     }
   };
