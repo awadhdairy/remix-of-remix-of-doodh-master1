@@ -1,99 +1,275 @@
 
-
-# Comprehensive Fix Plan: Website Functionality After Recent Changes
+# Telegram Notification System - Comprehensive Fix Plan
 
 ## Summary
 
-The **Telegram test failure** and potentially other edge function calls are failing because the production domain `admin.awadhdairy.com` is **missing from the CORS whitelist**. This was introduced in our Issue 4.3 fix.
+The Telegram notification system is **completely non-functional** because the `useTelegramNotify` hook is **never called** from any page in the application. The hook exists and is well-designed, but no pages actually import or use it to trigger notifications when events occur.
 
 ---
 
-## Issue Identified
+## Root Cause Analysis
 
-### Root Cause: Missing Production Domain in CORS Whitelist
+### Issue 1: Hook Never Used in Application (CRITICAL)
 
-**Current CORS configuration** (`supabase/functions/_shared/cors.ts`):
-```typescript
-const ALLOWED_ORIGINS = [
-  'https://awadhdairyfinal.vercel.app',
-  'https://awadh-dairy.vercel.app',
-  'https://awadhdairy.vercel.app',
-  'https://id-preview--fe319f03-610b-496f-b31c-17c1dc16ca01.lovable.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:8080',
-];
-```
+**Finding**: Searched the entire `src/pages` directory for any usage of:
+- `notifyPaymentReceived`
+- `notifyProductionRecorded`
+- `notifyDeliveryCompleted`
+- `notifyHealthAlert`
+- `useTelegramNotify`
 
-**Missing domain**: `https://admin.awadhdairy.com` (your actual production URL visible in screenshot)
+**Result**: **0 matches found**
 
-**Effect**: Browser blocks all Edge Function responses because the `Access-Control-Allow-Origin` header doesn't match the requesting origin.
+The `useTelegramNotify` hook is defined in `src/hooks/useTelegramNotify.ts` but is never imported or called from any page or component.
+
+| Page | Event That Should Trigger Notification | Current Integration |
+|------|----------------------------------------|---------------------|
+| `Billing.tsx` | Payment recorded (line 168-216) | None |
+| `Production.tsx` | Milk production saved (line 189-208) | None |
+| `MilkProcurement.tsx` | Procurement recorded (line 416-427) | None |
+| `Deliveries.tsx` | Delivery status changed (line 171-189) | None |
+| `Health.tsx` | Health record created (via `useHealthData`) | None |
+| `Inventory.tsx` | Low stock threshold reached | None |
+
+### Issue 2: No Telegram Configs in Database
+
+**Finding**: Query `SELECT * FROM telegram_config WHERE is_active = true` returned **empty array** `[]`
+
+Even if the hook was used, there are no active Telegram chat configurations in the database to send notifications to.
+
+### Issue 3: No Edge Function Logs
+
+**Finding**: No logs found for either `telegram-event-notify` or `send-telegram` edge functions.
+
+This confirms no notification attempts are being made from the application.
+
+### Issue 4: External Supabase Database Not Synced
+
+The edge functions check `telegram_config` table but query the **Lovable Cloud database** instead of the external Supabase project (`iupmzocmmjxpeabkmzri`).
 
 ---
 
-## Fix Plan
+## Implementation Plan
 
-### Step 1: Update CORS Whitelist
+### Part 1: Integrate Notifications into Billing Page
 
-**File**: `supabase/functions/_shared/cors.ts`
+**File**: `src/pages/Billing.tsx`
 
-**Change**: Add `admin.awadhdairy.com` to the allowed origins list
+After successful payment recording (line 207-216), add notification call:
 
 ```typescript
-export const ALLOWED_ORIGINS = [
-  'https://admin.awadhdairy.com',           // PRIMARY production domain
-  'https://awadhdairyfinal.vercel.app',
-  'https://awadh-dairy.vercel.app',
-  'https://awadhdairy.vercel.app',
-  'https://id-preview--fe319f03-610b-496f-b31c-17c1dc16ca01.lovable.app',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:8080',
-];
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+
+// Inside component:
+const { notifyPaymentReceived, notifyLargeTransaction } = useTelegramNotify();
+
+// In handleRecordPayment success block (after line 207):
+toast({ title: "Payment recorded", ... });
+
+// Add notification
+notifyPaymentReceived({
+  amount: amount,
+  customer_name: selectedInvoice.customer?.name || "Customer",
+  payment_mode: "cash",
+  reference: selectedInvoice.invoice_number,
+});
+
+// Also check for large transaction
+if (amount >= 10000) {
+  notifyLargeTransaction({
+    amount: amount,
+    customer_name: selectedInvoice.customer?.name || "Customer",
+    payment_mode: "cash",
+    reference: selectedInvoice.invoice_number,
+  });
+}
 ```
 
-### Step 2: Redeploy to External Supabase
+### Part 2: Integrate Notifications into Production Page
 
-After fixing the CORS configuration, you must **redeploy all edge functions** to your external Supabase project (`iupmzocmmjxpeabkmzri`).
+**File**: `src/pages/Production.tsx`
+
+After successful production save (line 201-208), add notification:
+
+```typescript
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+
+// Inside component:
+const { notifyProductionRecorded } = useTelegramNotify();
+
+// In handleSave success block (after line 201):
+toast({ title: "Production saved", ... });
+
+// Add notification
+const totalQuantity = records.reduce((sum, r) => sum + r.quantity_liters, 0);
+notifyProductionRecorded({
+  session: session,
+  quantity: totalQuantity,
+  cattle_count: records.length,
+});
+```
+
+### Part 3: Integrate Notifications into Procurement Page
+
+**File**: `src/pages/MilkProcurement.tsx`
+
+After successful procurement save (line 421-427), add notification:
+
+```typescript
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+
+// Inside component:
+const { notifyProcurementRecorded } = useTelegramNotify();
+
+// In handleSaveProcurement success block (line 421):
+notifyProcurementRecorded({
+  vendor_name: vendor?.name || "Unknown",
+  quantity: quantity,
+  rate: rate || 0,
+  total_amount: totalAmount || 0,
+});
+```
+
+### Part 4: Integrate Notifications into Deliveries Page
+
+**File**: `src/pages/Deliveries.tsx`
+
+After delivery status updates, add notification:
+
+```typescript
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+
+// Inside component:
+const { notifyDeliveryCompleted } = useTelegramNotify();
+
+// After bulk delivery updates or status changes:
+notifyDeliveryCompleted({
+  route_name: "Default Route",
+  completed_count: stats.delivered,
+  total_count: stats.total,
+  pending_count: stats.pending,
+});
+```
+
+### Part 5: Integrate Health Alert Notifications
+
+**File**: `src/hooks/useHealthData.ts`
+
+In the `createMutation.onSuccess` handler, add health alert notification:
+
+```typescript
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+
+// Note: Since hooks can't call other hooks inside mutation callbacks,
+// we need to pass the notify function as a parameter or restructure
+```
+
+Alternative approach - add notification call in `Health.tsx`:
+
+```typescript
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+
+const { notifyHealthAlert } = useTelegramNotify();
+
+const handleSave = () => {
+  if (!formData.cattle_id || !formData.title) return;
+  
+  const selectedCattle = cattle.find(c => c.id === formData.cattle_id);
+  
+  createRecord({ formData, cattleList: cattle }, {
+    onSuccess: () => {
+      setDialogOpen(false);
+      setFormData(emptyFormData);
+      
+      // Send health alert notification
+      if (formData.record_type === "disease" || formData.record_type === "treatment") {
+        notifyHealthAlert({
+          tag_number: selectedCattle?.tag_number || "Unknown",
+          name: selectedCattle?.name || undefined,
+          title: formData.title,
+          description: formData.description || undefined,
+        });
+      }
+    },
+  });
+};
+```
+
+### Part 6: Integrate Low Inventory Alerts
+
+**File**: `src/hooks/useInventoryData.ts`
+
+After stock update, check if below minimum level:
+
+```typescript
+// In updateStockMutation.onSuccess:
+if (type === "consume") {
+  const newStock = item.current_stock - quantity;
+  if (newStock <= item.min_stock_level) {
+    // Need to call notification here
+    // Since this is a hook, we need to restructure
+  }
+}
+```
+
+Better approach - check in `Inventory.tsx` page after stock update.
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `supabase/functions/_shared/cors.ts` | Add `https://admin.awadhdairy.com` to ALLOWED_ORIGINS |
+| File | Changes |
+|------|---------|
+| `src/pages/Billing.tsx` | Import hook, add `notifyPaymentReceived` call after payment |
+| `src/pages/Production.tsx` | Import hook, add `notifyProductionRecorded` call after save |
+| `src/pages/MilkProcurement.tsx` | Import hook, add `notifyProcurementRecorded` call after save |
+| `src/pages/Deliveries.tsx` | Import hook, add `notifyDeliveryCompleted` on bulk updates |
+| `src/pages/Health.tsx` | Import hook, add `notifyHealthAlert` for disease/treatment records |
+| `src/pages/Inventory.tsx` | Import hook, add `notifyLowInventory` when stock below minimum |
 
 ---
 
-## Deployment Required
+## Additional Required Setup
 
-After this fix, redeploy edge functions to external Supabase:
+### User Action: Configure Telegram Chat
+
+Before notifications will work, you must:
+
+1. Go to **Settings > Telegram** tab
+2. Add a new Chat ID (get from @userinfobot on Telegram)
+3. Toggle "Active" ON
+4. Enable desired notification types (Payments, Production, etc.)
+5. Click "Test" to verify connection
+
+### Verify Edge Function Deployment
+
+Ensure the `telegram-event-notify` and `send-telegram` functions are deployed to your **external Supabase project** with the correct `TELEGRAM_BOT_TOKEN` secret:
 
 ```bash
-cd supabase/functions
-supabase functions deploy --project-ref iupmzocmmjxpeabkmzri
+supabase secrets set TELEGRAM_BOT_TOKEN="8463987198:AAEu_uzBzDpQKfT_BMEBCAXtE1POCrJjveQ" --project-ref iupmzocmmjxpeabkmzri
+supabase functions deploy telegram-event-notify send-telegram --project-ref iupmzocmmjxpeabkmzri
 ```
 
-All 13 functions will be updated with the new CORS configuration since they share `_shared/cors.ts`.
+---
+
+## Testing Checklist
+
+After implementation:
+
+1. Add a Telegram config in Settings (Chat ID from @userinfobot)
+2. Enable "Payment Received" notification
+3. Record a payment in Billing page
+4. Verify Telegram message received
+5. Check `notification_logs` table for delivery status
 
 ---
 
-## Expected Result
+## Technical Summary
 
-After applying this fix:
-- Telegram "Test" button will work
-- All edge function calls from `admin.awadhdairy.com` will succeed
-- No functionality loss (only adding a new allowed origin)
-
----
-
-## Safety Analysis
-
-| Aspect | Status |
-|--------|--------|
-| **Breaking Changes** | None - only adding new domain |
-| **Existing Functionality** | Preserved - all existing origins still allowed |
-| **Security** | Maintained - still using whitelist (not wildcard) |
-| **Backward Compatible** | Yes |
-
+| Issue | Status | Impact |
+|-------|--------|--------|
+| Hook never imported/used | Root cause | No notifications sent |
+| No telegram_config rows | Configuration | No recipients defined |
+| No edge function logs | Symptom | Confirms no API calls made |
+| Edge functions point to external DB | OK | Correctly configured |
+| CORS whitelist includes production | Fixed | API calls will work |
