@@ -4,6 +4,7 @@
  */
 
 export const ALLOWED_ORIGINS = [
+  'https://admin.awadhdairy.com',           // PRIMARY production domain
   'https://awadhdairyfinal.vercel.app',
   'https://awadh-dairy.vercel.app',
   'https://awadhdairy.vercel.app',
