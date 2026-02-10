@@ -138,7 +138,8 @@ export function SmartInvoiceCreator({
         .eq("customer_id", customerId)
         .eq("status", "delivered")
         .gte("delivery_date", periodStart)
-        .lte("delivery_date", periodEnd);
+        .lte("delivery_date", periodEnd)
+        .limit(10000);
 
       if (deliveryError) throw deliveryError;
 
@@ -198,7 +199,7 @@ export function SmartInvoiceCreator({
             unit: product.unit,
             rate: data.unit_price || product.base_price,
             tax_percentage: product.tax_percentage || 0,
-            amount: data.total_amount,
+            amount: data.quantity * (data.unit_price || product.base_price),
             is_addon: data.is_addon,
             delivery_count: data.delivery_count,
           });
@@ -297,12 +298,14 @@ export function SmartInvoiceCreator({
   
   const grandTotal = subtotal - discountAmount;
 
-  const generateInvoiceNumber = () => {
+  const generateInvoiceNumber = async (): Promise<string> => {
     const date = new Date();
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, "0");
-    return `INV-${year}${month}-${random}`;
+    const prefix = `INV-${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const { count } = await supabase
+      .from("invoices")
+      .select("id", { count: "exact", head: true })
+      .like("invoice_number", `${prefix}%`);
+    return `${prefix}-${String((count || 0) + 1).padStart(4, "0")}`;
   };
 
   const handleCreateInvoice = async () => {
@@ -339,7 +342,7 @@ export function SmartInvoiceCreator({
     
     const allDetails = [subscriptionDetail, addonDetail].filter(Boolean).join(" | ");
 
-    const invoiceNumber = generateInvoiceNumber();
+    const invoiceNumber = await generateInvoiceNumber();
 
     // Fetch current UPI handle from dairy settings
     const { data: dairySettings } = await supabase

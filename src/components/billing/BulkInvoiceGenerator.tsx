@@ -92,7 +92,8 @@ export function BulkInvoiceGenerator({
       `)
       .gte("delivery_date", startDate)
       .lte("delivery_date", endDate)
-      .eq("status", "delivered");
+      .eq("status", "delivered")
+      .limit(10000);
 
     if (deliveryError) {
       toast({
@@ -108,8 +109,8 @@ export function BulkInvoiceGenerator({
     const { data: existingInvoices, error: invoiceError } = await supabase
       .from("invoices")
       .select("customer_id")
-      .gte("billing_period_start", startDate)
-      .lte("billing_period_end", endDate);
+      .eq("billing_period_start", startDate)
+      .eq("billing_period_end", endDate);
 
     if (invoiceError) {
       toast({
@@ -205,8 +206,13 @@ export function BulkInvoiceGenerator({
 
     for (const summary of customersToInvoice) {
       try {
-        // Generate invoice number
-        const invoiceNumber = `INV-${format(new Date(), "yyyyMMdd")}-${summary.customer_id.slice(0, 4).toUpperCase()}`;
+        // Generate sequential invoice number
+        const prefix = `INV-${format(new Date(), "yyyyMM")}`;
+        const { count: existingCount } = await supabase
+          .from("invoices")
+          .select("id", { count: "exact", head: true })
+          .like("invoice_number", `${prefix}%`);
+        const invoiceNumber = `${prefix}-${String((existingCount || 0) + 1 + completed).padStart(4, "0")}`;
         
         const dueDate = format(addDays(new Date(), 15), "yyyy-MM-dd");
 
@@ -227,7 +233,20 @@ export function BulkInvoiceGenerator({
           console.error("Error creating invoice:", error);
           failed++;
         } else {
-          // Add ledger entry for the invoice
+          // Fetch latest running balance before ledger insert
+          const { data: lastEntry } = await supabase
+            .from("customer_ledger")
+            .select("running_balance")
+            .eq("customer_id", summary.customer_id)
+            .order("transaction_date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const previousBalance = lastEntry?.running_balance || 0;
+          const newBalance = previousBalance + summary.total_amount;
+
+          // Add ledger entry for the invoice with running_balance
           await supabase.from("customer_ledger").insert({
             customer_id: summary.customer_id,
             transaction_date: new Date().toISOString().split("T")[0],
@@ -235,6 +254,7 @@ export function BulkInvoiceGenerator({
             description: `Invoice ${invoiceNumber} for ${format(new Date(startDate), "MMM dd")} - ${format(new Date(endDate), "MMM dd")}`,
             debit_amount: summary.total_amount,
             credit_amount: 0,
+            running_balance: newBalance,
           });
           completed++;
         }

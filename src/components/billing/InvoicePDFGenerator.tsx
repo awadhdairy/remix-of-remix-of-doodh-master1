@@ -164,7 +164,8 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
         .eq("customer_id", invoice.customer_id)
         .gte("delivery_date", invoice.billing_period_start)
         .lte("delivery_date", invoice.billing_period_end)
-        .eq("status", "delivered");
+        .eq("status", "delivered")
+        .limit(10000);
 
       // Flatten delivery items
       const items: DeliveryItem[] = [];
