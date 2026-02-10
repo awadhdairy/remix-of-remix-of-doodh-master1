@@ -122,7 +122,8 @@ export function EditInvoiceDialog({
         .eq("customer_id", invoice.customer_id)
         .eq("status", "delivered")
         .gte("delivery_date", invoice.billing_period_start)
-        .lte("delivery_date", invoice.billing_period_end);
+        .lte("delivery_date", invoice.billing_period_end)
+        .limit(10000);
 
       if (deliveryError) throw deliveryError;
 
@@ -179,7 +180,7 @@ export function EditInvoiceDialog({
             unit: product.unit,
             rate: data.unit_price || product.base_price,
             tax_percentage: product.tax_percentage || 0,
-            amount: data.total_amount,
+            amount: data.quantity * (data.unit_price || product.base_price),
             is_addon: data.is_addon,
             delivery_count: data.delivery_count,
           });

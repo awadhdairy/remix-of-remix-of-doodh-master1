@@ -217,7 +217,8 @@ export function useAutoInvoiceGenerator() {
         .in("customer_id", customersToInvoice)
         .eq("status", "delivered")
         .gte("delivery_date", periodStart)
-        .lte("delivery_date", periodEnd);
+        .lte("delivery_date", periodEnd)
+        .limit(10000);
 
       if (deliveryError) {
         result.errors.push(`Failed to fetch deliveries: ${deliveryError.message}`);

@@ -1,14 +1,23 @@
 import { useState, useEffect } from "react";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { useUserRole } from "@/hooks/useUserRole";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 import { StatusBadge } from "@/components/common/StatusBadge";
+import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ResponsiveDialog,
   ResponsiveDialogContent,
@@ -18,7 +27,7 @@ import {
 } from "@/components/ui/responsive-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Receipt, IndianRupee, Loader2, Edit3, AlertTriangle } from "lucide-react";
+import { Receipt, IndianRupee, Loader2, Edit3, AlertTriangle, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 import { InvoicePDFGenerator } from "@/components/billing/InvoicePDFGenerator";
 import { EditInvoiceDialog } from "@/components/billing/EditInvoiceDialog";
@@ -84,6 +93,10 @@ export default function BillingPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithCustomer | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<InvoiceWithCustomer | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMode, setPaymentMode] = useState("cash");
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingInvoice, setDeletingInvoice] = useState<InvoiceWithCustomer | null>(null);
+  const [deleting, setDeleting] = useState(false);
   
   // Filter & Sort state
   const [dateRange, setDateRange] = useState<DateRange>("90");
@@ -92,6 +105,8 @@ export default function BillingPage() {
   
   const { toast } = useToast();
   const { notifyPaymentReceived, notifyLargeTransaction } = useTelegramNotify();
+  const { role } = useUserRole();
+  const canDelete = role === "super_admin" || role === "manager";
 
   useEffect(() => {
     fetchData();
@@ -171,7 +186,7 @@ export default function BillingPage() {
       invoice_id: selectedInvoice.id,
       customer_id: selectedInvoice.customer_id,
       amount: amount,
-      payment_mode: "cash",
+      payment_mode: paymentMode,
       payment_date: format(new Date(), "yyyy-MM-dd"),
     });
 
@@ -216,7 +231,7 @@ export default function BillingPage() {
       notifyPaymentReceived({
         amount: amount,
         customer_name: selectedInvoice.customer?.name || "Customer",
-        payment_mode: "cash",
+        payment_mode: paymentMode,
         reference: selectedInvoice.invoice_number,
       });
       
@@ -225,15 +240,68 @@ export default function BillingPage() {
         notifyLargeTransaction({
           amount: amount,
           customer_name: selectedInvoice.customer?.name || "Customer",
-          payment_mode: "cash",
-          reference: selectedInvoice.invoice_number,
-        });
+        payment_mode: paymentMode,
+        reference: selectedInvoice.invoice_number,
+      });
       }
       
       setPaymentDialogOpen(false);
       setPaymentAmount("");
+      setPaymentMode("cash");
       setSelectedInvoice(null);
       fetchData();
+    }
+  };
+
+  const handleDeleteInvoice = async () => {
+    if (!deletingInvoice) return;
+    setDeleting(true);
+
+    try {
+      // 1. Delete associated ledger entries
+      await supabase
+        .from("customer_ledger")
+        .delete()
+        .eq("customer_id", deletingInvoice.customer_id)
+        .eq("transaction_type", "invoice")
+        .ilike("description", `%${deletingInvoice.invoice_number}%`);
+
+      // 2. Delete associated payments
+      await supabase
+        .from("payments")
+        .delete()
+        .eq("invoice_id", deletingInvoice.id);
+
+      // 3. Delete payment ledger entries (by reference_id)
+      await supabase
+        .from("customer_ledger")
+        .delete()
+        .eq("reference_id", deletingInvoice.id);
+
+      // 4. Delete the invoice
+      const { error } = await supabase
+        .from("invoices")
+        .delete()
+        .eq("id", deletingInvoice.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Invoice deleted",
+        description: `Invoice ${deletingInvoice.invoice_number} and associated records removed`,
+      });
+
+      setDeleteDialogOpen(false);
+      setDeletingInvoice(null);
+      fetchData();
+    } catch (error: any) {
+      toast({
+        title: "Error deleting invoice",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -342,12 +410,27 @@ export default function BillingPage() {
             onClick={() => {
               setSelectedInvoice(item);
               setPaymentAmount("");
+              setPaymentMode("cash");
               setPaymentDialogOpen(true);
             }}
             disabled={item.payment_status === "paid"}
           >
             <IndianRupee className="h-3 w-3" /> Pay
           </Button>
+          {canDelete && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={() => {
+                setDeletingInvoice(item);
+                setDeleteDialogOpen(true);
+              }}
+              title="Delete invoice"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       ),
     },
@@ -487,6 +570,21 @@ export default function BillingPage() {
                   max={Number(selectedInvoice.final_amount) - Number(selectedInvoice.paid_amount)}
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label>Payment Mode</Label>
+                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
@@ -498,6 +596,17 @@ export default function BillingPage() {
           </div>
         </ResponsiveDialogContent>
       </ResponsiveDialog>
+
+      {/* Delete Invoice Confirmation */}
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Invoice"
+        description={`Are you sure you want to delete invoice ${deletingInvoice?.invoice_number}? This will also remove associated ledger entries and payment records. This action cannot be undone.`}
+        confirmText={deleting ? "Deleting..." : "Delete Invoice"}
+        onConfirm={handleDeleteInvoice}
+        variant="destructive"
+      />
     </div>
   );
 }
