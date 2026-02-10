@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { invalidateProductionRelated } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
@@ -62,6 +64,7 @@ export default function ProductionPage() {
   const [entries, setEntries] = useState<Record<string, { quantity: string; fat: string; snf: string; notes: string }>>({});
   const { toast } = useToast();
   const { notifyProductionRecorded } = useTelegramNotify();
+  const queryClient = useQueryClient();
 
   // Filter & Sort state
   const [dateRange, setDateRange] = useState<DateRange>("30");
@@ -215,6 +218,7 @@ export default function ProductionPage() {
       });
       
       setDialogOpen(false);
+      invalidateProductionRelated(queryClient);
       fetchData();
     }
   };

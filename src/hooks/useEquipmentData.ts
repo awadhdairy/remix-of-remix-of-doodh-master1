@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
+import { invalidateExpenseRelated } from "@/lib/query-invalidation";
 import { format } from "date-fns";
 
 export interface Equipment {
@@ -110,6 +111,7 @@ export function useEquipmentData() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["equipment"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
       const message = result?.expenseCreated ? "Equipment added & expense recorded" : "Equipment added";
       toast({ title: message });
     },
@@ -163,6 +165,7 @@ export function useEquipmentData() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["equipment"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
       const message = result?.expenseCreated ? "Maintenance record added & expense recorded" : "Maintenance record added";
       toast({ title: message });
     },

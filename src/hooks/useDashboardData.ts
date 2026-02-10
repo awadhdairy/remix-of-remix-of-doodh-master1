@@ -159,9 +159,9 @@ export function useDashboardData() {
   return useQuery({
     queryKey: ["dashboard-data"],
     queryFn: fetchDashboardData,
-    staleTime: 5 * 60 * 1000, // 5 minutes for better performance
-    gcTime: 10 * 60 * 1000, // 10 minutes garbage collection
-    refetchOnWindowFocus: false,
+    staleTime: 1 * 60 * 1000, // 1 minute for real-time sync
+    gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });

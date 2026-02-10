@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
+import { invalidateExpenseRelated } from "@/lib/query-invalidation";
 import { format } from "date-fns";
 import { logger } from "@/lib/logger";
 
@@ -114,6 +115,7 @@ export function useInventoryData() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
       
       if (result?.expenseCreated) {
         toast({ 
@@ -216,6 +218,7 @@ export function useInventoryData() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["inventory"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
       
       if (result.type === "add") {
         if (result.expenseCreated) {

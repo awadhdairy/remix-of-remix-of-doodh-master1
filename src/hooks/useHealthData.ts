@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
+import { invalidateExpenseRelated } from "@/lib/query-invalidation";
 import { DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
 
 interface Cattle {
@@ -130,6 +131,7 @@ export function useHealthData(options: UseHealthDataOptions = {}) {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["health-records"] });
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
       const message = result?.expenseCreated ? "Health record added & expense recorded" : "Health record added";
       toast({ title: message });
     },
