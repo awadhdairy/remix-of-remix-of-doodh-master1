@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { invalidateCustomerRelated } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -95,6 +97,7 @@ export default function CustomersPage() {
   const [dialogTab, setDialogTab] = useState<"details" | "subscription">("details");
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [routes, setRoutes] = useState<RouteOption[]>([]);
 
   useEffect(() => {
@@ -365,6 +368,7 @@ export default function CustomersPage() {
         description: `${formData.name} and subscriptions have been saved successfully`,
       });
       setDialogOpen(false);
+      invalidateCustomerRelated(queryClient);
       fetchCustomers();
     } else {
       // Create new customer with subscription products
@@ -450,6 +454,7 @@ export default function CustomersPage() {
         description: `${formData.name} has been created with ${subscriptionData.products.length} subscription product(s)`,
       });
       setDialogOpen(false);
+      invalidateCustomerRelated(queryClient);
       fetchCustomers();
     }
   };
@@ -472,6 +477,7 @@ export default function CustomersPage() {
       });
       setDeleteDialogOpen(false);
       setSelectedCustomer(null);
+      invalidateCustomerRelated(queryClient);
       fetchCustomers();
     }
   };

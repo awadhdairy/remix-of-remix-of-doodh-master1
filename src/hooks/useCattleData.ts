@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useToast } from "@/hooks/use-toast";
+import { invalidateCattleRelated } from "@/lib/query-invalidation";
 
 export interface Cattle {
   id: string;
@@ -102,6 +103,7 @@ export function useCattleData() {
     mutationFn: createCattle,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cattle"] });
+      invalidateCattleRelated(queryClient);
       toast({ title: "Cattle added successfully" });
     },
     onError: (error: Error) => {
@@ -114,6 +116,7 @@ export function useCattleData() {
       updateCattle(id, formData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cattle"] });
+      invalidateCattleRelated(queryClient);
       toast({ title: "Cattle updated successfully" });
     },
     onError: (error: Error) => {
@@ -125,6 +128,7 @@ export function useCattleData() {
     mutationFn: deleteCattle,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cattle"] });
+      invalidateCattleRelated(queryClient);
       toast({ title: "Cattle deleted successfully" });
     },
     onError: (error: Error) => {

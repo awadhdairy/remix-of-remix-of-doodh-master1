@@ -302,8 +302,9 @@ export function useRevenueGrowth() {
   return useQuery({
     queryKey: ["revenue-growth-chart"],
     queryFn: fetchRevenueGrowth,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -311,8 +312,9 @@ export function useExpenseBreakdown() {
   return useQuery({
     queryKey: ["expense-breakdown-chart"],
     queryFn: fetchExpenseBreakdown,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -320,8 +322,9 @@ export function useCattleComposition() {
   return useQuery({
     queryKey: ["cattle-composition-chart"],
     queryFn: fetchCattleComposition,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -331,6 +334,7 @@ export function useDeliveryPerformance() {
     queryFn: fetchDeliveryPerformance,
     staleTime: 2 * 60 * 1000,
     gcTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -338,8 +342,9 @@ export function useMonthComparison() {
   return useQuery({
     queryKey: ["month-comparison-chart"],
     queryFn: fetchMonthComparison,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -347,8 +352,9 @@ export function useCustomerGrowth() {
   return useQuery({
     queryKey: ["customer-growth-chart"],
     queryFn: fetchCustomerGrowth,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -356,7 +362,8 @@ export function useProcurementVsProduction() {
   return useQuery({
     queryKey: ["procurement-vs-production-chart"],
     queryFn: fetchProcurementVsProduction,
-    staleTime: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }

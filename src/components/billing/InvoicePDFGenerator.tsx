@@ -761,17 +761,20 @@ export function InvoicePDFGenerator({ invoice, onGenerated }: InvoicePDFGenerato
       </div>
 
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-5xl h-[90vh] flex flex-col p-0 gap-0">
+          <DialogHeader className="px-6 py-4 border-b shrink-0">
             <DialogTitle>Invoice Preview - {invoice.invoice_number}</DialogTitle>
           </DialogHeader>
-          {pdfDataUrl && (
-            <iframe
-              src={pdfDataUrl}
-              className="w-full h-full rounded-lg border"
-              title="Invoice Preview"
-            />
-          )}
+          <div className="flex-1 min-h-0 p-4">
+            {pdfDataUrl && (
+              <iframe
+                src={pdfDataUrl}
+                className="w-full h-full rounded-lg border-0"
+                title="Invoice Preview"
+                style={{ minHeight: "100%" }}
+              />
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </>

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { invalidateProcurementRelated } from "@/lib/query-invalidation";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -166,6 +168,7 @@ export default function MilkProcurementPage() {
   });
 
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { notifyProcurementRecorded } = useTelegramNotify();
   
   // Fetch data when filters change
@@ -412,6 +415,7 @@ export default function MilkProcurementPage() {
       } else {
         toast({ title: "Record updated", description: "Procurement record updated" });
         setProcurementDialogOpen(false);
+        invalidateProcurementRelated(queryClient);
         fetchData();
       }
     } else {
@@ -434,6 +438,7 @@ export default function MilkProcurementPage() {
         });
         
         setProcurementDialogOpen(false);
+        invalidateProcurementRelated(queryClient);
         fetchData();
       }
     }

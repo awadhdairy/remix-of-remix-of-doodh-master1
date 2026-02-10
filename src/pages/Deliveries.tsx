@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { invalidateDeliveryRelated } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -71,6 +73,7 @@ export default function DeliveriesPage() {
   });
   const { toast } = useToast();
   const { notifyDeliveryCompleted } = useTelegramNotify();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     fetchData();
@@ -167,6 +170,7 @@ export default function DeliveriesPage() {
       });
       setDialogOpen(false);
       setFormData({ ...formData, customer_id: "" });
+      invalidateDeliveryRelated(queryClient);
       fetchData();
     }
   };
@@ -201,6 +205,7 @@ export default function DeliveriesPage() {
           pending_count: currentStats.pending,
         });
       }
+      invalidateDeliveryRelated(queryClient);
       fetchData();
     }
   };

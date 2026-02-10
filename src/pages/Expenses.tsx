@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
+import { invalidateExpenseRelated } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
@@ -88,6 +90,7 @@ export default function ExpensesPage() {
     notes: "",
   });
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     fetchExpenses();
@@ -144,6 +147,7 @@ export default function ExpensesPage() {
       setDialogOpen(false);
       setSelectedExpense(null);
       setFormData({ category: "feed", title: "", amount: "", expense_date: format(new Date(), "yyyy-MM-dd"), notes: "" });
+      invalidateExpenseRelated(queryClient);
       fetchExpenses();
     }
   };
@@ -159,6 +163,7 @@ export default function ExpensesPage() {
       toast({ title: "Expense deleted" });
       setDeleteDialogOpen(false);
       setSelectedExpense(null);
+      invalidateExpenseRelated(queryClient);
       fetchExpenses();
     }
   };

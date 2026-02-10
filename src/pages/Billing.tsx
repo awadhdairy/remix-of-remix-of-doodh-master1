@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { invalidateBillingRelated } from "@/lib/query-invalidation";
 import { useUserRole } from "@/hooks/useUserRole";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
@@ -106,6 +108,7 @@ export default function BillingPage() {
   const { toast } = useToast();
   const { notifyPaymentReceived, notifyLargeTransaction } = useTelegramNotify();
   const { role } = useUserRole();
+  const queryClient = useQueryClient();
   const canDelete = role === "super_admin" || role === "manager";
 
   useEffect(() => {
@@ -249,6 +252,7 @@ export default function BillingPage() {
       setPaymentAmount("");
       setPaymentMode("cash");
       setSelectedInvoice(null);
+      invalidateBillingRelated(queryClient);
       fetchData();
     }
   };
@@ -293,6 +297,7 @@ export default function BillingPage() {
 
       setDeleteDialogOpen(false);
       setDeletingInvoice(null);
+      invalidateBillingRelated(queryClient);
       fetchData();
     } catch (error: any) {
       toast({
