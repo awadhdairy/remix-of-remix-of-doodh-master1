@@ -294,18 +294,18 @@ export default function ProductionPage() {
       key: "quantity_liters",
       header: "Quantity",
       render: (item: ProductionWithCattle) => (
-        <span className="font-semibold">{item.quantity_liters} L</span>
+        <span className="font-semibold">{Number(item.quantity_liters).toFixed(2)} L</span>
       ),
     },
     {
       key: "fat_percentage",
       header: "Fat %",
-      render: (item: ProductionWithCattle) => item.fat_percentage ? `${item.fat_percentage}%` : "-",
+      render: (item: ProductionWithCattle) => item.fat_percentage ? `${Number(item.fat_percentage).toFixed(2)}%` : "-",
     },
     {
       key: "snf_percentage",
       header: "SNF %",
-      render: (item: ProductionWithCattle) => item.snf_percentage ? `${item.snf_percentage}%` : "-",
+      render: (item: ProductionWithCattle) => item.snf_percentage ? `${Number(item.snf_percentage).toFixed(2)}%` : "-",
     },
   ];
 
@@ -331,7 +331,7 @@ export default function ProductionPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Today's Total</p>
-                <p className="text-3xl font-bold text-info">{todayTotal} L</p>
+                <p className="text-3xl font-bold text-info">{todayTotal.toFixed(2)} L</p>
                 <p className="text-xs text-muted-foreground mt-1">Click to view history</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-info/20">
@@ -348,7 +348,7 @@ export default function ProductionPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Morning Session</p>
-                <p className="text-3xl font-bold text-warning">{morningTotal} L</p>
+                <p className="text-3xl font-bold text-warning">{morningTotal.toFixed(2)} L</p>
                 <p className="text-xs text-muted-foreground mt-1">Click to view history</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-warning/20">
@@ -365,7 +365,7 @@ export default function ProductionPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Evening Session</p>
-                <p className="text-3xl font-bold text-primary">{eveningTotal} L</p>
+                <p className="text-3xl font-bold text-primary">{eveningTotal.toFixed(2)} L</p>
                 <p className="text-xs text-muted-foreground mt-1">Click to view history</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/20">
