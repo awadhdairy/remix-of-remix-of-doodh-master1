@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/common/StatusBadge";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { MilkHistoryDialog } from "@/components/production/MilkHistoryDialog";
 import { CattlePedigreeDialog } from "@/components/cattle/CattlePedigreeDialog";
+import { CattleDetailDialog } from "@/components/cattle/CattleDetailDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,6 +61,10 @@ export default function CattlePage() {
   const [pedigreeDialogOpen, setPedigreeDialogOpen] = useState(false);
   const [pedigreeCattleId, setPedigreeCattleId] = useState<string>("");
   const [pedigreeCattleName, setPedigreeCattleName] = useState<string>("");
+
+  // Detail dialog state
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailCattle, setDetailCattle] = useState<Cattle | null>(null);
 
   useEffect(() => {
     if (searchParams.get("action") === "add") {
@@ -147,7 +152,16 @@ export default function CattlePage() {
       key: "tag_number",
       header: "Tag #",
       render: (item: Cattle) => (
-        <span className="font-semibold text-primary">{item.tag_number}</span>
+        <button
+          className="font-semibold text-primary hover:underline cursor-pointer bg-transparent border-none p-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            setDetailCattle(item);
+            setDetailDialogOpen(true);
+          }}
+        >
+          {item.tag_number}
+        </button>
       ),
     },
     {
@@ -536,6 +550,13 @@ export default function CattlePage() {
         onOpenChange={setPedigreeDialogOpen}
         cattleId={pedigreeCattleId}
         cattleName={pedigreeCattleName}
+      />
+      {/* Cattle Detail Dialog */}
+      <CattleDetailDialog
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+        cattle={detailCattle}
+        allCattle={cattle}
       />
     </div>
   );
