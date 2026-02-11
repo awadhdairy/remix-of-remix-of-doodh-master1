@@ -1,97 +1,96 @@
 
 
-# Comprehensive Fix: Invoice Preview + Dashboard Data Sync
+# Cattle Detail Popup - Comprehensive View on Tag Click
 
-## Problem 1: Invoice Preview Not Opening
+## Overview
 
-The `InvoicePDFGenerator` component renders a `Dialog` containing an `iframe` with a PDF data URI. The component is rendered **inside a DataTable cell**, which can cause z-index and overflow issues preventing the dialog from appearing properly. The fix is to ensure the Dialog renders via a portal at the document root level and that the iframe gets proper dimensions.
+Create a new `CattleDetailDialog` component that opens when clicking a cattle's tag number in the DataTable. It will display all comprehensive information about the cattle in organized, tabbed sections -- fetching health records, breeding records, and milk production data in real time.
 
-## Problem 2: Dashboard Data Not Syncing
+## What Will Be Built
 
-The dashboard query cache invalidation utility (`src/lib/query-invalidation.ts`) was planned in a previous session but **was never actually created**. No page (Production, Deliveries, Billing, Customers, Expenses, Procurement) invalidates any dashboard query keys after mutations. Combined with a 5-minute `staleTime` and `refetchOnWindowFocus: false`, the dashboard shows stale data until manually refreshed.
+A mobile-responsive popup (Dialog on desktop, Drawer on mobile) with the following tabbed sections:
 
----
+### Tab 1: Overview
+- Tag number, name, breed, type (cow/buffalo)
+- Status, lactation status badges
+- Date of birth, calculated age
+- Weight
+- Parents (sire/dam) with tag numbers (from existing cattle data)
+- Notes
 
-## Implementation
+### Tab 2: Health Records
+- Fetched from `cattle_health` table filtered by `cattle_id`
+- Shows: date, type (vaccination/checkup/disease/treatment), title, vet name, cost, next due date
+- Sorted by date descending, limited to recent 20 records
 
-### Step 1: Fix Invoice Preview Dialog
+### Tab 3: Breeding Records
+- Fetched from `breeding_records` table filtered by `cattle_id`
+- Shows: date, type (heat detection/AI/pregnancy check/calving), bull name, pregnancy confirmed, expected/actual calving date, calf details
+- Sorted by date descending
 
-**File: `src/components/billing/InvoicePDFGenerator.tsx`**
+### Tab 4: Milk Production
+- Fetched from `milk_production` table filtered by `cattle_id` (last 30 days)
+- Shows daily morning/evening quantities with trends
+- Reuses the existing `useMilkHistory` hook's `fetchCattleHistory` logic
 
-- Move the Dialog outside the component's inline render position by ensuring it uses React Portal (Radix Dialog does this by default, but the containing DataTable cell may have `overflow: hidden`)
-- Add explicit `min-h-0` and `flex` layout to the DialogContent so the iframe fills the available space
-- Ensure `pdfDataUrl` is set before opening the dialog (race condition guard)
+## Files to Create/Modify
 
-### Step 2: Create Query Invalidation Utility (Missing File)
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/cattle/CattleDetailDialog.tsx` | **NEW** | The comprehensive detail popup component |
+| `src/pages/Cattle.tsx` | **MODIFY** | Add click handler on tag number column, add state + render for the new dialog |
 
-**New File: `src/lib/query-invalidation.ts`**
+## Technical Details
 
-Create the centralized invalidation utility with helpers for each data domain:
-- `invalidateProductionRelated` -- dashboard-data, weekly-production-chart, recent-activities, production-insights, month-comparison-chart, procurement-vs-production-chart
-- `invalidateDeliveryRelated` -- dashboard-data, delivery-performance-chart, recent-activities
-- `invalidateBillingRelated` -- dashboard-data, revenue-growth-chart, recent-activities, month-comparison-chart
-- `invalidateCustomerRelated` -- dashboard-data, customer-growth-chart, recent-activities
-- `invalidateCattleRelated` -- cattle, dashboard-data, cattle-composition-chart
-- `invalidateExpenseRelated` -- expenses, expense-breakdown-chart, month-comparison-chart, dashboard-data
-- `invalidateProcurementRelated` -- dashboard-data, procurement-vs-production-chart, recent-activities
+### New Component: `CattleDetailDialog.tsx`
 
-### Step 3: Integrate Invalidation into All Pages
+- Props: `open`, `onOpenChange`, `cattle: Cattle` (the full cattle object from parent), `allCattle: Cattle[]` (for resolving parent names)
+- Uses `ResponsiveDialog` for mobile support
+- Internal state fetches health, breeding, and milk data on open via `useEffect`
+- Uses `Tabs` component for section switching
+- All data fetched directly from `externalSupabase` (consistent with existing patterns)
+- Skeleton loading states while data loads
 
-Add `useQueryClient` + invalidation calls after every successful mutation:
+### Cattle.tsx Changes
 
-| File | After Event | Invalidation Function |
-|------|-------------|----------------------|
-| `src/pages/Production.tsx` | Save production (line 203) | `invalidateProductionRelated` |
-| `src/pages/Deliveries.tsx` | Create/update delivery (lines 165, 189) | `invalidateDeliveryRelated` |
-| `src/pages/Billing.tsx` | Record payment (line 224), delete invoice (line 289) | `invalidateBillingRelated` |
-| `src/pages/Customers.tsx` | Create/update/delete customer | `invalidateCustomerRelated` |
-| `src/pages/Expenses.tsx` | Create/update/delete expense | `invalidateExpenseRelated` |
-| `src/pages/MilkProcurement.tsx` | Save procurement | `invalidateProcurementRelated` |
-| `src/hooks/useCattleData.ts` | Create/update/delete cattle | `invalidateCattleRelated` |
-| `src/hooks/useHealthData.ts` | Create health record | `invalidateExpenseRelated` (health creates expenses) |
-| `src/hooks/useInventoryData.ts` | Stock update | `invalidateExpenseRelated` |
-| `src/hooks/useEquipmentData.ts` | Add equipment/maintenance | `invalidateExpenseRelated` |
+- Add state: `detailDialogOpen`, `detailCattle`
+- Add handler: `handleOpenDetail(cattle)` that sets both states
+- Modify tag_number column render to wrap in a clickable button/link
+- Render `<CattleDetailDialog>` at the bottom of the component
 
-### Step 4: Optimize Dashboard Cache Settings
+### Data Queries Inside Dialog
 
-**File: `src/hooks/useDashboardData.ts`**
+```typescript
+// Health records for this cattle
+const { data: healthRecords } = await supabase
+  .from("cattle_health")
+  .select("*")
+  .eq("cattle_id", cattleId)
+  .order("record_date", { ascending: false })
+  .limit(20);
 
-- Reduce `staleTime` from 5 minutes to 1 minute
-- Enable `refetchOnWindowFocus: true`
+// Breeding records for this cattle
+const { data: breedingRecords } = await supabase
+  .from("breeding_records")
+  .select("*")
+  .eq("cattle_id", cattleId)
+  .order("record_date", { ascending: false })
+  .limit(20);
 
-**File: `src/hooks/useDashboardCharts.ts`**
-
-- Reduce `staleTime` from 5 minutes to 2 minutes for all chart hooks
-- Enable `refetchOnWindowFocus: true`
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/components/billing/InvoicePDFGenerator.tsx` | Fix dialog layout for iframe preview |
-| `src/lib/query-invalidation.ts` | **NEW** - Centralized cache invalidation utility |
-| `src/hooks/useDashboardData.ts` | Reduce staleTime, enable refetchOnWindowFocus |
-| `src/hooks/useDashboardCharts.ts` | Reduce staleTime, enable refetchOnWindowFocus |
-| `src/pages/Production.tsx` | Add query invalidation after save |
-| `src/pages/Deliveries.tsx` | Add query invalidation after create/update |
-| `src/pages/Billing.tsx` | Add query invalidation after payment/delete |
-| `src/pages/Customers.tsx` | Add query invalidation after CRUD |
-| `src/pages/Expenses.tsx` | Add query invalidation after CRUD |
-| `src/pages/MilkProcurement.tsx` | Add query invalidation after save |
-| `src/hooks/useCattleData.ts` | Add dashboard invalidation to mutations |
-| `src/hooks/useHealthData.ts` | Add dashboard invalidation to mutations |
-| `src/hooks/useInventoryData.ts` | Add dashboard invalidation to mutations |
-| `src/hooks/useEquipmentData.ts` | Add dashboard invalidation to mutations |
-
----
+// Milk production (last 30 days)
+const { data: milkRecords } = await supabase
+  .from("milk_production")
+  .select("production_date, session, quantity_liters, fat_percentage, snf_percentage")
+  .eq("cattle_id", cattleId)
+  .gte("production_date", thirtyDaysAgo)
+  .order("production_date", { ascending: false });
+```
 
 ## Safety Guarantees
 
-- No existing functionality removed -- only adding invalidation calls after existing success handlers
-- No automation or integration affected -- Telegram notifications remain intact
-- No UI changes except fixing the invoice preview dialog dimensions
-- All existing query keys preserved; only adding invalidation triggers
-- Existing hooks and components remain unchanged in their core logic
+- No existing functionality modified -- the tag number column just gains an `onClick`, all existing action buttons (edit, delete, pedigree, milk history) remain unchanged
+- No hooks or automations affected
+- No database changes required
+- Telegram notifications untouched
+- All existing dialogs (add/edit, delete confirm, pedigree, milk history) remain fully functional
 
