@@ -181,7 +181,7 @@ export default function BillingPage() {
       .update({ 
         paid_amount: newPaidAmount,
         payment_status: newStatus,
-        payment_date: newStatus === "paid" ? format(new Date(), "yyyy-MM-dd") : null
+        ...(newStatus === "paid" ? { payment_date: format(new Date(), "yyyy-MM-dd") } : {})
       })
       .eq("id", selectedInvoice.id);
 

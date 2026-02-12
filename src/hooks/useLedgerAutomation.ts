@@ -127,17 +127,8 @@ export function useLedgerAutomation() {
     amount: number,
     notes?: string
   ): Promise<boolean> => {
-    // Also update customer advance balance
-    try {
-      await supabase
-        .from("customers")
-        .update({ 
-          advance_balance: supabase.rpc ? amount : amount // Will be handled by trigger if exists
-        })
-        .eq("id", customerId);
-    } catch {
-      // Ignore errors - advance balance update is optional
-    }
+    // advance_balance is managed by the database trigger (update_customer_balance_from_ledger)
+    // No manual update needed — the ledger credit entry below will trigger the authoritative balance update
 
     return createLedgerEntry({
       customer_id: customerId,
