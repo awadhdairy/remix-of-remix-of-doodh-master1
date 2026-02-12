@@ -1,49 +1,77 @@
 
-# Fix: Vendor Payment Auto-Expense + Finance Data Sync
 
-## Root Causes Found
+# Finance Integrity Audit - Genuine Errors Found
 
-### Root Cause 1: VendorPaymentsDialog has no query invalidation
-The `VendorPaymentsDialog` component calls `logVendorPaymentExpense` but never invalidates any query cache. It doesn't import or use `useQueryClient`, so even when the expense IS successfully created, the Expenses page and Dashboard remain stale until manual refresh.
+After comprehensively reviewing all finance-related code (Billing, Invoicing, Ledger, Expenses, Payments), here are the **genuine calculation/logic errors** that can cause financial data corruption or misleading financial records.
 
-### Root Cause 2: Expense creation errors are silent
-`useExpenseAutomation.createExpense()` catches errors via `logger.error` and returns `false`, but the calling code in `VendorPaymentsDialog` does not check the return value. The toast always says "expense logged" regardless of success/failure.
+---
 
-### Root Cause 3: Employees.tsx salary expense missing dashboard invalidation
-When salary is paid and expense auto-logged, it invalidates `["expenses"]` but does NOT call `invalidateExpenseRelated()` -- so the dashboard expense charts stay stale.
+## Issue 1: Invoice Tax Calculation Creates Inconsistent Stored Data (HIGH)
 
-## Fixes
+**Location:** `SmartInvoiceCreator.tsx` and `EditInvoiceDialog.tsx`
 
-### Fix 1: Add query invalidation to VendorPaymentsDialog
-- Import `useQueryClient` and `invalidateExpenseRelated` + `invalidateProcurementRelated`
-- After successful payment + expense logging, invalidate `["expenses"]`, expense-related, and procurement-related queries
-- Change toast message based on actual expense creation result
+**The Bug:** Each line item's `amount` is calculated as `base + tax` (line 280: `amount = baseAmount + taxAmount`). Then `subtotal` sums all `amount` fields (already includes tax). But `totalTax` is computed separately. The invoice is stored as:
+- `total_amount = subtotal` (already includes tax)
+- `tax_amount = totalTax` (computed separately)
+- `final_amount = subtotal - discount` (correct charge amount)
 
-**File: `src/components/procurement/VendorPaymentsDialog.tsx`**
-- Add imports for `useQueryClient`, `invalidateExpenseRelated`, `invalidateProcurementRelated`
-- Initialize `queryClient` via hook
-- After `logVendorPaymentExpense` call, check return value and invalidate queries
-- Show accurate toast (distinguish between "payment recorded + expense logged" vs "payment recorded, expense failed")
+**Why it's a problem:**
+- The PDF and customer billing view shows: Subtotal (with tax baked in) + Tax (shown again) - Discount = Grand Total
+- The displayed Subtotal + Tax - Discount will NOT equal the Grand Total -- the numbers visually don't add up
+- A customer or auditor reading the invoice PDF sees contradictory figures
+- Reports querying `total_amount` think it's pre-tax when it's actually post-tax
 
-### Fix 2: Add dashboard invalidation to Employees.tsx salary payment
-- Import `invalidateExpenseRelated` from query-invalidation
-- Add `invalidateExpenseRelated(queryClient)` after salary expense logging (line ~265)
+**Fix:** Compute `subtotal` from base amounts only (pre-tax), then derive `grandTotal = subtotal + totalTax - discount`. This makes stored fields arithmetically consistent: `total_amount + tax_amount - discount_amount = final_amount`.
 
-**File: `src/pages/Employees.tsx`**
+**Files:** `src/components/billing/SmartInvoiceCreator.tsx`, `src/components/billing/EditInvoiceDialog.tsx`
 
-### Fix 3: Better error visibility in useExpenseAutomation
-- Add a `toast` parameter (optional) to `createExpense` so callers can opt-in to visible error feedback
-- No -- simpler approach: just ensure the return value (`boolean`) is checked by callers. Already returns `false` on failure.
+---
 
-## Files to Modify
+## Issue 2: Partial Payment Erases payment_date (MEDIUM)
 
-| File | Change |
-|------|--------|
-| `src/components/procurement/VendorPaymentsDialog.tsx` | Add `useQueryClient`, invalidate expenses + dashboard after payment; check expense result for accurate toast |
-| `src/pages/Employees.tsx` | Add `invalidateExpenseRelated` call after salary expense |
+**Location:** `src/pages/Billing.tsx` line 184
 
-## Safety
-- No logic changes to `useExpenseAutomation` itself
-- No database changes
-- No automation/integration affected
-- Only adding cache invalidation calls and improving toast accuracy
+**The Bug:** `payment_date: newStatus === "paid" ? format(new Date(), "yyyy-MM-dd") : null`
+
+When recording a partial payment, this sets `payment_date` to `null`. If a previous partial payment had already set a date (from an earlier full-then-reopened scenario), that date is erased. More importantly, the date of the partial payment itself is never recorded on the invoice record.
+
+**Fix:** Only set `payment_date` when becoming fully paid. Don't overwrite with `null` for partial payments. Change to:
+```
+payment_date: newStatus === "paid" ? format(new Date(), "yyyy-MM-dd") : undefined
+```
+Using `undefined` means the field won't be included in the update, preserving any existing value.
+
+**File:** `src/pages/Billing.tsx`
+
+---
+
+## Issue 3: Advance Balance Overwrite Instead of Increment (MEDIUM - Latent)
+
+**Location:** `src/hooks/useLedgerAutomation.ts` line 135
+
+**The Bug:** `advance_balance: supabase.rpc ? amount : amount` -- This sets `advance_balance` to the raw payment amount, completely replacing any existing value. If a customer had a 500 advance and makes another 300 advance payment, their balance becomes 300 instead of 800.
+
+**Current Impact:** This function (`logAdvancePayment`) is not currently called anywhere in the app, so no active damage. However, it's a ticking time bomb if any feature starts using it.
+
+**Fix:** Remove the manual `advance_balance` update entirely. The `credit_balance` field (which is the authoritative balance) is already correctly maintained by the `update_customer_balance_from_ledger` database trigger. The `advance_balance` field should be managed separately if needed, but the broken code should be removed to prevent future misuse.
+
+**File:** `src/hooks/useLedgerAutomation.ts`
+
+---
+
+## Summary of Changes
+
+| File | Issue | Change |
+|------|-------|--------|
+| `src/components/billing/SmartInvoiceCreator.tsx` | Tax double-representation | Compute `subtotal` as pre-tax sum; `grandTotal = subtotal + totalTax - discount` |
+| `src/components/billing/EditInvoiceDialog.tsx` | Same tax issue | Same fix as SmartInvoiceCreator |
+| `src/pages/Billing.tsx` | payment_date erasure | Use `undefined` instead of `null` for non-paid status |
+| `src/hooks/useLedgerAutomation.ts` | advance_balance overwrite | Remove the broken manual update block |
+
+## What Will NOT Change
+- No database schema changes
+- No automation/integration modifications
+- No Telegram notification changes
+- No dashboard or reporting logic changes
+- `final_amount` (what the customer actually pays) remains mathematically correct throughout -- these fixes ensure the **breakdown fields** match the total
+
