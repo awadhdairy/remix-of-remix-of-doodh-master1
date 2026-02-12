@@ -22,6 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
+import { useQueryClient } from "@tanstack/react-query";
+import { invalidateExpenseRelated, invalidateProcurementRelated } from "@/lib/query-invalidation";
 import { format } from "date-fns";
 import {
   IndianRupee,
@@ -93,6 +95,7 @@ export function VendorPaymentsDialog({
   const [vendorBalance, setVendorBalance] = useState<number>(0);
   const { toast } = useToast();
   const { logVendorPaymentExpense } = useExpenseAutomation();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (open && vendor) {
@@ -191,9 +194,10 @@ export function VendorPaymentsDialog({
       }
 
       // Auto-log expense for vendor payment
+      let expenseLogged = false;
       if (data) {
         const modeLabel = paymentModes.find(m => m.value === paymentForm.payment_mode)?.label || paymentForm.payment_mode;
-        await logVendorPaymentExpense(
+        expenseLogged = await logVendorPaymentExpense(
           vendor.name,
           amount,
           paymentForm.payment_date,
@@ -202,10 +206,17 @@ export function VendorPaymentsDialog({
           paymentForm.reference_number || undefined
         );
       }
+
+      // Invalidate expense + dashboard queries so data appears immediately
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
+      invalidateProcurementRelated(queryClient);
       
       toast({
-        title: "Payment recorded & expense logged",
-        description: `₹${amount.toLocaleString()} paid to ${vendor.name} - auto-tracked in expenses`,
+        title: expenseLogged ? "Payment recorded & expense logged" : "Payment recorded",
+        description: expenseLogged
+          ? `₹${amount.toLocaleString()} paid to ${vendor.name} - auto-tracked in expenses`
+          : `₹${amount.toLocaleString()} paid to ${vendor.name}${data ? " (expense may already exist)" : ""}`,
       });
       setPaymentForm(emptyPaymentForm);
       setShowAddForm(false);

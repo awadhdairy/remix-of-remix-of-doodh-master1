@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useAutoAttendance } from "@/hooks/useAutoAttendance";
 import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
+import { invalidateExpenseRelated } from "@/lib/query-invalidation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { EmployeeDetailDialog } from "@/components/employees/EmployeeDetailDialog";
@@ -261,8 +262,9 @@ export default function EmployeesPage() {
         id
       );
 
-      // Invalidate expenses query to refresh expense data
+      // Invalidate expenses query + dashboard charts
       queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      invalidateExpenseRelated(queryClient);
       
       const message = expenseCreated 
         ? "Payment marked as paid & expense recorded" 
