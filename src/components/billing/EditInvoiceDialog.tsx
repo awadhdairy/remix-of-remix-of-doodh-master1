@@ -280,8 +280,9 @@ export function EditInvoiceDialog({
   const subscriptionItems = lineItems.filter(i => !i.is_addon);
   const addonItems = lineItems.filter(i => i.is_addon);
   
-  const subscriptionTotal = subscriptionItems.reduce((sum, item) => sum + item.amount, 0);
-  const addonTotal = addonItems.reduce((sum, item) => sum + item.amount, 0);
+  // Compute subtotal as pre-tax base amounts only
+  const subscriptionTotal = subscriptionItems.reduce((sum, item) => sum + (item.quantity * item.rate), 0);
+  const addonTotal = addonItems.reduce((sum, item) => sum + (item.quantity * item.rate), 0);
   const subtotal = subscriptionTotal + addonTotal;
   
   const totalTax = lineItems.reduce((sum, item) => {
@@ -289,7 +290,8 @@ export function EditInvoiceDialog({
     return sum + (baseAmount * item.tax_percentage) / 100;
   }, 0);
   
-  const grandTotal = subtotal - discountAmount;
+  // grandTotal = subtotal + tax - discount (arithmetically consistent)
+  const grandTotal = subtotal + totalTax - discountAmount;
 
   const handleUpdateInvoice = async () => {
     if (!invoice) return;
