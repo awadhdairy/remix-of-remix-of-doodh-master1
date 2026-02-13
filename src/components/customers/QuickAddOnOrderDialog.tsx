@@ -156,11 +156,7 @@ export function QuickAddOnOrderDialog({
         deliveryId = existingDelivery.id;
       } else {
         // Create new delivery record with delivery_time since it's marked as delivered
-        const currentTime = new Date().toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        });
+        const currentTime = new Date().toISOString();
         
         const { data: newDelivery, error: deliveryError } = await supabase
           .from("deliveries")
