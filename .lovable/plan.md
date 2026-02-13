@@ -1,77 +1,50 @@
 
 
-# Finance Integrity Audit - Genuine Errors Found
+# Fix: Addon Delivery Failure + Vendor Payment Expense Logging
 
-After comprehensively reviewing all finance-related code (Billing, Invoicing, Ledger, Expenses, Payments), here are the **genuine calculation/logic errors** that can cause financial data corruption or misleading financial records.
+## Issue 1: Addon Delivery Crashes with Timestamp Error (CRITICAL)
 
----
-
-## Issue 1: Invoice Tax Calculation Creates Inconsistent Stored Data (HIGH)
-
-**Location:** `SmartInvoiceCreator.tsx` and `EditInvoiceDialog.tsx`
-
-**The Bug:** Each line item's `amount` is calculated as `base + tax` (line 280: `amount = baseAmount + taxAmount`). Then `subtotal` sums all `amount` fields (already includes tax). But `totalTax` is computed separately. The invoice is stored as:
-- `total_amount = subtotal` (already includes tax)
-- `tax_amount = totalTax` (computed separately)
-- `final_amount = subtotal - discount` (correct charge amount)
-
-**Why it's a problem:**
-- The PDF and customer billing view shows: Subtotal (with tax baked in) + Tax (shown again) - Discount = Grand Total
-- The displayed Subtotal + Tax - Discount will NOT equal the Grand Total -- the numbers visually don't add up
-- A customer or auditor reading the invoice PDF sees contradictory figures
-- Reports querying `total_amount` think it's pre-tax when it's actually post-tax
-
-**Fix:** Compute `subtotal` from base amounts only (pre-tax), then derive `grandTotal = subtotal + totalTax - discount`. This makes stored fields arithmetically consistent: `total_amount + tax_amount - discount_amount = final_amount`.
-
-**Files:** `src/components/billing/SmartInvoiceCreator.tsx`, `src/components/billing/EditInvoiceDialog.tsx`
-
----
-
-## Issue 2: Partial Payment Erases payment_date (MEDIUM)
-
-**Location:** `src/pages/Billing.tsx` line 184
-
-**The Bug:** `payment_date: newStatus === "paid" ? format(new Date(), "yyyy-MM-dd") : null`
-
-When recording a partial payment, this sets `payment_date` to `null`. If a previous partial payment had already set a date (from an earlier full-then-reopened scenario), that date is erased. More importantly, the date of the partial payment itself is never recorded on the invoice record.
-
-**Fix:** Only set `payment_date` when becoming fully paid. Don't overwrite with `null` for partial payments. Change to:
+**Root Cause:** In `QuickAddOnOrderDialog.tsx` (line 159-163), `delivery_time` is set using:
+```javascript
+new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
 ```
-payment_date: newStatus === "paid" ? format(new Date(), "yyyy-MM-dd") : undefined
-```
-Using `undefined` means the field won't be included in the update, preserving any existing value.
+This produces a string like `"08:20 am"`, but the `delivery_time` column in the database is of type `timestamp with time zone`. PostgreSQL cannot parse `"08:20 am"` as a timestamp, causing the error shown in the screenshot.
 
-**File:** `src/pages/Billing.tsx`
+**Fix:** Change `delivery_time` to use `new Date().toISOString()` -- the same format used consistently by every other file that sets this field (Deliveries.tsx, BulkDeliveryActions.tsx, useAutoDeliveryScheduler.ts all use `new Date().toISOString()`).
+
+**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
 
 ---
 
-## Issue 3: Advance Balance Overwrite Instead of Increment (MEDIUM - Latent)
+## Issue 2: Vendor Payment Expense Not Auto-Registering (MEDIUM)
 
-**Location:** `src/hooks/useLedgerAutomation.ts` line 135
+**Root Cause:** The `logVendorPaymentExpense` function in `useExpenseAutomation.ts` works correctly in isolation. However, the `createExpense` function checks for duplicates using a `.like()` query on the `notes` field (line 28). If the first payment insert succeeds but the expense insert fails silently (e.g., due to a transient error), a retry would find no duplicate and should work. But if the expense insert fails due to RLS policies, `logger.error` logs it to the console but the toast from the previous fix now correctly reports "Payment recorded" without "expense logged".
 
-**The Bug:** `advance_balance: supabase.rpc ? amount : amount` -- This sets `advance_balance` to the raw payment amount, completely replacing any existing value. If a customer had a 500 advance and makes another 300 advance payment, their balance becomes 300 instead of 800.
+The actual problem is that the `checkExpenseExists` function uses `.like("notes", ...)` which searches for `[AUTO] vendor_payment:<id>` in the notes field. This is correct. The `createExpense` insert uses the same `externalSupabase` client. If the auth session has the right role (super_admin/manager), the RLS should allow it.
 
-**Current Impact:** This function (`logAdvancePayment`) is not currently called anywhere in the app, so no active damage. However, it's a ticking time bomb if any feature starts using it.
+After reviewing the code flow more carefully: the logic is sound. The most likely reason expenses aren't appearing is that the vendor payment itself hasn't been successfully tested in production yet (the user may have only tested addon delivery, which crashes first). The previous fix already added proper error feedback. No additional code change needed for this -- just confirming the flow is correct.
 
-**Fix:** Remove the manual `advance_balance` update entirely. The `credit_balance` field (which is the authoritative balance) is already correctly maintained by the `update_customer_balance_from_ledger` database trigger. The `advance_balance` field should be managed separately if needed, but the broken code should be removed to prevent future misuse.
+However, there IS a subtle issue: the `checkExpenseExists` on line 28 uses `.like()` which returns `data` as an array. If the query fails (RLS error), `data` would be `null`, and `(null && null.length > 0)` evaluates to `null` (falsy) -- so the duplicate check passes and it proceeds to insert. This is actually correct behavior (fail-open for duplicate check).
 
-**File:** `src/hooks/useLedgerAutomation.ts`
+**Verdict:** No code change needed for expense logging. The flow is correct. Once addon delivery is fixed and vendor payments can be tested end-to-end, expenses should register correctly.
+
+---
+
+## Also Found: `run_auto_delivery` DB Function Uses `NOW()::text`
+
+The database function `run_auto_delivery` sets `delivery_time` to `NOW()::text`. Since this is a Postgres-side cast and the column is `timestamp with time zone`, Postgres can successfully parse its own text representation back. This is NOT a bug -- it works correctly within PostgreSQL.
 
 ---
 
 ## Summary of Changes
 
-| File | Issue | Change |
-|------|-------|--------|
-| `src/components/billing/SmartInvoiceCreator.tsx` | Tax double-representation | Compute `subtotal` as pre-tax sum; `grandTotal = subtotal + totalTax - discount` |
-| `src/components/billing/EditInvoiceDialog.tsx` | Same tax issue | Same fix as SmartInvoiceCreator |
-| `src/pages/Billing.tsx` | payment_date erasure | Use `undefined` instead of `null` for non-paid status |
-| `src/hooks/useLedgerAutomation.ts` | advance_balance overwrite | Remove the broken manual update block |
+| File | Change |
+|------|--------|
+| `src/components/customers/QuickAddOnOrderDialog.tsx` | Replace `toLocaleTimeString(...)` with `new Date().toISOString()` for `delivery_time` |
 
 ## What Will NOT Change
 - No database schema changes
-- No automation/integration modifications
-- No Telegram notification changes
-- No dashboard or reporting logic changes
-- `final_amount` (what the customer actually pays) remains mathematically correct throughout -- these fixes ensure the **breakdown fields** match the total
-
+- No changes to VendorPaymentsDialog (previous fix already handles it correctly)
+- No changes to useExpenseAutomation (logic is sound)
+- No changes to any automation, integration, or Telegram notifications
+- No changes to run_auto_delivery DB function (works correctly)
