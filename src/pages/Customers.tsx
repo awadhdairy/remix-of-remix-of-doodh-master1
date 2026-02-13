@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
-import { invalidateCustomerRelated } from "@/lib/query-invalidation";
+import { invalidateCustomerRelated, invalidateBillingRelated } from "@/lib/query-invalidation";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { format } from "date-fns";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { StatusBadge } from "@/components/common/StatusBadge";
@@ -28,7 +30,15 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Edit, Trash2, Phone, MapPin, Loader2, Palmtree, BookOpen, Eye, Route } from "lucide-react";
+import { Users, Edit, Trash2, Phone, MapPin, Loader2, Palmtree, BookOpen, Eye, Route, IndianRupee } from "lucide-react";
+import {
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from "@/components/ui/responsive-dialog";
+import { Badge } from "@/components/ui/badge";
 import { VacationManager } from "@/components/customers/VacationManager";
 import { CustomerLedger } from "@/components/customers/CustomerLedger";
 import { CustomerAccountApprovals } from "@/components/customers/CustomerAccountApprovals";
@@ -81,6 +91,14 @@ interface CustomerProduct {
   quantity: number;
 }
 
+interface UnpaidInvoice {
+  id: string;
+  invoice_number: string;
+  final_amount: number;
+  paid_amount: number;
+  payment_status: string;
+}
+
 export default function CustomersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -99,6 +117,18 @@ export default function CustomersPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [routes, setRoutes] = useState<RouteOption[]>([]);
+  const { notifyPaymentReceived, notifyLargeTransaction } = useTelegramNotify();
+
+  // Payment dialog state
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [paymentCustomer, setPaymentCustomer] = useState<Customer | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMode, setPaymentMode] = useState("cash");
+  const [paymentNotes, setPaymentNotes] = useState("");
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>("general");
+  const [unpaidInvoices, setUnpaidInvoices] = useState<UnpaidInvoice[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
+  const [recordingPayment, setRecordingPayment] = useState(false);
 
   useEffect(() => {
     fetchCustomers();
@@ -482,6 +512,135 @@ export default function CustomersPage() {
     }
   };
 
+  // === Payment Dialog Logic ===
+  const openPaymentDialog = async (customer: Customer) => {
+    setPaymentCustomer(customer);
+    setPaymentAmount("");
+    setPaymentMode("cash");
+    setPaymentNotes("");
+    setSelectedInvoiceId("general");
+    setPaymentDialogOpen(true);
+    
+    // Fetch unpaid invoices for this customer
+    setLoadingInvoices(true);
+    const { data } = await supabase
+      .from("invoices")
+      .select("id, invoice_number, final_amount, paid_amount, payment_status")
+      .eq("customer_id", customer.id)
+      .neq("payment_status", "paid")
+      .order("created_at", { ascending: false });
+    setUnpaidInvoices(data || []);
+    setLoadingInvoices(false);
+  };
+
+  const handleRecordPayment = async () => {
+    if (!paymentCustomer || !paymentAmount) return;
+    const amount = parseFloat(paymentAmount);
+    if (amount <= 0) return;
+    
+    setRecordingPayment(true);
+    try {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const isInvoicePayment = selectedInvoiceId !== "general";
+      
+      // 1. If invoice-linked, update invoice
+      if (isInvoicePayment) {
+        const invoice = unpaidInvoices.find(i => i.id === selectedInvoiceId);
+        if (invoice) {
+          const newPaidAmount = Number(invoice.paid_amount) + amount;
+          const remaining = Number(invoice.final_amount) - newPaidAmount;
+          let newStatus: "paid" | "partial" | "pending" = "partial";
+          if (remaining <= 0) newStatus = "paid";
+          else if (newPaidAmount === 0) newStatus = "pending";
+          
+          await supabase
+            .from("invoices")
+            .update({
+              paid_amount: newPaidAmount,
+              payment_status: newStatus,
+              ...(newStatus === "paid" ? { payment_date: today } : {}),
+            })
+            .eq("id", invoice.id);
+        }
+      }
+      
+      // 2. Insert payment record
+      await supabase.from("payments").insert({
+        customer_id: paymentCustomer.id,
+        amount,
+        payment_mode: paymentMode,
+        payment_date: today,
+        invoice_id: isInvoicePayment ? selectedInvoiceId : null,
+        notes: paymentNotes || null,
+      });
+      
+      // 3. Fetch last ledger balance and insert ledger entry
+      const { data: lastLedgerEntry } = await supabase
+        .from("customer_ledger")
+        .select("running_balance")
+        .eq("customer_id", paymentCustomer.id)
+        .order("transaction_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      const previousBalance = lastLedgerEntry?.running_balance || 0;
+      const newBalance = previousBalance - amount;
+      
+      const invoiceRef = isInvoicePayment 
+        ? unpaidInvoices.find(i => i.id === selectedInvoiceId)?.invoice_number 
+        : null;
+      
+      await supabase.from("customer_ledger").insert({
+        customer_id: paymentCustomer.id,
+        transaction_date: today,
+        transaction_type: "payment",
+        description: invoiceRef ? `Payment for ${invoiceRef}` : "General Payment",
+        debit_amount: 0,
+        credit_amount: amount,
+        running_balance: newBalance,
+        reference_id: isInvoicePayment ? selectedInvoiceId : null,
+      });
+      
+      // 4. Invalidate and refresh
+      invalidateBillingRelated(queryClient);
+      invalidateCustomerRelated(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["expenses"] });
+      
+      // 5. Telegram notifications
+      notifyPaymentReceived({
+        amount,
+        customer_name: paymentCustomer.name,
+        payment_mode: paymentMode,
+        reference: invoiceRef || undefined,
+      });
+      if (amount >= 10000) {
+        notifyLargeTransaction({
+          amount,
+          customer_name: paymentCustomer.name,
+          payment_mode: paymentMode,
+          reference: invoiceRef || undefined,
+        });
+      }
+      
+      toast({
+        title: "Payment recorded",
+        description: `₹${amount.toLocaleString("en-IN")} payment recorded for ${paymentCustomer.name}`,
+      });
+      
+      setPaymentDialogOpen(false);
+      fetchCustomers();
+    } catch (error: any) {
+      toast({
+        title: "Error recording payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setRecordingPayment(false);
+    }
+  };
+
   const totalDue = customers.reduce((sum, c) => sum + Number(c.credit_balance), 0);
   const totalAdvance = customers.reduce((sum, c) => sum + Number(c.advance_balance), 0);
 
@@ -580,11 +739,21 @@ export default function CustomersPage() {
     {
       key: "credit_balance",
       header: "Due",
-      render: (item: Customer) => (
-        <span className={item.credit_balance > 0 ? "text-destructive font-medium" : ""}>
-          ₹{Number(item.credit_balance).toLocaleString()}
-        </span>
-      ),
+      render: (item: Customer) => {
+        const due = Number(item.credit_balance);
+        if (due > 0) {
+          return (
+            <Badge variant="destructive" className="font-semibold">
+              ₹{due.toLocaleString()}
+            </Badge>
+          );
+        }
+        return (
+          <Badge variant="outline" className="bg-success/10 text-success border-success/20 font-medium">
+            Paid Up
+          </Badge>
+        );
+      },
     },
     {
       key: "advance_balance",
@@ -630,6 +799,17 @@ export default function CustomersPage() {
             }}
           >
             <BookOpen className="h-4 w-4 text-info" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            title="Record Payment"
+            onClick={(e) => {
+              e.stopPropagation();
+              openPaymentDialog(item);
+            }}
+          >
+            <IndianRupee className="h-4 w-4 text-success" />
           </Button>
           <Button
             variant="ghost"
@@ -1149,6 +1329,110 @@ export default function CustomersPage() {
         open={detailDialogOpen}
         onOpenChange={setDetailDialogOpen}
       />
+
+      {/* Payment Dialog */}
+      <ResponsiveDialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
+        <ResponsiveDialogContent className="max-w-md">
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Record Payment</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              {paymentCustomer?.name}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+
+          {paymentCustomer && (
+            <div className="space-y-4 py-2">
+              {/* Current Balance */}
+              <div className="rounded-lg bg-muted p-4 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span>Current Due:</span>
+                  <span className={Number(paymentCustomer.credit_balance) > 0 ? "text-destructive font-semibold" : "text-success font-semibold"}>
+                    ₹{Number(paymentCustomer.credit_balance).toLocaleString("en-IN")}
+                  </span>
+                </div>
+                {Number(paymentCustomer.advance_balance) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span>Advance Balance:</span>
+                    <span className="text-success">₹{Number(paymentCustomer.advance_balance).toLocaleString("en-IN")}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Invoice Selection */}
+              <div className="space-y-2">
+                <Label>Apply To</Label>
+                <Select value={selectedInvoiceId} onValueChange={setSelectedInvoiceId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="general">General / Advance Payment</SelectItem>
+                    {loadingInvoices ? (
+                      <SelectItem value="loading" disabled>Loading invoices...</SelectItem>
+                    ) : (
+                      unpaidInvoices.map((inv) => (
+                        <SelectItem key={inv.id} value={inv.id}>
+                          {inv.invoice_number} — Due: ₹{(Number(inv.final_amount) - Number(inv.paid_amount)).toLocaleString("en-IN")}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Amount */}
+              <div className="space-y-2">
+                <Label>Payment Amount (₹)</Label>
+                <Input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
+                  placeholder="Enter amount"
+                  min="1"
+                />
+              </div>
+
+              {/* Payment Mode */}
+              <div className="space-y-2">
+                <Label>Payment Mode</Label>
+                <Select value={paymentMode} onValueChange={setPaymentMode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="upi">UPI</SelectItem>
+                    <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                    <SelectItem value="cheque">Cheque</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-2">
+                <Label>Notes (optional)</Label>
+                <Input
+                  value={paymentNotes}
+                  onChange={(e) => setPaymentNotes(e.target.value)}
+                  placeholder="Reference number or note"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setPaymentDialogOpen(false)}>Cancel</Button>
+            <Button 
+              variant="success"
+              onClick={handleRecordPayment} 
+              disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || recordingPayment}
+            >
+              {recordingPayment && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Record Payment
+            </Button>
+          </div>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </div>
   );
 }

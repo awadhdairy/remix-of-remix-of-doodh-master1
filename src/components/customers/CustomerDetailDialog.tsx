@@ -1,23 +1,44 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
-import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle } from "@/components/ui/responsive-dialog";
+import { invalidateBillingRelated, invalidateCustomerRelated } from "@/lib/query-invalidation";
+import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { ResponsiveDialog, ResponsiveDialogContent, ResponsiveDialogHeader, ResponsiveDialogTitle, ResponsiveDialogDescription } from "@/components/ui/responsive-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CustomerDeliveryCalendar } from "./CustomerDeliveryCalendar";
 import { QuickAddOnOrderDialog } from "./QuickAddOnOrderDialog";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 import { 
   User, Phone, MapPin, Calendar, Mail,
   Clock, CheckCircle, XCircle, AlertCircle,
   Package, Receipt, Truck, DollarSign,
   TrendingUp, CreditCard, Palmtree, ShoppingCart,
-  CalendarDays, Plus, AlertTriangle
+  CalendarDays, Plus, AlertTriangle, IndianRupee, Loader2
 } from "lucide-react";
-import { format, parseISO, differenceInDays } from "date-fns";
+import { parseISO, differenceInDays } from "date-fns";
 import { getEffectivePaymentStatus, countOverdueInvoices } from "@/lib/invoice-helpers";
 
 interface Customer {
@@ -112,6 +133,9 @@ interface CustomerDetailDialogProps {
 
 export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerDetailDialogProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { notifyPaymentReceived, notifyLargeTransaction } = useTelegramNotify();
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -120,6 +144,14 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
   const [vacations, setVacations] = useState<Vacation[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [addOnDialogOpen, setAddOnDialogOpen] = useState(false);
+  
+  // Payment sub-dialog state
+  const [payDialogOpen, setPayDialogOpen] = useState(false);
+  const [payAmount, setPayAmount] = useState("");
+  const [payMode, setPayMode] = useState("cash");
+  const [payNotes, setPayNotes] = useState("");
+  const [payInvoiceId, setPayInvoiceId] = useState<string>("general");
+  const [recordingPay, setRecordingPay] = useState(false);
   useEffect(() => {
     if (customer && open) {
       fetchCustomerData();
@@ -223,7 +255,107 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
     }
   };
 
+  const handleDetailPayment = async () => {
+    if (!customer || !payAmount) return;
+    const amount = parseFloat(payAmount);
+    if (amount <= 0) return;
+    
+    setRecordingPay(true);
+    try {
+      const today = format(new Date(), "yyyy-MM-dd");
+      const isInvoicePayment = payInvoiceId !== "general";
+      
+      // Update invoice if linked
+      if (isInvoicePayment) {
+        const invoice = unpaidInvoicesForPay.find(i => i.id === payInvoiceId);
+        if (invoice) {
+          const newPaidAmount = Number(invoice.paid_amount) + amount;
+          const remaining = Number(invoice.final_amount) - newPaidAmount;
+          let newStatus: "paid" | "partial" | "pending" = "partial";
+          if (remaining <= 0) newStatus = "paid";
+          else if (newPaidAmount === 0) newStatus = "pending";
+          
+          await supabase.from("invoices").update({
+            paid_amount: newPaidAmount,
+            payment_status: newStatus,
+            ...(newStatus === "paid" ? { payment_date: today } : {}),
+          }).eq("id", invoice.id);
+        }
+      }
+      
+      await supabase.from("payments").insert({
+        customer_id: customer.id,
+        amount,
+        payment_mode: payMode,
+        payment_date: today,
+        invoice_id: isInvoicePayment ? payInvoiceId : null,
+        notes: payNotes || null,
+      });
+      
+      const { data: lastLedgerEntry } = await supabase
+        .from("customer_ledger")
+        .select("running_balance")
+        .eq("customer_id", customer.id)
+        .order("transaction_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      const previousBalance = lastLedgerEntry?.running_balance || 0;
+      const invoiceRef = isInvoicePayment 
+        ? unpaidInvoicesForPay.find(i => i.id === payInvoiceId)?.invoice_number 
+        : null;
+      
+      await supabase.from("customer_ledger").insert({
+        customer_id: customer.id,
+        transaction_date: today,
+        transaction_type: "payment",
+        description: invoiceRef ? `Payment for ${invoiceRef}` : "General Payment",
+        debit_amount: 0,
+        credit_amount: amount,
+        running_balance: previousBalance - amount,
+        reference_id: isInvoicePayment ? payInvoiceId : null,
+      });
+      
+      invalidateBillingRelated(queryClient);
+      invalidateCustomerRelated(queryClient);
+      
+      notifyPaymentReceived({
+        amount,
+        customer_name: customer.name,
+        payment_mode: payMode,
+        reference: invoiceRef || undefined,
+      });
+      if (amount >= 10000) {
+        notifyLargeTransaction({
+          amount,
+          customer_name: customer.name,
+          payment_mode: payMode,
+          reference: invoiceRef || undefined,
+        });
+      }
+      
+      toast({
+        title: "Payment recorded",
+        description: `₹${amount.toLocaleString("en-IN")} payment recorded`,
+      });
+      
+      setPayDialogOpen(false);
+      fetchCustomerData(); // Refresh all tabs
+    } catch (error: any) {
+      toast({
+        title: "Error recording payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setRecordingPay(false);
+    }
+  };
+
   if (!customer) return null;
+  
+  const unpaidInvoicesForPay = invoices.filter(i => getEffectivePaymentStatus(i) !== "paid");
 
   // Calculate stats
   const totalDelivered = deliveries.filter(d => d.status === "delivered").length;
@@ -286,6 +418,20 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
               >
                 <Truck className="h-4 w-4 mr-1" />
                 Deliveries
+              </Button>
+              <Button
+                size="sm"
+                variant="success"
+                onClick={() => {
+                  setPayAmount("");
+                  setPayMode("cash");
+                  setPayNotes("");
+                  setPayInvoiceId("general");
+                  setPayDialogOpen(true);
+                }}
+              >
+                <IndianRupee className="h-4 w-4 mr-1" />
+                Pay
               </Button>
             </div>
           </div>
@@ -914,6 +1060,89 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
         customerName={customer.name}
         onSuccess={fetchCustomerData}
       />
+
+      {/* Payment Sub-Dialog */}
+      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Record Payment</DialogTitle>
+            <DialogDescription>{customer.name}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="rounded-lg bg-muted p-4 space-y-1">
+              <div className="flex justify-between text-sm">
+                <span>Current Due:</span>
+                <span className={Number(customer.credit_balance) > 0 ? "text-destructive font-semibold" : "text-success font-semibold"}>
+                  ₹{Number(customer.credit_balance).toLocaleString("en-IN")}
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Apply To</Label>
+              <Select value={payInvoiceId} onValueChange={setPayInvoiceId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="general">General / Advance Payment</SelectItem>
+                  {unpaidInvoicesForPay.map((inv) => (
+                    <SelectItem key={inv.id} value={inv.id}>
+                      {inv.invoice_number} — Due: ₹{(Number(inv.final_amount) - Number(inv.paid_amount || 0)).toLocaleString("en-IN")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Amount (₹)</Label>
+              <Input
+                type="number"
+                value={payAmount}
+                onChange={(e) => setPayAmount(e.target.value)}
+                placeholder="Enter amount"
+                min="1"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Payment Mode</Label>
+              <Select value={payMode} onValueChange={setPayMode}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                  <SelectItem value="cheque">Cheque</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Notes (optional)</Label>
+              <Input
+                value={payNotes}
+                onChange={(e) => setPayNotes(e.target.value)}
+                placeholder="Reference or note"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => setPayDialogOpen(false)}>Cancel</Button>
+            <Button
+              variant="success"
+              onClick={handleDetailPayment}
+              disabled={!payAmount || parseFloat(payAmount) <= 0 || recordingPay}
+            >
+              {recordingPay && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Record Payment
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </ResponsiveDialog>
   );
 }
