@@ -1,50 +1,84 @@
 
+# Add Payment Button to Customers Page + Payment Status Visibility
 
-# Fix: Addon Delivery Failure + Vendor Payment Expense Logging
+## What Will Be Built
 
-## Issue 1: Addon Delivery Crashes with Timestamp Error (CRITICAL)
+A "Record Payment" button in the Customers page (both in the table actions and in the CustomerDetailDialog) that allows recording payments directly against a customer -- either against a specific unpaid invoice or as a general/advance payment. The customer's payment status will be clearly visible throughout.
 
-**Root Cause:** In `QuickAddOnOrderDialog.tsx` (line 159-163), `delivery_time` is set using:
-```javascript
-new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
+## Changes Overview
+
+### 1. Customers Page Table - Add Payment Button in Actions Column
+**File: `src/pages/Customers.tsx`**
+
+- Add `IndianRupee` icon import from lucide-react
+- Add state variables: `paymentDialogOpen`, `paymentAmount`, `paymentMode`, `paymentType` (invoice vs advance), `customerInvoices` (unpaid invoices for selected customer), `selectedInvoiceId`
+- Add a new green "Pay" button in the actions column (between Ledger and Edit buttons)
+- Clicking it opens a payment dialog for that customer
+- Add a payment dialog that:
+  - Fetches unpaid invoices for the selected customer
+  - Shows current balance (credit_balance) prominently
+  - Allows selecting an invoice OR recording as "advance/general" payment
+  - Has amount input, payment mode selector (cash/upi/bank_transfer/cheque)
+  - On submit: inserts into `payments` table, creates ledger entry with correct running_balance, updates invoice `paid_amount` and `payment_status` if invoice-linked, and invalidates all related queries (billing, customer, dashboard)
+
+### 2. Customer Detail Dialog - Add Payment Button in Header
+**File: `src/components/customers/CustomerDetailDialog.tsx`**
+
+- Add a "Record Payment" button in the header area (next to "Add Order" and "Deliveries" buttons)
+- Reuse the same payment recording pattern
+- Add state for a payment sub-dialog within the detail dialog
+- After payment, refresh the customer data (`fetchCustomerData`) so all tabs update immediately
+- Add `useQueryClient` and invalidation imports to keep Billing page and Dashboard in sync
+
+### 3. Payment Status Visibility on Customers Table
+**File: `src/pages/Customers.tsx`**
+
+- Enhance the "Due" column to show a visual indicator:
+  - Red badge with amount when `credit_balance > 0` (customer owes money)
+  - Green "Paid Up" badge when `credit_balance <= 0`
+- The existing "Due" and "Advance" columns already show values; the payment button gives immediate actionability
+
+### 4. Query Invalidation for Cross-Page Sync
+After any payment is recorded from the Customers page:
+- Invalidate `["expenses"]`, billing-related, customer-related queries
+- Call `invalidateBillingRelated(queryClient)` and `invalidateCustomerRelated(queryClient)`
+- Re-fetch customers list to update balance columns immediately
+
+## Integration Points Verified
+- **Payments table**: `invoice_id` is nullable -- supports general payments without an invoice
+- **Customer ledger**: Payment creates a credit entry with computed running_balance
+- **Database trigger**: `update_customer_balance_from_ledger` automatically recalculates `credit_balance` on customers table after ledger insert
+- **Billing page**: Uses same `invoices` + `payments` tables, so invalidation keeps it consistent
+- **Dashboard**: Revenue/billing charts are invalidated
+- **Telegram notifications**: Payment notification will be sent (using existing `useTelegramNotify` hook)
+
+## Technical Details
+
+### Payment Recording Flow (same logic as Billing.tsx, adapted for customer context)
 ```
-This produces a string like `"08:20 am"`, but the `delivery_time` column in the database is of type `timestamp with time zone`. PostgreSQL cannot parse `"08:20 am"` as a timestamp, causing the error shown in the screenshot.
+1. User clicks "Pay" on a customer row
+2. Dialog opens, fetches unpaid invoices for that customer
+3. User picks invoice (or "General Payment") + enters amount + mode
+4. On submit:
+   a. If invoice selected: update invoice paid_amount, compute new status
+   b. Insert into payments table (invoice_id = selected or null)
+   c. Fetch last ledger running_balance, compute new balance
+   d. Insert ledger entry (type: "payment", credit_amount)
+   e. Invalidate billing + customer + dashboard queries
+   f. Re-fetch customers list
+   g. Send Telegram notification
+```
 
-**Fix:** Change `delivery_time` to use `new Date().toISOString()` -- the same format used consistently by every other file that sets this field (Deliveries.tsx, BulkDeliveryActions.tsx, useAutoDeliveryScheduler.ts all use `new Date().toISOString()`).
-
-**File:** `src/components/customers/QuickAddOnOrderDialog.tsx`
-
----
-
-## Issue 2: Vendor Payment Expense Not Auto-Registering (MEDIUM)
-
-**Root Cause:** The `logVendorPaymentExpense` function in `useExpenseAutomation.ts` works correctly in isolation. However, the `createExpense` function checks for duplicates using a `.like()` query on the `notes` field (line 28). If the first payment insert succeeds but the expense insert fails silently (e.g., due to a transient error), a retry would find no duplicate and should work. But if the expense insert fails due to RLS policies, `logger.error` logs it to the console but the toast from the previous fix now correctly reports "Payment recorded" without "expense logged".
-
-The actual problem is that the `checkExpenseExists` function uses `.like("notes", ...)` which searches for `[AUTO] vendor_payment:<id>` in the notes field. This is correct. The `createExpense` insert uses the same `externalSupabase` client. If the auth session has the right role (super_admin/manager), the RLS should allow it.
-
-After reviewing the code flow more carefully: the logic is sound. The most likely reason expenses aren't appearing is that the vendor payment itself hasn't been successfully tested in production yet (the user may have only tested addon delivery, which crashes first). The previous fix already added proper error feedback. No additional code change needed for this -- just confirming the flow is correct.
-
-However, there IS a subtle issue: the `checkExpenseExists` on line 28 uses `.like()` which returns `data` as an array. If the query fails (RLS error), `data` would be `null`, and `(null && null.length > 0)` evaluates to `null` (falsy) -- so the duplicate check passes and it proceeds to insert. This is actually correct behavior (fail-open for duplicate check).
-
-**Verdict:** No code change needed for expense logging. The flow is correct. Once addon delivery is fixed and vendor payments can be tested end-to-end, expenses should register correctly.
-
----
-
-## Also Found: `run_auto_delivery` DB Function Uses `NOW()::text`
-
-The database function `run_auto_delivery` sets `delivery_time` to `NOW()::text`. Since this is a Postgres-side cast and the column is `timestamp with time zone`, Postgres can successfully parse its own text representation back. This is NOT a bug -- it works correctly within PostgreSQL.
-
----
-
-## Summary of Changes
+### Files Modified
 
 | File | Change |
 |------|--------|
-| `src/components/customers/QuickAddOnOrderDialog.tsx` | Replace `toLocaleTimeString(...)` with `new Date().toISOString()` for `delivery_time` |
+| `src/pages/Customers.tsx` | Add payment button in actions, payment dialog, payment handler, state variables |
+| `src/components/customers/CustomerDetailDialog.tsx` | Add payment button in header, mini payment dialog, handler with data refresh |
 
-## What Will NOT Change
-- No database schema changes
-- No changes to VendorPaymentsDialog (previous fix already handles it correctly)
-- No changes to useExpenseAutomation (logic is sound)
-- No changes to any automation, integration, or Telegram notifications
-- No changes to run_auto_delivery DB function (works correctly)
+### What Will NOT Change
+- No database schema changes (payments table already supports this)
+- No changes to Billing page logic
+- No changes to ledger automation hooks
+- No changes to any edge functions
+- No changes to Telegram notification logic (reuse existing hooks)
