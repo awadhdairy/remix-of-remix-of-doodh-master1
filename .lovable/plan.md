@@ -1,84 +1,106 @@
 
-# Add Payment Button to Customers Page + Payment Status Visibility
 
-## What Will Be Built
+# Fix: Delivery Automation Not Functioning
 
-A "Record Payment" button in the Customers page (both in the table actions and in the CustomerDetailDialog) that allows recording payments directly against a customer -- either against a specific unpaid invoice or as a general/advance payment. The customer's payment status will be clearly visible throughout.
+## Root Cause Analysis
 
-## Changes Overview
+After comprehensive analysis, there are **3 critical failures** preventing delivery automation from working at any level:
 
-### 1. Customers Page Table - Add Payment Button in Actions Column
-**File: `src/pages/Customers.tsx`**
+### Problem 1: Edge Function Not Configured (Blocks ALL edge function calls)
+The `auto-deliver-daily` edge function is **missing from `supabase/config.toml`**. Without `verify_jwt = false`, the Supabase API gateway rejects all unauthenticated requests before they reach the function code.
 
-- Add `IndianRupee` icon import from lucide-react
-- Add state variables: `paymentDialogOpen`, `paymentAmount`, `paymentMode`, `paymentType` (invoice vs advance), `customerInvoices` (unpaid invoices for selected customer), `selectedInvoiceId`
-- Add a new green "Pay" button in the actions column (between Ledger and Edit buttons)
-- Clicking it opens a payment dialog for that customer
-- Add a payment dialog that:
-  - Fetches unpaid invoices for the selected customer
-  - Shows current balance (credit_balance) prominently
-  - Allows selecting an invoice OR recording as "advance/general" payment
-  - Has amount input, payment mode selector (cash/upi/bank_transfer/cheque)
-  - On submit: inserts into `payments` table, creates ledger entry with correct running_balance, updates invoice `paid_amount` and `payment_status` if invoice-linked, and invalidates all related queries (billing, customer, dashboard)
+- The "Run Auto-Delivery Now" button calls `invokeExternalFunctionWithSession`, which tries to get a Supabase Auth JWT. But this app uses **custom PIN-based auth** (no Supabase Auth session), so `auth.getSession()` returns null, and the function returns `'Authentication required'` before even making the network call.
+- The GitHub Actions cron job sends a bare POST request with no auth headers at all -- rejected by the gateway.
 
-### 2. Customer Detail Dialog - Add Payment Button in Header
-**File: `src/components/customers/CustomerDetailDialog.tsx`**
+### Problem 2: GitHub Actions Missing API Key Header (Blocks cron automation)
+The GitHub Actions workflow (`auto-deliver-daily.yml`) sends the request with only `Content-Type` header. Supabase requires the `apikey` header even when `verify_jwt = false`. Without it, the request gets a 401 from the gateway.
 
-- Add a "Record Payment" button in the header area (next to "Add Order" and "Deliveries" buttons)
-- Reuse the same payment recording pattern
-- Add state for a payment sub-dialog within the detail dialog
-- After payment, refresh the customer data (`fetchCustomerData`) so all tabs update immediately
-- Add `useQueryClient` and invalidation imports to keep Billing page and Dashboard in sync
+### Problem 3: Frontend Scheduler Blocked by RLS (Blocks "Schedule Today" / "Auto-Deliver All")
+The `useAutoDeliveryScheduler` hook uses the `externalSupabase` client (anon key). All table operations (SELECT, INSERT, UPDATE on `deliveries`, `delivery_items`, `customer_products`) go through RLS policies that check `auth.uid()`. Since this app uses custom PIN auth, `auth.uid()` is always NULL for the anon client, so:
+- SELECT queries return 0 rows (no subscriptions found)
+- INSERT/UPDATE operations silently fail (no matching policy)
 
-### 3. Payment Status Visibility on Customers Table
-**File: `src/pages/Customers.tsx`**
+This is why every button shows "0 scheduled, 0 delivered" -- it's not a logic bug, it's a permissions wall.
 
-- Enhance the "Due" column to show a visual indicator:
-  - Red badge with amount when `credit_balance > 0` (customer owes money)
-  - Green "Paid Up" badge when `credit_balance <= 0`
-- The existing "Due" and "Advance" columns already show values; the payment button gives immediate actionability
+---
 
-### 4. Query Invalidation for Cross-Page Sync
-After any payment is recorded from the Customers page:
-- Invalidate `["expenses"]`, billing-related, customer-related queries
-- Call `invalidateBillingRelated(queryClient)` and `invalidateCustomerRelated(queryClient)`
-- Re-fetch customers list to update balance columns immediately
+## Solution
 
-## Integration Points Verified
-- **Payments table**: `invoice_id` is nullable -- supports general payments without an invoice
-- **Customer ledger**: Payment creates a credit entry with computed running_balance
-- **Database trigger**: `update_customer_balance_from_ledger` automatically recalculates `credit_balance` on customers table after ledger insert
-- **Billing page**: Uses same `invoices` + `payments` tables, so invalidation keeps it consistent
-- **Dashboard**: Revenue/billing charts are invalidated
-- **Telegram notifications**: Payment notification will be sent (using existing `useTelegramNotify` hook)
+### Fix 1: Add `auto-deliver-daily` to `config.toml`
+**File: `supabase/config.toml`**
 
-## Technical Details
-
-### Payment Recording Flow (same logic as Billing.tsx, adapted for customer context)
-```
-1. User clicks "Pay" on a customer row
-2. Dialog opens, fetches unpaid invoices for that customer
-3. User picks invoice (or "General Payment") + enters amount + mode
-4. On submit:
-   a. If invoice selected: update invoice paid_amount, compute new status
-   b. Insert into payments table (invoice_id = selected or null)
-   c. Fetch last ledger running_balance, compute new balance
-   d. Insert ledger entry (type: "payment", credit_amount)
-   e. Invalidate billing + customer + dashboard queries
-   f. Re-fetch customers list
-   g. Send Telegram notification
+Add the missing entry:
+```toml
+[functions.auto-deliver-daily]
+verify_jwt = false
 ```
 
-### Files Modified
+### Fix 2: Fix GitHub Actions Workflow to Include Required Headers
+**File: `.github/workflows/auto-deliver-daily.yml`**
+
+Add the `apikey` header and `Authorization` header (using service role key for server-to-server calls):
+```yaml
+- name: Trigger Auto Delivery
+  env:
+    SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
+    SUPABASE_ANON_KEY: ${{ secrets.EXTERNAL_SUPABASE_ANON_KEY }}
+  run: |
+    response=$(curl -s -w "\n%{http_code}" \
+      -X POST \
+      -H "Content-Type: application/json" \
+      -H "apikey: ${SUPABASE_ANON_KEY}" \
+      "${SUPABASE_URL}/functions/v1/auto-deliver-daily" \
+      -d '{}')
+```
+
+### Fix 3: Make Edge Function the Single Source of Truth for All Delivery Automation
+The edge function already uses `SUPABASE_SERVICE_ROLE_KEY` internally, which bypasses RLS. This is the correct pattern. The problem is that the frontend buttons ("Schedule Today", "Auto-Deliver All") use the anon client directly instead of going through the edge function.
+
+**Fix the `DeliveryAutomationCard` to route ALL operations through the edge function:**
+
+**File: `src/components/dashboard/DeliveryAutomationCard.tsx`**
+
+- Change "Schedule Today" to call the edge function with `{ mode: "schedule_only" }` instead of using `useAutoDeliveryScheduler` directly
+- Change "Auto-Deliver All" to call the edge function with `{ mode: "auto_deliver_pending" }` instead of using `useAutoDeliveryScheduler` directly
+- Keep "Run Auto-Delivery Now" calling the edge function (already correct pattern, just needs auth fix)
+
+**File: `supabase/functions/auto-deliver-daily/index.ts`**
+
+Update the edge function to support different modes:
+- `mode: "full"` (default, current behavior) -- schedule + auto-deliver
+- `mode: "schedule_only"` -- only create pending deliveries, don't mark as delivered
+- `mode: "auto_deliver_pending"` -- only mark existing pending deliveries as delivered
+
+Since the edge function uses the service role key, all database operations bypass RLS, solving the permissions issue.
+
+### Fix 4: Fix Frontend Edge Function Invocation (No Supabase Auth Dependency)
+**File: `src/components/dashboard/DeliveryAutomationCard.tsx`**
+
+Replace `invokeExternalFunctionWithSession` (which requires Supabase Auth JWT) with `invokeExternalFunction` (which only needs the anon key as apikey). Since `verify_jwt = false` is set, the edge function doesn't need a JWT -- just the apikey for gateway routing.
+
+---
+
+## Summary of Changes
 
 | File | Change |
 |------|--------|
-| `src/pages/Customers.tsx` | Add payment button in actions, payment dialog, payment handler, state variables |
-| `src/components/customers/CustomerDetailDialog.tsx` | Add payment button in header, mini payment dialog, handler with data refresh |
+| `supabase/config.toml` | Add `[functions.auto-deliver-daily]` with `verify_jwt = false` |
+| `.github/workflows/auto-deliver-daily.yml` | Add `apikey` header using `EXTERNAL_SUPABASE_ANON_KEY` secret |
+| `supabase/functions/auto-deliver-daily/index.ts` | Add `mode` parameter support (schedule_only, auto_deliver_pending, full) |
+| `src/components/dashboard/DeliveryAutomationCard.tsx` | Route all 3 buttons through edge function using `invokeExternalFunction` (no JWT needed) |
 
-### What Will NOT Change
-- No database schema changes (payments table already supports this)
-- No changes to Billing page logic
-- No changes to ledger automation hooks
-- No changes to any edge functions
-- No changes to Telegram notification logic (reuse existing hooks)
+## What Will NOT Change
+- No database schema changes
+- No RLS policy changes (edge function bypasses RLS via service role key)
+- No changes to `useAutoDeliveryScheduler` hook (kept for potential future use)
+- No changes to Deliveries page, Billing, Customers, or any other page
+- No changes to Telegram notifications
+- No changes to the `run_auto_delivery` database function
+- The `BulkDeliveryActions` component continues working as-is (it operates on already-existing deliveries)
+
+## Verification After Implementation
+- "Schedule Today" should create pending deliveries for all eligible customers
+- "Auto-Deliver All" should mark all pending deliveries as delivered
+- "Run Auto-Delivery Now" should do both (schedule + deliver) in one call
+- GitHub Actions cron should work at 10:00 AM IST daily
+
