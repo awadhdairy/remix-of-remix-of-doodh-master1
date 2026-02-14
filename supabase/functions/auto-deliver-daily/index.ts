@@ -12,14 +12,13 @@ interface AutoDeliverResult {
 /**
  * Auto-Deliver Daily Edge Function
  * 
- * This function runs daily at 10:00 AM IST (4:30 AM UTC) to:
- * 1. Create delivery records for all active subscriptions
- * 2. Mark pending deliveries as "delivered" (subscription orders only)
+ * Supports 3 modes:
+ * - "full" (default): Schedule new deliveries + mark pending as delivered
+ * - "schedule_only": Only create pending deliveries, don't auto-mark delivered
+ * - "auto_deliver_pending": Only mark existing pending deliveries as delivered
  * 
- * It skips:
- * - Customers on vacation
- * - Customers with non-matching delivery frequencies
- * - Deliveries already marked as missed/partial
+ * Runs daily at 10:00 AM IST (4:30 AM UTC) via GitHub Actions cron.
+ * Can also be triggered manually from the dashboard.
  */
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -29,20 +28,26 @@ Deno.serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
 
-  // Use Supabase's built-in environment variables (auto-provided by Supabase)
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // Parse mode from request body
+  let mode = "full";
+  try {
+    const body = await req.json();
+    mode = body?.mode || "full";
+  } catch {
+    // No body or invalid JSON — default to "full"
+  }
 
   // Get target date (today in IST timezone)
   const now = new Date();
-  // IST is UTC+5:30
   const istOffset = 5.5 * 60 * 60 * 1000;
   const istDate = new Date(now.getTime() + istOffset);
   const targetDate = istDate.toISOString().split("T")[0];
 
-  console.log(`[AUTO-DELIVER] Starting for date: ${targetDate}`);
+  console.log(`[AUTO-DELIVER] Starting mode="${mode}" for date: ${targetDate}`);
 
   const result: AutoDeliverResult = {
     date: targetDate,
@@ -70,7 +75,7 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to fetch subscriptions: ${subError.message}`);
     }
 
-    const customerIds = [...new Set(subscriptions?.map((s) => s.customer_id) || [])];
+    const customerIds = [...new Set(subscriptions?.map((s: any) => s.customer_id) || [])];
     console.log(`[AUTO-DELIVER] Found ${customerIds.length} customers with subscriptions`);
 
     if (customerIds.length === 0) {
@@ -90,7 +95,7 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to fetch customers: ${custError.message}`);
     }
 
-    const customerMap = new Map(customers?.map((c) => [c.id, c]) || []);
+    const customerMap = new Map(customers?.map((c: any) => [c.id, c]) || []);
 
     // Step 3: Check vacations
     const { data: vacations } = await supabase
@@ -100,7 +105,7 @@ Deno.serve(async (req) => {
       .lte("start_date", targetDate)
       .gte("end_date", targetDate);
 
-    const vacationCustomerIds = new Set(vacations?.map((v) => v.customer_id) || []);
+    const vacationCustomerIds = new Set(vacations?.map((v: any) => v.customer_id) || []);
     console.log(`[AUTO-DELIVER] ${vacationCustomerIds.size} customers on vacation`);
 
     // Step 4: Check existing deliveries
@@ -110,7 +115,7 @@ Deno.serve(async (req) => {
       .eq("delivery_date", targetDate);
 
     const existingDeliveryMap = new Map<string, { id: string; status: string }>();
-    existingDeliveries?.forEach((d) => {
+    existingDeliveries?.forEach((d: any) => {
       existingDeliveryMap.set(d.customer_id, { id: d.id, status: d.status });
     });
 
@@ -129,38 +134,53 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Check delivery frequency from notes
+      // Check delivery frequency
       if (!shouldDeliverToday(customer, targetDate)) {
         result.skipped++;
         continue;
       }
 
       const existingDelivery = existingDeliveryMap.get(customerId);
+      const customerSubs = subscriptions?.filter((s: any) => s.customer_id === customerId) || [];
 
-      // Get customer's subscription products
-      const customerSubs = subscriptions?.filter((s) => s.customer_id === customerId) || [];
+      if (mode === "auto_deliver_pending") {
+        // ONLY mark existing pending deliveries as delivered
+        if (existingDelivery && existingDelivery.status === "pending") {
+          await markAsDelivered(supabase, existingDelivery.id, customerId, customerSubs);
+          result.delivered++;
+          console.log(`[AUTO-DELIVER] Marked pending delivery as delivered for ${customer.name}`);
+        } else {
+          result.skipped++;
+        }
+        continue;
+      }
 
       if (existingDelivery) {
-        // Delivery exists - only mark as delivered if it's pending
+        if (mode === "schedule_only") {
+          // Already has a delivery, skip
+          result.skipped++;
+          continue;
+        }
+        // mode === "full": mark pending as delivered
         if (existingDelivery.status === "pending") {
           await markAsDelivered(supabase, existingDelivery.id, customerId, customerSubs);
           result.delivered++;
           console.log(`[AUTO-DELIVER] Marked delivery as delivered for ${customer.name}`);
         } else {
-          // Already processed (delivered, missed, partial)
           result.skipped++;
         }
       } else {
-        // No delivery exists - create one and mark as delivered
+        // No delivery exists — create one
         try {
+          const deliveryStatus = mode === "schedule_only" ? "pending" : "delivered";
           const { data: newDelivery, error: createError } = await supabase
             .from("deliveries")
             .insert({
               customer_id: customerId,
               delivery_date: targetDate,
-              status: "delivered",
-              delivery_time: new Date().toISOString(),
-              notes: "[AUTO] Scheduled delivery",
+              status: deliveryStatus,
+              delivery_time: deliveryStatus === "delivered" ? new Date().toISOString() : null,
+              notes: deliveryStatus === "delivered" ? "[AUTO] Scheduled delivery" : "[AUTO] Scheduled (pending)",
             })
             .select("id")
             .single();
@@ -172,7 +192,7 @@ Deno.serve(async (req) => {
 
           // Create delivery items
           if (customerSubs.length > 0) {
-            const items = customerSubs.map((sub) => {
+            const items = customerSubs.map((sub: any) => {
               const product = sub.products as any;
               const unitPrice = sub.custom_price ?? product?.base_price ?? 0;
               return {
@@ -188,8 +208,10 @@ Deno.serve(async (req) => {
           }
 
           result.scheduled++;
-          result.delivered++;
-          console.log(`[AUTO-DELIVER] Created and delivered for ${customer.name}`);
+          if (deliveryStatus === "delivered") {
+            result.delivered++;
+          }
+          console.log(`[AUTO-DELIVER] Created (${deliveryStatus}) for ${customer.name}`);
         } catch (err: any) {
           result.errors.push(`Error creating delivery for ${customer.name}: ${err.message}`);
         }
@@ -216,10 +238,9 @@ Deno.serve(async (req) => {
  */
 function shouldDeliverToday(customer: any, targetDate: string): boolean {
   const targetDateObj = new Date(targetDate);
-  const dayOfWeek = targetDateObj.getDay(); // 0 = Sunday
+  const dayOfWeek = targetDateObj.getDay();
   const dayOfMonth = targetDateObj.getDate();
 
-  // Parse schedule from notes if exists
   let schedule: any = null;
   if (customer.notes) {
     try {
@@ -227,32 +248,26 @@ function shouldDeliverToday(customer: any, targetDate: string): boolean {
       if (scheduleMatch) {
         schedule = JSON.parse(scheduleMatch[1]);
       }
-    } catch (e) {
+    } catch (_e) {
       // Ignore parse errors
     }
   }
 
-  // Get frequency from schedule or subscription_type
   const frequency = schedule?.frequency || customer.subscription_type || "daily";
 
   switch (frequency) {
     case "daily":
       return true;
-
     case "alternate":
-      // Deliver on odd days of month
       return dayOfMonth % 2 === 1;
-
-    case "weekly":
-      // Deliver on configured day or default Sunday (0)
+    case "weekly": {
       const deliveryDay = schedule?.day ?? 0;
       return dayOfWeek === deliveryDay;
-
-    case "custom":
-      // Check if today's day is in the custom days array
+    }
+    case "custom": {
       const customDays: number[] = schedule?.days || [0, 1, 2, 3, 4, 5, 6];
       return customDays.includes(dayOfWeek);
-
+    }
     default:
       return true;
   }
@@ -267,16 +282,14 @@ async function markAsDelivered(
   customerId: string,
   customerSubs: any[]
 ) {
-  // Check if delivery items exist
   const { data: existingItems } = await supabase
     .from("delivery_items")
     .select("id")
     .eq("delivery_id", deliveryId);
 
-  // If no items exist, create them from subscriptions
   if (!existingItems || existingItems.length === 0) {
     if (customerSubs.length > 0) {
-      const items = customerSubs.map((sub) => {
+      const items = customerSubs.map((sub: any) => {
         const product = sub.products as any;
         const unitPrice = sub.custom_price ?? product?.base_price ?? 0;
         return {
@@ -292,13 +305,12 @@ async function markAsDelivered(
     }
   }
 
-  // Update delivery status
   await supabase
     .from("deliveries")
     .update({
       status: "delivered",
       delivery_time: new Date().toISOString(),
-      notes: "[AUTO] Auto-marked at 10:00 AM IST",
+      notes: "[AUTO] Auto-marked delivered",
     })
     .eq("id", deliveryId);
 }

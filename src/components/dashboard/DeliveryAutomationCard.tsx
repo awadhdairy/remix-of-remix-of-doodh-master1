@@ -5,9 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { useAutoDeliveryScheduler } from "@/hooks/useAutoDeliveryScheduler";
-import { invokeExternalFunctionWithSession } from "@/lib/external-supabase";
-import { format, addDays } from "date-fns";
+import { invokeExternalFunction } from "@/lib/external-supabase";
+import { format } from "date-fns";
 import { 
   Truck, 
   Calendar, 
@@ -19,123 +18,61 @@ import {
   Clock
 } from "lucide-react";
 
+interface DeliveryResult {
+  scheduled: number;
+  delivered: number;
+  skipped: number;
+  errors: string[];
+}
+
 export function DeliveryAutomationCard() {
-  const [loading, setLoading] = useState(false);
-  const [cronLoading, setCronLoading] = useState(false);
+  const [loading, setLoading] = useState<string | null>(null);
   const [autoDeliverEnabled, setAutoDeliverEnabled] = useState(false);
-  const [lastResult, setLastResult] = useState<{
-    scheduled: number;
-    skipped: number;
-    autoDelivered: number;
-    errors: string[];
-  } | null>(null);
+  const [lastResult, setLastResult] = useState<DeliveryResult | null>(null);
   const { toast } = useToast();
-  const { 
-    scheduleDeliveriesForDate, 
-    autoDeliverPendingForDate 
-  } = useAutoDeliveryScheduler();
 
-  const today = format(new Date(), "yyyy-MM-dd");
-
-  // Trigger the edge function manually
-  const handleTriggerCronJob = async () => {
-    setCronLoading(true);
+  const callEdgeFunction = async (mode: string, label: string) => {
+    setLoading(mode);
     try {
-      const { data, error } = await invokeExternalFunctionWithSession<{
-        result?: { delivered: number; scheduled: number; skipped: number; errors?: string[] };
-      }>("auto-deliver-daily", { triggered_at: new Date().toISOString(), manual: true });
+      const { data, error } = await invokeExternalFunction<{
+        success: boolean;
+        result?: DeliveryResult;
+      }>("auto-deliver-daily", { mode });
 
       if (error) throw error;
+      if (!data?.success) throw new Error("Edge function returned failure");
 
-      const result = data?.result;
+      const result = data.result;
       if (result) {
+        setLastResult(result);
         toast({
-          title: "Auto-delivery complete",
-          description: `Delivered: ${result.delivered}, Scheduled: ${result.scheduled}, Skipped: ${result.skipped}`,
-        });
-        setLastResult({
-          scheduled: result.scheduled,
-          skipped: result.skipped,
-          autoDelivered: result.delivered,
-          errors: result.errors || [],
+          title: `${label} complete`,
+          description: `Scheduled: ${result.scheduled}, Delivered: ${result.delivered}, Skipped: ${result.skipped}${result.errors.length > 0 ? `, Errors: ${result.errors.length}` : ""}`,
+          variant: result.errors.length > 0 ? "destructive" : "default",
         });
       }
     } catch (error: any) {
       toast({
-        title: "Error triggering auto-delivery",
+        title: `Error: ${label}`,
         description: error.message,
         variant: "destructive",
       });
     } finally {
-      setCronLoading(false);
+      setLoading(null);
     }
   };
 
-  const handleScheduleToday = async () => {
-    setLoading(true);
-    try {
-      const result = await scheduleDeliveriesForDate(today, autoDeliverEnabled);
-      setLastResult(result);
-
-      if (result.errors.length > 0) {
-        toast({
-          title: "Scheduling completed with errors",
-          description: `Scheduled: ${result.scheduled}, Errors: ${result.errors.length}`,
-          variant: "destructive",
-        });
-      } else if (result.scheduled === 0) {
-        toast({
-          title: "No new deliveries",
-          description: `All deliveries already scheduled or skipped (${result.skipped} customers)`,
-        });
-      } else {
-        toast({
-          title: "Deliveries scheduled",
-          description: `Created ${result.scheduled} deliveries${result.autoDelivered > 0 ? ` (${result.autoDelivered} auto-delivered)` : ""}`,
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error scheduling deliveries",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+  const handleScheduleToday = () => {
+    const mode = autoDeliverEnabled ? "full" : "schedule_only";
+    callEdgeFunction(mode, autoDeliverEnabled ? "Schedule + Deliver" : "Schedule Today");
   };
 
-  const handleAutoDeliverPending = async () => {
-    setLoading(true);
-    try {
-      const result = await autoDeliverPendingForDate(today);
+  const handleAutoDeliverPending = () => {
+    callEdgeFunction("auto_deliver_pending", "Auto-Deliver Pending");
+  };
 
-      if (result.errors.length > 0) {
-        toast({
-          title: "Auto-deliver completed with errors",
-          description: `Delivered: ${result.delivered}, Errors: ${result.errors.length}`,
-          variant: "destructive",
-        });
-      } else if (result.delivered === 0) {
-        toast({
-          title: "No pending deliveries",
-          description: "All deliveries for today are already processed",
-        });
-      } else {
-        toast({
-          title: "Auto-delivery complete",
-          description: `Marked ${result.delivered} deliveries as delivered`,
-        });
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error with auto-delivery",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+  const handleTriggerCronJob = () => {
+    callEdgeFunction("full", "Full Auto-Delivery");
   };
 
   return (
@@ -180,10 +117,10 @@ export function DeliveryAutomationCard() {
           <Button
             variant="outline"
             onClick={handleScheduleToday}
-            disabled={loading}
+            disabled={!!loading}
             className="w-full"
           >
-            {loading ? (
+            {loading === "schedule_only" || loading === "full" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <RefreshCw className="mr-2 h-4 w-4" />
@@ -193,10 +130,10 @@ export function DeliveryAutomationCard() {
           <Button
             variant="default"
             onClick={handleAutoDeliverPending}
-            disabled={loading}
+            disabled={!!loading}
             className="w-full"
           >
-            {loading ? (
+            {loading === "auto_deliver_pending" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <CheckCircle2 className="mr-2 h-4 w-4" />
@@ -219,10 +156,10 @@ export function DeliveryAutomationCard() {
             variant="secondary"
             size="sm"
             onClick={handleTriggerCronJob}
-            disabled={cronLoading}
+            disabled={!!loading}
             className="w-full"
           >
-            {cronLoading ? (
+            {loading === "full" ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Zap className="mr-2 h-4 w-4" />
@@ -240,10 +177,10 @@ export function DeliveryAutomationCard() {
                 <CheckCircle2 className="h-3 w-3 mr-1 text-success" />
                 {lastResult.scheduled} scheduled
               </Badge>
-              {lastResult.autoDelivered > 0 && (
+              {lastResult.delivered > 0 && (
                 <Badge variant="secondary" className="text-xs">
                   <Zap className="h-3 w-3 mr-1 text-warning" />
-                  {lastResult.autoDelivered} auto-delivered
+                  {lastResult.delivered} delivered
                 </Badge>
               )}
               <Badge variant="secondary" className="text-xs">
