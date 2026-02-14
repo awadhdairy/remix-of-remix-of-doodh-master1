@@ -14,14 +14,16 @@ jobs:
       - name: Trigger Auto Delivery
         env:
           SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.EXTERNAL_SUPABASE_ANON_KEY }}
         run: |
           echo "Triggering Auto Delivery for $(date -u +%Y-%m-%d)..."
           
           response=$(curl -s -w "\n%{http_code}" \
             -X POST \
             -H "Content-Type: application/json" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
             "${SUPABASE_URL}/functions/v1/auto-deliver-daily" \
-            -d '{}')
+            -d '{"mode": "full"}')
           
           http_code=$(echo "$response" | tail -1)
           body=$(echo "$response" | head -n -1)
