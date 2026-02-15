@@ -1,106 +1,85 @@
 
 
-# Fix: Delivery Automation Not Functioning
+# Fix: Auto-Delivery Edge Function Connecting to Wrong Database
 
-## Root Cause Analysis
+## Root Cause
 
-After comprehensive analysis, there are **3 critical failures** preventing delivery automation from working at any level:
+The `auto-deliver-daily` edge function uses `Deno.env.get("SUPABASE_URL")` which points to the **Lovable Cloud database** (empty -- 0 customers, 0 subscriptions). It should use `EXTERNAL_SUPABASE_URL` (your real database with all customer data) with a fallback to `SUPABASE_URL`.
 
-### Problem 1: Edge Function Not Configured (Blocks ALL edge function calls)
-The `auto-deliver-daily` edge function is **missing from `supabase/config.toml`**. Without `verify_jwt = false`, the Supabase API gateway rejects all unauthenticated requests before they reach the function code.
-
-- The "Run Auto-Delivery Now" button calls `invokeExternalFunctionWithSession`, which tries to get a Supabase Auth JWT. But this app uses **custom PIN-based auth** (no Supabase Auth session), so `auth.getSession()` returns null, and the function returns `'Authentication required'` before even making the network call.
-- The GitHub Actions cron job sends a bare POST request with no auth headers at all -- rejected by the gateway.
-
-### Problem 2: GitHub Actions Missing API Key Header (Blocks cron automation)
-The GitHub Actions workflow (`auto-deliver-daily.yml`) sends the request with only `Content-Type` header. Supabase requires the `apikey` header even when `verify_jwt = false`. Without it, the request gets a 401 from the gateway.
-
-### Problem 3: Frontend Scheduler Blocked by RLS (Blocks "Schedule Today" / "Auto-Deliver All")
-The `useAutoDeliveryScheduler` hook uses the `externalSupabase` client (anon key). All table operations (SELECT, INSERT, UPDATE on `deliveries`, `delivery_items`, `customer_products`) go through RLS policies that check `auth.uid()`. Since this app uses custom PIN auth, `auth.uid()` is always NULL for the anon client, so:
-- SELECT queries return 0 rows (no subscriptions found)
-- INSERT/UPDATE operations silently fail (no matching policy)
-
-This is why every button shows "0 scheduled, 0 delivered" -- it's not a logic bug, it's a permissions wall.
-
----
-
-## Solution
-
-### Fix 1: Add `auto-deliver-daily` to `config.toml`
-**File: `supabase/config.toml`**
-
-Add the missing entry:
-```toml
-[functions.auto-deliver-daily]
-verify_jwt = false
+Three other edge functions (`telegram-daily-summary`, `telegram-event-notify`, `send-telegram`) already have the correct pattern:
+```
+const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL");
+const supabaseKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 ```
 
-### Fix 2: Fix GitHub Actions Workflow to Include Required Headers
-**File: `.github/workflows/auto-deliver-daily.yml`**
+The `auto-deliver-daily` function was missed during the previous fix.
 
-Add the `apikey` header and `Authorization` header (using service role key for server-to-server calls):
-```yaml
-- name: Trigger Auto Delivery
-  env:
-    SUPABASE_URL: ${{ secrets.EXTERNAL_SUPABASE_URL }}
-    SUPABASE_ANON_KEY: ${{ secrets.EXTERNAL_SUPABASE_ANON_KEY }}
-  run: |
-    response=$(curl -s -w "\n%{http_code}" \
-      -X POST \
-      -H "Content-Type: application/json" \
-      -H "apikey: ${SUPABASE_ANON_KEY}" \
-      "${SUPABASE_URL}/functions/v1/auto-deliver-daily" \
-      -d '{}')
+## What Will Change
+
+### File: `supabase/functions/auto-deliver-daily/index.ts`
+
+**Lines 31-33** -- Change the Supabase client initialization from:
+```typescript
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+```
+To:
+```typescript
+const supabaseUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || Deno.env.get("SUPABASE_URL")!;
+const supabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 ```
 
-### Fix 3: Make Edge Function the Single Source of Truth for All Delivery Automation
-The edge function already uses `SUPABASE_SERVICE_ROLE_KEY` internally, which bypasses RLS. This is the correct pattern. The problem is that the frontend buttons ("Schedule Today", "Auto-Deliver All") use the anon client directly instead of going through the edge function.
+This is the exact same pattern used by the 3 Telegram functions. It works correctly in both environments:
+- **Lovable Cloud deployment**: `EXTERNAL_SUPABASE_URL` exists (set as a secret) -- connects to your real database
+- **External Supabase deployment**: `EXTERNAL_SUPABASE_URL` doesn't exist -- falls back to `SUPABASE_URL` which points to itself
 
-**Fix the `DeliveryAutomationCard` to route ALL operations through the edge function:**
+### Audit: Other Edge Functions That Need the Same Fix
 
-**File: `src/components/dashboard/DeliveryAutomationCard.tsx`**
+| Edge Function | Current Pattern | Status |
+|---|---|---|
+| `auto-deliver-daily` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `telegram-daily-summary` | `EXTERNAL_ OR SUPABASE_` | Already correct |
+| `telegram-event-notify` | `EXTERNAL_ OR SUPABASE_` | Already correct |
+| `send-telegram` | `EXTERNAL_ OR SUPABASE_` | Already correct |
+| `archive-old-data` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `change-pin` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `create-user` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `customer-auth` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `delete-user` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `health-check` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `reset-user-pin` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `setup-external-db` | `SUPABASE_URL` only | **BROKEN -- will fix** |
+| `update-user-status` | `SUPABASE_URL` only | **BROKEN -- will fix** |
 
-- Change "Schedule Today" to call the edge function with `{ mode: "schedule_only" }` instead of using `useAutoDeliveryScheduler` directly
-- Change "Auto-Deliver All" to call the edge function with `{ mode: "auto_deliver_pending" }` instead of using `useAutoDeliveryScheduler` directly
-- Keep "Run Auto-Delivery Now" calling the edge function (already correct pattern, just needs auth fix)
+**9 additional edge functions** have the same bug. All will be updated to the `EXTERNAL_ || SUPABASE_` fallback pattern.
 
-**File: `supabase/functions/auto-deliver-daily/index.ts`**
-
-Update the edge function to support different modes:
-- `mode: "full"` (default, current behavior) -- schedule + auto-deliver
-- `mode: "schedule_only"` -- only create pending deliveries, don't mark as delivered
-- `mode: "auto_deliver_pending"` -- only mark existing pending deliveries as delivered
-
-Since the edge function uses the service role key, all database operations bypass RLS, solving the permissions issue.
-
-### Fix 4: Fix Frontend Edge Function Invocation (No Supabase Auth Dependency)
-**File: `src/components/dashboard/DeliveryAutomationCard.tsx`**
-
-Replace `invokeExternalFunctionWithSession` (which requires Supabase Auth JWT) with `invokeExternalFunction` (which only needs the anon key as apikey). Since `verify_jwt = false` is set, the edge function doesn't need a JWT -- just the apikey for gateway routing.
-
----
-
-## Summary of Changes
+## Files Modified
 
 | File | Change |
-|------|--------|
-| `supabase/config.toml` | Add `[functions.auto-deliver-daily]` with `verify_jwt = false` |
-| `.github/workflows/auto-deliver-daily.yml` | Add `apikey` header using `EXTERNAL_SUPABASE_ANON_KEY` secret |
-| `supabase/functions/auto-deliver-daily/index.ts` | Add `mode` parameter support (schedule_only, auto_deliver_pending, full) |
-| `src/components/dashboard/DeliveryAutomationCard.tsx` | Route all 3 buttons through edge function using `invokeExternalFunction` (no JWT needed) |
+|---|---|
+| `supabase/functions/auto-deliver-daily/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/archive-old-data/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/change-pin/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/create-user/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/customer-auth/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/delete-user/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/health-check/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/reset-user-pin/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/setup-external-db/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
+| `supabase/functions/update-user-status/index.ts` | Use `EXTERNAL_SUPABASE_URL` fallback |
 
 ## What Will NOT Change
+- No frontend code changes
 - No database schema changes
-- No RLS policy changes (edge function bypasses RLS via service role key)
-- No changes to `useAutoDeliveryScheduler` hook (kept for potential future use)
-- No changes to Deliveries page, Billing, Customers, or any other page
-- No changes to Telegram notifications
-- No changes to the `run_auto_delivery` database function
-- The `BulkDeliveryActions` component continues working as-is (it operates on already-existing deliveries)
+- No GitHub Actions workflow changes
+- No changes to the 3 Telegram functions (already correct)
+- No changes to CORS configuration
+- No changes to any other page or component
+- The `EXTERNAL_SUPABASE_URL` and `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` secrets are already configured
 
-## Verification After Implementation
-- "Schedule Today" should create pending deliveries for all eligible customers
-- "Auto-Deliver All" should mark all pending deliveries as delivered
-- "Run Auto-Delivery Now" should do both (schedule + deliver) in one call
-- GitHub Actions cron should work at 10:00 AM IST daily
+## Why This Fix Is Safe
+- The `||` fallback ensures the function works in BOTH deployment targets
+- When deployed to the external project directly (via `supabase functions deploy`), the fallback to `SUPABASE_URL` kicks in naturally
+- When auto-deployed by Lovable, the `EXTERNAL_` secrets are used to reach the real database
+- No existing functionality is affected -- this is a one-line change per function
 
