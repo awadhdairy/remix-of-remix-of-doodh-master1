@@ -119,8 +119,8 @@ Deno.serve(async (req) => {
 
   try {
     // Use Supabase's built-in environment variables (auto-provided by Supabase)
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseUrl = Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
     if (!supabaseUrl || !supabaseServiceKey) {
       return new Response(
