@@ -115,7 +115,7 @@ export function AccountantDashboard() {
       pendingPayments,
       overdueInvoices: overdueCount,
       totalPaid,
-      netProfit: monthlyRevenue - monthlyExpenses,
+      netProfit: totalPaid - monthlyExpenses,
       vendorPayables, // NEW: Track vendor payables
     });
 
@@ -173,7 +173,7 @@ export function AccountantDashboard() {
         <StatCard
           title="Monthly Revenue"
           value={`₹${(stats?.monthlyRevenue || 0).toLocaleString()}`}
-          subtitle="Total invoiced this month"
+          subtitle="Total billed this month"
           icon={TrendingUp}
           variant="success"
           delay={0}
@@ -213,7 +213,8 @@ export function AccountantDashboard() {
               <p className={`text-2xl font-bold ${(stats?.netProfit || 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
                 ₹{(stats?.netProfit || 0).toLocaleString()}
               </p>
-              <p className="text-xs text-muted-foreground">Revenue - Expenses</p>
+              <p className="text-xs text-muted-foreground">Collections - Expenses</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Billed: ₹{(stats?.monthlyRevenue || 0).toLocaleString()}</p>
             </div>
             <Receipt className="h-8 w-8 text-primary/50" />
           </div>
