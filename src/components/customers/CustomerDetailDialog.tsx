@@ -269,7 +269,9 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
       if (isInvoicePayment) {
         const invoice = unpaidInvoicesForPay.find(i => i.id === payInvoiceId);
         if (invoice) {
-          const newPaidAmount = Number(invoice.paid_amount) + amount;
+          const invoiceRemaining = Number(invoice.final_amount) - Number(invoice.paid_amount);
+          const cappedAmount = Math.min(amount, invoiceRemaining);
+          const newPaidAmount = Number(invoice.paid_amount) + cappedAmount;
           const remaining = Number(invoice.final_amount) - newPaidAmount;
           let newStatus: "paid" | "partial" | "pending" = "partial";
           if (remaining <= 0) newStatus = "paid";
@@ -292,29 +294,19 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
         notes: payNotes || null,
       });
       
-      const { data: lastLedgerEntry } = await supabase
-        .from("customer_ledger")
-        .select("running_balance")
-        .eq("customer_id", customer.id)
-        .order("transaction_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      const previousBalance = lastLedgerEntry?.running_balance || 0;
+      // Atomic ledger entry with running balance (prevents race conditions)
       const invoiceRef = isInvoicePayment 
         ? unpaidInvoicesForPay.find(i => i.id === payInvoiceId)?.invoice_number 
         : null;
       
-      await supabase.from("customer_ledger").insert({
-        customer_id: customer.id,
-        transaction_date: today,
-        transaction_type: "payment",
-        description: invoiceRef ? `Payment for ${invoiceRef}` : "General Payment",
-        debit_amount: 0,
-        credit_amount: amount,
-        running_balance: previousBalance - amount,
-        reference_id: isInvoicePayment ? payInvoiceId : null,
+      await supabase.rpc("insert_ledger_with_balance", {
+        _customer_id: customer.id,
+        _transaction_date: today,
+        _transaction_type: "payment",
+        _description: invoiceRef ? `Payment for ${invoiceRef}` : "General Payment",
+        _debit_amount: 0,
+        _credit_amount: amount,
+        _reference_id: isInvoicePayment ? payInvoiceId : null,
       });
       
       invalidateBillingRelated(queryClient);
