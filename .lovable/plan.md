@@ -1,230 +1,121 @@
 
 
-# Fix: Financial Calculation Issues (3 Targeted Fixes)
+# Financial Health Audit: Remaining Issues
 
-## Context Confirmed
-
-- **Tax**: Already handled correctly in SmartInvoiceCreator (the only invoice generator you use). No changes needed.
-- **Bulk Invoice Generator**: You confirmed you generate invoices one-by-one. No changes needed there.
-- **DB Trigger Reality**: The `calculate_ledger_running_balance` trigger does **NOT exist** on the external database. Only `update_customer_balance_from_ledger` exists, which recalculates `customers.credit_balance` from ledger totals on INSERT/UPDATE/DELETE. The `running_balance` field on each ledger row is managed **entirely by application code**.
+After reviewing all financial flows with the recently implemented fixes (atomic ledger via `insert_ledger_with_balance`, ledger recalculation via `recalculate_ledger_balances`, and cash-basis profit), here are the remaining gross-level issues:
 
 ---
 
-## Fix 1: Race Condition in Running Balance (Issue 3)
+## Issue 1: CustomerDetailDialog Still Uses Manual Ledger Insert (HIGH IMPACT)
 
-### Problem
-Four places compute `running_balance` with a "fetch last, add, insert" pattern:
-- `SmartInvoiceCreator.tsx` (line 382-402)
-- `Billing.tsx` (line 197-218)
-- `Customers.tsx` (line 577-603)
-- `useLedgerAutomation.ts` (line 42-60)
+**Location:** `src/components/customers/CustomerDetailDialog.tsx` (lines 295-318)
 
-If two operations run simultaneously (e.g., two payments recorded at the same time), both read the same "last balance" and compute incorrect values. Since there's no DB trigger to fix this, the `running_balance` drifts permanently.
+**Problem:** The payment handler in `CustomerDetailDialog` was NOT updated to use the atomic `insert_ledger_with_balance` RPC. It still does the old "fetch last balance, compute, insert" pattern:
 
-### Solution
-Create a **database function** `insert_ledger_with_balance` that atomically:
-1. Locks the customer's latest ledger row (`SELECT ... FOR UPDATE`)
-2. Reads the current `running_balance`
-3. Computes the new balance
-4. Inserts the new row
-
-Then update the 4 application-level locations to call this function via `supabase.rpc()` instead of doing fetch-then-insert.
-
-### Database Migration
-```sql
-CREATE OR REPLACE FUNCTION public.insert_ledger_with_balance(
-  _customer_id UUID,
-  _transaction_date DATE,
-  _transaction_type TEXT,
-  _description TEXT,
-  _debit_amount NUMERIC DEFAULT 0,
-  _credit_amount NUMERIC DEFAULT 0,
-  _reference_id UUID DEFAULT NULL
-)
-RETURNS NUMERIC
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  _prev_balance NUMERIC;
-  _new_balance NUMERIC;
-BEGIN
-  -- Lock the most recent ledger row for this customer to prevent races
-  SELECT running_balance INTO _prev_balance
-  FROM customer_ledger
-  WHERE customer_id = _customer_id
-  ORDER BY transaction_date DESC, created_at DESC
-  LIMIT 1
-  FOR UPDATE;
-
-  _prev_balance := COALESCE(_prev_balance, 0);
-  _new_balance := _prev_balance + COALESCE(_debit_amount, 0) - COALESCE(_credit_amount, 0);
-
-  INSERT INTO customer_ledger (
-    customer_id, transaction_date, transaction_type,
-    description, debit_amount, credit_amount,
-    running_balance, reference_id
-  ) VALUES (
-    _customer_id, _transaction_date, _transaction_type,
-    _description, NULLIF(_debit_amount, 0), NULLIF(_credit_amount, 0),
-    _new_balance, _reference_id
-  );
-
-  RETURN _new_balance;
-END;
-$$;
 ```
-
-### Code Changes
-
-**File: `src/pages/Billing.tsx` (lines 196-218)**
-
-Replace the "fetch last balance, compute, insert" block with:
-```typescript
-await supabase.rpc("insert_ledger_with_balance", {
-  _customer_id: selectedInvoice.customer_id,
-  _transaction_date: format(new Date(), "yyyy-MM-dd"),
-  _transaction_type: "payment",
-  _description: `Payment for ${selectedInvoice.invoice_number}`,
-  _debit_amount: 0,
-  _credit_amount: amount,
-  _reference_id: selectedInvoice.id,
+const { data: lastLedgerEntry } = await supabase
+  .from("customer_ledger")
+  .select("running_balance")
+  ...
+await supabase.from("customer_ledger").insert({
+  running_balance: previousBalance - amount,
 });
 ```
 
-**File: `src/pages/Customers.tsx` (lines 577-603)**
+This is the exact race condition that was fixed in `Billing.tsx`, `Customers.tsx`, and `SmartInvoiceCreator.tsx` -- but this third payment entry point was missed.
 
-Same pattern -- replace the fetch+insert with the `rpc` call.
-
-**File: `src/components/billing/SmartInvoiceCreator.tsx` (lines 381-403)**
-
-Replace with:
-```typescript
-await supabase.rpc("insert_ledger_with_balance", {
-  _customer_id: customerId,
-  _transaction_date: new Date().toISOString().split("T")[0],
-  _transaction_type: "invoice",
-  _description: `Invoice ${invoiceNumber} (${format(new Date(periodStart), "dd MMM")} - ${format(new Date(periodEnd), "dd MMM")})`,
-  _debit_amount: grandTotal,
-  _credit_amount: 0,
-});
-```
-
-**File: `src/hooks/useLedgerAutomation.ts` (lines 42-60)**
-
-Update `createLedgerEntry` to use `rpc("insert_ledger_with_balance")` instead of manual fetch + insert.
+**Fix:** Replace lines 295-318 with a single `supabase.rpc("insert_ledger_with_balance", {...})` call, matching the pattern in the other 3 files.
 
 ---
 
-## Fix 2: Invoice Edit Does NOT Update Running Balance (Issue 4)
+## Issue 2: Invoice Deletion Does NOT Recalculate Running Balances (MEDIUM IMPACT)
 
-### Problem
-When an invoice amount changes in `EditInvoiceDialog.tsx` (line 346-362), the code updates `debit_amount` on the ledger entry but does NOT recalculate `running_balance` on that entry or any subsequent entries. This means every entry after the edited one has a stale `running_balance`.
+**Location:** `src/pages/Billing.tsx` (lines 246-297)
 
-### Solution
-Create a database function `recalculate_ledger_balances` that replays all ledger entries for a customer and fixes every `running_balance` in sequence. Call it after the ledger update in `EditInvoiceDialog`.
+**Problem:** When an invoice is deleted, the code correctly deletes:
+1. Invoice ledger entries (by invoice_number match)
+2. Payment records
+3. Payment ledger entries (by reference_id)
+4. The invoice itself
 
-### Database Migration
-```sql
-CREATE OR REPLACE FUNCTION public.recalculate_ledger_balances(_customer_id UUID)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-DECLARE
-  _running NUMERIC := 0;
-  _entry RECORD;
-BEGIN
-  FOR _entry IN
-    SELECT id, debit_amount, credit_amount
-    FROM customer_ledger
-    WHERE customer_id = _customer_id
-    ORDER BY transaction_date ASC, created_at ASC
-  LOOP
-    _running := _running + COALESCE(_entry.debit_amount, 0) - COALESCE(_entry.credit_amount, 0);
-    UPDATE customer_ledger SET running_balance = _running WHERE id = _entry.id;
-  END LOOP;
-END;
-$$;
-```
+However, after deleting these ledger entries, it does NOT call `recalculate_ledger_balances`. This means all subsequent ledger entries for that customer retain stale `running_balance` values. The `customers.credit_balance` field IS updated by the existing DB trigger (fires on DELETE), but the per-row `running_balance` in the ledger is now wrong.
 
-### Code Change
-
-**File: `src/components/billing/EditInvoiceDialog.tsx` (after line 361)**
-
-After the existing `update({ debit_amount: grandTotal })`, add:
+**Fix:** After deleting ledger entries and invoice, call:
 ```typescript
-// Recalculate all running balances for this customer
 await supabase.rpc("recalculate_ledger_balances", {
-  _customer_id: invoice.customer_id,
+  _customer_id: deletingInvoice.customer_id,
 });
 ```
 
-This ensures that after any edit, every subsequent ledger row has a correct running balance. The `update_customer_balance_from_ledger` trigger will also fire on the UPDATE, keeping `customers.credit_balance` in sync.
+---
+
+## Issue 3: `useAutoInvoiceGenerator` Creates Invoices Without Ledger Entries (MEDIUM IMPACT)
+
+**Location:** `src/hooks/useAutoInvoiceGenerator.ts` (lines 294-302)
+
+**Problem:** The `generateMonthlyInvoices` function bulk-inserts invoices but creates zero ledger entries. This means:
+- `customers.credit_balance` is NOT updated (the DB trigger fires on ledger changes, not invoice inserts)
+- Customer ledger history is incomplete
+- Balances are understated
+
+You mentioned you generate invoices one-by-one (via SmartInvoiceCreator, which does create ledger entries), so this may not be actively used. But if anyone triggers auto-generation, it will create orphan invoices with no financial trail.
+
+**Fix:** After bulk insert, loop through generated invoices and call `insert_ledger_with_balance` for each. Or add a prominent warning/disable this path if not intended for use.
 
 ---
 
-## Fix 3: Net Profit Uses Billed Revenue Instead of Collected Revenue (Issue 5)
+## Issue 4: Overpayment Silently Accepted Without Capping (LOW-MEDIUM IMPACT)
 
-### Problem
-In `AccountantDashboard.tsx` (line 118):
-```typescript
-netProfit: monthlyRevenue - monthlyExpenses
+**Location:** Three places:
+- `src/pages/Billing.tsx` (line 172-176)
+- `src/pages/Customers.tsx` (line 550-554)
+- `src/components/customers/CustomerDetailDialog.tsx` (line 272-276)
+
+**Problem:** When a payment exceeds the invoice's remaining balance (e.g., invoice balance is Rs 500, payment is Rs 700), the code sets `paid_amount = 700` and `status = "paid"`. The excess Rs 200:
+- Is recorded in the payments table (correct)
+- Is recorded in the ledger as a full Rs 700 credit (correct)
+- But `paid_amount` on the invoice now exceeds `final_amount`, which makes the "Balance" column show a negative number in the UI
+- No validation prevents this, and no excess is credited to `advance_balance`
+
+**Fix:** Add validation to cap the payment at the remaining balance, or show a warning and auto-credit excess to advance_balance via a separate ledger entry.
+
+---
+
+## Issue 5: Reports Page Uses Billed Revenue, Not Collections (LOW IMPACT)
+
+**Location:** `src/pages/Reports.tsx` (lines 110-117)
+
+**Problem:** The Reports page revenue breakdown fetches `invoices` and computes:
 ```
-Where `monthlyRevenue` = sum of `final_amount` of all invoices created this month. This is **billed revenue** (accrual basis). An invoice could be ₹50,000 but ₹0 collected -- profit would show ₹50,000 which is misleading.
-
-### Solution
-Show **two profit metrics** for complete financial visibility:
-1. **Cash Profit** = `totalPaid - monthlyExpenses` (actual money in minus money out)
-2. **Billed Revenue** stays as a stat card subtitle for reference
-
-### Code Change
-
-**File: `src/components/dashboard/AccountantDashboard.tsx`**
-
-Line 118 -- change:
-```typescript
-netProfit: monthlyRevenue - monthlyExpenses,
-```
-To:
-```typescript
-netProfit: totalPaid - monthlyExpenses,
+monthlyRevenue = sum(final_amount)
+monthlyCollected = sum(paid_amount)  // from invoices table
 ```
 
-Line 175 -- update the "Monthly Revenue" stat card subtitle from `"Total invoiced this month"` to `"Total billed this month"`.
+This is different from the Accountant Dashboard which correctly uses the `payments` table for collections. Using `sum(paid_amount)` from invoices gives the same number in theory, but it's less accurate because `paid_amount` on invoices only captures invoice-linked payments, while the `payments` table captures ALL payments (including general/advance payments).
 
-Line 212-216 -- update the Net Profit card subtitle from `"Revenue - Expenses"` to `"Collections - Expenses"`.
-
-Add `monthlyRevenue` display in the Net Profit card as secondary info: `"Billed: ₹XX,XXX"` so the user can see both figures.
+**Fix:** Minor -- use `payments` table for "Collected" metric if you want consistency with the dashboard. Current approach is acceptable but slightly understates collections.
 
 ---
 
 ## Summary
 
-| Fix | What Changes | Risk |
-|-----|-------------|------|
-| 1. Race condition | New DB function + 4 files use `rpc()` instead of fetch+insert | Zero -- same logic, atomic execution |
-| 2. Edit balance cascade | New DB function + 1 line added in EditInvoiceDialog | Zero -- recalculates from source data |
-| 3. Net profit formula | 3-line change in AccountantDashboard | Zero -- display-only change |
+| # | Issue | Impact | Effort |
+|---|-------|--------|--------|
+| 1 | CustomerDetailDialog uses manual ledger insert (race condition) | High | Low -- same RPC pattern swap |
+| 2 | Invoice deletion skips running_balance recalculation | Medium | Low -- add 1 RPC call |
+| 3 | Auto invoice generator skips ledger entries | Medium | Medium -- add loop with RPC calls |
+| 4 | Overpayment not capped or redirected to advance | Low-Medium | Low -- add validation |
+| 5 | Reports "Collected" uses invoice paid_amount vs payments table | Low | Low -- query change |
 
-## What Will NOT Change
-- SmartInvoiceCreator tax calculation (already correct)
-- BulkInvoiceGenerator (user doesn't use it)
-- useAutoInvoiceGenerator (not impacted by these fixes)
-- Delivery automation
+## What Is Working Correctly After Previous Fixes
+- Atomic ledger inserts in Billing.tsx, Customers.tsx, SmartInvoiceCreator.tsx, useLedgerAutomation.ts
+- Ledger recalculation on invoice edit (EditInvoiceDialog)
+- Cash-basis net profit in AccountantDashboard
 - Vendor payables tracking
-- Customer portal
-- Any RLS policies or table schemas
-- Telegram notifications
-- The `update_customer_balance_from_ledger` trigger (continues working as-is since it reads total debits/credits, not running_balance)
+- Overdue invoice detection via effective status
+- Invoice tax/subtotal/final_amount arithmetic in SmartInvoiceCreator
+- `update_customer_balance_from_ledger` DB trigger syncing `customers.credit_balance`
 
-## Cross-Check: Data Integrity After Fixes
-
-1. `running_balance` on each ledger row: Fixed by atomic DB function (Fix 1) + recalculation on edit (Fix 2)
-2. `customers.credit_balance`: Automatically updated by existing `update_customer_balance_from_ledger` trigger on every ledger INSERT/UPDATE/DELETE -- no change needed
-3. Invoice `paid_amount` / `payment_status`: Not touched by these fixes -- existing logic is correct
-4. `payments` table: Not touched -- existing logic is correct
-5. Overdue detection: Not touched -- `getEffectivePaymentStatus` is already correct
+## Recommended Fix Priority
+Fix Issues 1 and 2 first (they are active bugs in payment/deletion flows). Issue 3 is preventive. Issues 4 and 5 are polish.
 
