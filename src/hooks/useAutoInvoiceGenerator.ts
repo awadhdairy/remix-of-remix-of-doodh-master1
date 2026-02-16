@@ -292,13 +292,30 @@ export function useAutoInvoiceGenerator() {
       }));
 
       // Single bulk insert for all invoices
-      const { error: insertError } = await supabase
+      const { data: insertedInvoices, error: insertError } = await supabase
         .from("invoices")
-        .insert(invoicesToInsert);
+        .insert(invoicesToInsert)
+        .select("id, customer_id, invoice_number, final_amount");
 
       if (insertError) {
         result.errors.push(`Failed to insert invoices: ${insertError.message}`);
         return result;
+      }
+
+      // Create ledger entries for each invoice (prevents orphan invoices)
+      for (const inv of insertedInvoices || []) {
+        const { error: ledgerError } = await supabase.rpc("insert_ledger_with_balance", {
+          _customer_id: inv.customer_id,
+          _transaction_date: format(new Date(), "yyyy-MM-dd"),
+          _transaction_type: "invoice",
+          _description: `Invoice ${inv.invoice_number} generated`,
+          _debit_amount: inv.final_amount,
+          _credit_amount: 0,
+          _reference_id: inv.id,
+        });
+        if (ledgerError) {
+          result.errors.push(`Ledger entry failed for ${inv.invoice_number}: ${ledgerError.message}`);
+        }
       }
 
       // Update result

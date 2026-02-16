@@ -547,7 +547,9 @@ export default function CustomersPage() {
       if (isInvoicePayment) {
         const invoice = unpaidInvoices.find(i => i.id === selectedInvoiceId);
         if (invoice) {
-          const newPaidAmount = Number(invoice.paid_amount) + amount;
+          const invoiceRemaining = Number(invoice.final_amount) - Number(invoice.paid_amount);
+          const cappedAmount = Math.min(amount, invoiceRemaining);
+          const newPaidAmount = Number(invoice.paid_amount) + cappedAmount;
           const remaining = Number(invoice.final_amount) - newPaidAmount;
           let newStatus: "paid" | "partial" | "pending" = "partial";
           if (remaining <= 0) newStatus = "paid";

@@ -63,7 +63,7 @@ export default function ReportsPage() {
 
     try {
       // Fetch all data in parallel for faster loading
-      const [productionRes, invoicesRes, expensesRes, cattleRes, customersRes, procurementRes, vendorsRes] = await Promise.all([
+      const [productionRes, invoicesRes, expensesRes, cattleRes, customersRes, procurementRes, vendorsRes, paymentsRes] = await Promise.all([
         supabase
           .from("milk_production")
           .select("production_date, session, quantity_liters")
@@ -78,16 +78,21 @@ export default function ReportsPage() {
           .gte("expense_date", format(startOfMonth(new Date()), "yyyy-MM-dd")),
         supabase.from("cattle").select("status, lactation_status"),
         supabase.from("customers").select("is_active, credit_balance, advance_balance"),
-        // NEW: Fetch procurement data for this month
+        // Fetch procurement data for this month
         supabase
           .from("milk_procurement")
           .select("quantity_liters, total_amount, procurement_date")
           .gte("procurement_date", format(startOfMonth(new Date()), "yyyy-MM-dd")),
-        // NEW: Fetch vendor balances for outstanding payables
+        // Fetch vendor balances for outstanding payables
         supabase
           .from("milk_vendors")
           .select("current_balance, is_active")
           .eq("is_active", true),
+        // Fetch actual payments for accurate collections
+        supabase
+          .from("payments")
+          .select("amount, payment_date")
+          .gte("payment_date", format(startOfMonth(new Date()), "yyyy-MM-dd")),
       ]);
 
       // Process production data
@@ -109,7 +114,9 @@ export default function ReportsPage() {
       // Process invoice data
       const invoices = invoicesRes.data || [];
       const monthlyRevenue = invoices.reduce((sum, i) => sum + Number(i.final_amount), 0);
-      const monthlyCollected = invoices.reduce((sum, i) => sum + Number(i.paid_amount), 0);
+      // Use payments table for accurate collections (includes general/advance payments)
+      const payments = paymentsRes.data || [];
+      const monthlyCollected = payments.reduce((sum, p) => sum + Number(p.amount), 0);
       setRevenueData([
         { name: "Billed", value: monthlyRevenue },
         { name: "Collected", value: monthlyCollected },

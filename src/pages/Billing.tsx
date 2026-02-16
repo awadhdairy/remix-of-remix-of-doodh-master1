@@ -169,7 +169,11 @@ export default function BillingPage() {
     if (!selectedInvoice || !paymentAmount) return;
 
     const amount = parseFloat(paymentAmount);
-    const newPaidAmount = Number(selectedInvoice.paid_amount) + amount;
+    const invoiceRemaining = Number(selectedInvoice.final_amount) - Number(selectedInvoice.paid_amount);
+    const cappedAmount = Math.min(amount, invoiceRemaining);
+    const excessAmount = amount - cappedAmount;
+    
+    const newPaidAmount = Number(selectedInvoice.paid_amount) + cappedAmount;
     const remaining = Number(selectedInvoice.final_amount) - newPaidAmount;
     
     let newStatus: "paid" | "partial" | "pending" = "partial";
@@ -203,6 +207,7 @@ export default function BillingPage() {
       _credit_amount: amount,
       _reference_id: selectedInvoice.id,
     });
+
 
     if (invoiceError || paymentError) {
       toast({
@@ -275,6 +280,11 @@ export default function BillingPage() {
         .eq("id", deletingInvoice.id);
 
       if (error) throw error;
+
+      // Recalculate running balances after deleting ledger entries
+      await supabase.rpc("recalculate_ledger_balances", {
+        _customer_id: deletingInvoice.customer_id,
+      });
 
       toast({
         title: "Invoice deleted",
