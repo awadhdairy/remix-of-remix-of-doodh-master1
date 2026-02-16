@@ -359,6 +359,11 @@ export function EditInvoiceDialog({
           .from("customer_ledger")
           .update({ debit_amount: grandTotal })
           .eq("id", ledgerEntry.id);
+
+        // Recalculate all running balances for this customer after edit
+        await supabase.rpc("recalculate_ledger_balances", {
+          _customer_id: invoice.customer_id,
+        });
       }
     }
 

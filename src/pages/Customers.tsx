@@ -574,32 +574,19 @@ export default function CustomersPage() {
         notes: paymentNotes || null,
       });
       
-      // 3. Fetch last ledger balance and insert ledger entry
-      const { data: lastLedgerEntry } = await supabase
-        .from("customer_ledger")
-        .select("running_balance")
-        .eq("customer_id", paymentCustomer.id)
-        .order("transaction_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      const previousBalance = lastLedgerEntry?.running_balance || 0;
-      const newBalance = previousBalance - amount;
-      
+      // 3. Atomic ledger entry with running balance (prevents race conditions)
       const invoiceRef = isInvoicePayment 
         ? unpaidInvoices.find(i => i.id === selectedInvoiceId)?.invoice_number 
         : null;
       
-      await supabase.from("customer_ledger").insert({
-        customer_id: paymentCustomer.id,
-        transaction_date: today,
-        transaction_type: "payment",
-        description: invoiceRef ? `Payment for ${invoiceRef}` : "General Payment",
-        debit_amount: 0,
-        credit_amount: amount,
-        running_balance: newBalance,
-        reference_id: isInvoicePayment ? selectedInvoiceId : null,
+      await supabase.rpc("insert_ledger_with_balance", {
+        _customer_id: paymentCustomer.id,
+        _transaction_date: today,
+        _transaction_type: "payment",
+        _description: invoiceRef ? `Payment for ${invoiceRef}` : "General Payment",
+        _debit_amount: 0,
+        _credit_amount: amount,
+        _reference_id: isInvoicePayment ? selectedInvoiceId : null,
       });
       
       // 4. Invalidate and refresh

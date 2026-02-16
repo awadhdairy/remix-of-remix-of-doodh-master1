@@ -2314,12 +2314,28 @@ export type Database = {
         Returns: boolean
       }
       hash_pin_for_customer: { Args: { _pin: string }; Returns: string }
+      insert_ledger_with_balance: {
+        Args: {
+          _credit_amount?: number
+          _customer_id: string
+          _debit_amount?: number
+          _description: string
+          _reference_id?: string
+          _transaction_date: string
+          _transaction_type: string
+        }
+        Returns: number
+      }
       is_authenticated: { Args: never; Returns: boolean }
       is_customer_on_vacation: {
         Args: { _check_date?: string; _customer_id: string }
         Returns: boolean
       }
       is_manager_or_admin: { Args: { _user_id: string }; Returns: boolean }
+      recalculate_ledger_balances: {
+        Args: { _customer_id: string }
+        Returns: undefined
+      }
       recalculate_vendor_balance: {
         Args: { p_vendor_id: string }
         Returns: number

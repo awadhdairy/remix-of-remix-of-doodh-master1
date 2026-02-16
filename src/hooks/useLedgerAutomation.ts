@@ -43,27 +43,24 @@ export function useLedgerAutomation() {
   }, []);
 
   /**
-   * Create a ledger entry with automatic balance calculation
+   * Create a ledger entry with atomic balance calculation (prevents race conditions)
    */
   const createLedgerEntry = useCallback(async (entry: LedgerEntry): Promise<boolean> => {
-    const currentBalance = await getRunningBalance(entry.customer_id);
     const debit = entry.debit_amount || 0;
     const credit = entry.credit_amount || 0;
-    const newBalance = currentBalance + debit - credit;
 
-    const { error } = await supabase.from("customer_ledger").insert({
-      customer_id: entry.customer_id,
-      transaction_type: entry.transaction_type,
-      description: entry.description,
-      debit_amount: debit > 0 ? debit : null,
-      credit_amount: credit > 0 ? credit : null,
-      reference_id: entry.reference_id || null,
-      running_balance: newBalance,
-      transaction_date: format(new Date(), "yyyy-MM-dd"),
+    const { error } = await supabase.rpc("insert_ledger_with_balance", {
+      _customer_id: entry.customer_id,
+      _transaction_date: format(new Date(), "yyyy-MM-dd"),
+      _transaction_type: entry.transaction_type,
+      _description: entry.description,
+      _debit_amount: debit,
+      _credit_amount: credit,
+      _reference_id: entry.reference_id || null,
     });
 
     return !error;
-  }, [getRunningBalance]);
+  }, []);
 
   /**
    * Log delivery charge to ledger
