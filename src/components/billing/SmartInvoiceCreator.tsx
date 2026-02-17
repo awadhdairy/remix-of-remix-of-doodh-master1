@@ -353,7 +353,7 @@ export function SmartInvoiceCreator({
       .limit(1)
       .single();
 
-    const { error } = await supabase.from("invoices").insert({
+    const { data: invoiceData, error } = await supabase.from("invoices").insert({
       invoice_number: invoiceNumber,
       customer_id: customerId,
       billing_period_start: periodStart,
@@ -366,7 +366,7 @@ export function SmartInvoiceCreator({
       due_date: format(new Date(new Date().setDate(new Date().getDate() + 15)), "yyyy-MM-dd"),
       notes: allDetails || null,
       upi_handle: dairySettings?.upi_handle || null,
-    });
+    }).select("id").single();
 
     if (error) {
       toast({
@@ -378,7 +378,7 @@ export function SmartInvoiceCreator({
       return;
     }
 
-    // Atomic ledger entry with running balance (prevents race conditions)
+    // Atomic ledger entry with running balance and reference_id for reliable deletion
     await supabase.rpc("insert_ledger_with_balance", {
       _customer_id: customerId,
       _transaction_date: new Date().toISOString().split("T")[0],
@@ -386,6 +386,7 @@ export function SmartInvoiceCreator({
       _description: `Invoice ${invoiceNumber} (${format(new Date(periodStart), "dd MMM")} - ${format(new Date(periodEnd), "dd MMM")})`,
       _debit_amount: grandTotal,
       _credit_amount: 0,
+      _reference_id: invoiceData.id,
     });
 
     setSaving(false);

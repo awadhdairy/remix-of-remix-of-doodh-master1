@@ -120,7 +120,7 @@ export default function ReportsPage() {
       setRevenueData([
         { name: "Billed", value: monthlyRevenue },
         { name: "Collected", value: monthlyCollected },
-        { name: "Pending", value: monthlyRevenue - monthlyCollected },
+        { name: "Pending", value: Math.max(0, monthlyRevenue - monthlyCollected) },
       ]);
 
       // Process expense data

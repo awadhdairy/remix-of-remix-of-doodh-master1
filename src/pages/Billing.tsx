@@ -317,7 +317,7 @@ export default function BillingPage() {
   const overdueCount = countOverdueInvoices(invoices);
   const stats = {
     total: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
-    collected: invoices.reduce((sum, i) => sum + Number(i.paid_amount || 0), 0),
+    collected: invoices.reduce((sum, i) => sum + Number(i.paid_amount || 0), 0), // Invoice-level payments (capped at invoice amount)
     outstanding: calculateOutstandingBalance(invoices),
     overdue: calculateOverdueBalance(invoices),
     overdueCount,

@@ -189,32 +189,16 @@ export function QuickAddOnOrderDialog({
 
       if (itemsError) throw itemsError;
 
-      // Step 3: Calculate running balance before ledger insert
-      const { data: lastEntry } = await supabase
-        .from("customer_ledger")
-        .select("running_balance")
-        .eq("customer_id", customerId)
-        .order("transaction_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      const previousBalance = lastEntry?.running_balance || 0;
-      const newBalance = previousBalance + totalAmount;
-
-      // Step 4: Add to customer ledger with running_balance
-      const { error: ledgerError } = await supabase
-        .from("customer_ledger")
-        .insert({
-          customer_id: customerId,
-          transaction_date: formattedDate,
-          transaction_type: "delivery",
-          description: `Add-on Order: ${orderItems.map((i) => `${i.product_name} × ${i.quantity}`).join(", ")}`,
-          debit_amount: totalAmount,
-          credit_amount: 0,
-          running_balance: newBalance,
-          reference_id: deliveryId,
-        });
+      // Step 3: Atomic ledger entry (prevents race conditions)
+      const { error: ledgerError } = await supabase.rpc("insert_ledger_with_balance", {
+        _customer_id: customerId,
+        _transaction_date: formattedDate,
+        _transaction_type: "delivery",
+        _description: `Add-on Order: ${orderItems.map((i) => `${i.product_name} × ${i.quantity}`).join(", ")}`,
+        _debit_amount: totalAmount,
+        _credit_amount: 0,
+        _reference_id: deliveryId,
+      });
 
       if (ledgerError) throw ledgerError;
 
