@@ -345,14 +345,28 @@ export function EditInvoiceDialog({
     // Update ledger entry if exists
     const amountDiff = grandTotal - Number(invoice.final_amount);
     if (Math.abs(amountDiff) > 0.01) {
-      // Find and update the ledger entry
-      const { data: ledgerEntry } = await supabase
+      // Find ledger entry: try reference_id first (reliable), fall back to description match
+      let ledgerEntry: { id: string; debit_amount: number } | null = null;
+      
+      const { data: byRef } = await supabase
         .from("customer_ledger")
         .select("id, debit_amount")
-        .eq("customer_id", invoice.customer_id)
+        .eq("reference_id", invoice.id)
         .eq("transaction_type", "invoice")
-        .ilike("description", `%${invoice.invoice_number}%`)
         .single();
+      
+      if (byRef) {
+        ledgerEntry = byRef;
+      } else {
+        const { data: byDesc } = await supabase
+          .from("customer_ledger")
+          .select("id, debit_amount")
+          .eq("customer_id", invoice.customer_id)
+          .eq("transaction_type", "invoice")
+          .ilike("description", `%${invoice.invoice_number}%`)
+          .single();
+        ledgerEntry = byDesc;
+      }
 
       if (ledgerEntry) {
         await supabase

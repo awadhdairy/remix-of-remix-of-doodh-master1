@@ -216,7 +216,7 @@ export function BulkInvoiceGenerator({
         
         const dueDate = format(addDays(new Date(), 15), "yyyy-MM-dd");
 
-        const { error } = await supabase.from("invoices").insert({
+        const { data: invoiceData, error } = await supabase.from("invoices").insert({
           customer_id: summary.customer_id,
           invoice_number: invoiceNumber,
           billing_period_start: startDate,
@@ -227,34 +227,21 @@ export function BulkInvoiceGenerator({
           final_amount: summary.total_amount,
           due_date: dueDate,
           payment_status: "pending",
-        });
+        }).select("id").single();
 
         if (error) {
           console.error("Error creating invoice:", error);
           failed++;
         } else {
-          // Fetch latest running balance before ledger insert
-          const { data: lastEntry } = await supabase
-            .from("customer_ledger")
-            .select("running_balance")
-            .eq("customer_id", summary.customer_id)
-            .order("transaction_date", { ascending: false })
-            .order("created_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          const previousBalance = lastEntry?.running_balance || 0;
-          const newBalance = previousBalance + summary.total_amount;
-
-          // Add ledger entry for the invoice with running_balance
-          await supabase.from("customer_ledger").insert({
-            customer_id: summary.customer_id,
-            transaction_date: new Date().toISOString().split("T")[0],
-            transaction_type: "invoice",
-            description: `Invoice ${invoiceNumber} for ${format(new Date(startDate), "MMM dd")} - ${format(new Date(endDate), "MMM dd")}`,
-            debit_amount: summary.total_amount,
-            credit_amount: 0,
-            running_balance: newBalance,
+          // Use atomic RPC to insert ledger entry with correct running balance
+          await supabase.rpc("insert_ledger_with_balance", {
+            _customer_id: summary.customer_id,
+            _transaction_date: new Date().toISOString().split("T")[0],
+            _transaction_type: "invoice",
+            _description: `Invoice ${invoiceNumber} for ${format(new Date(startDate), "MMM dd")} - ${format(new Date(endDate), "MMM dd")}`,
+            _debit_amount: summary.total_amount,
+            _credit_amount: 0,
+            _reference_id: invoiceData?.id || null,
           });
           completed++;
         }

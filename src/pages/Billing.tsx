@@ -253,7 +253,13 @@ export default function BillingPage() {
     setDeleting(true);
 
     try {
-      // 1. Delete associated ledger entries
+      // 1. Delete associated invoice ledger entries (by reference_id for new, description for legacy)
+      await supabase
+        .from("customer_ledger")
+        .delete()
+        .eq("reference_id", deletingInvoice.id)
+        .eq("transaction_type", "invoice");
+
       await supabase
         .from("customer_ledger")
         .delete()
@@ -460,7 +466,7 @@ export default function BillingPage() {
         <Card className="border-success/30">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-success">₹{stats.collected.toLocaleString("en-IN")}</div>
-            <p className="text-sm text-muted-foreground">Collected</p>
+            <p className="text-sm text-muted-foreground">Invoice Payments</p>
           </CardContent>
         </Card>
         <Card className="border-warning/30">
