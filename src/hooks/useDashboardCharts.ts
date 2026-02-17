@@ -80,14 +80,21 @@ async function fetchRevenueGrowth(): Promise<MonthlyRevenue[]> {
     const start = format(startOfMonth(monthDate), "yyyy-MM-dd");
     const end = format(endOfMonth(monthDate), "yyyy-MM-dd");
 
-    const { data } = await supabase
-      .from("invoices")
-      .select("final_amount, paid_amount")
-      .gte("created_at", start)
-      .lte("created_at", end);
+    const [invoicesRes, paymentsRes] = await Promise.all([
+      supabase
+        .from("invoices")
+        .select("final_amount")
+        .gte("created_at", start)
+        .lte("created_at", end),
+      supabase
+        .from("payments")
+        .select("amount")
+        .gte("payment_date", start)
+        .lte("payment_date", end),
+    ]);
 
-    const billed = (data || []).reduce((sum, inv) => sum + Number(inv.final_amount || 0), 0);
-    const collected = (data || []).reduce((sum, inv) => sum + Number(inv.paid_amount || 0), 0);
+    const billed = (invoicesRes.data || []).reduce((sum, inv) => sum + Number(inv.final_amount || 0), 0);
+    const collected = (paymentsRes.data || []).reduce((sum, p) => sum + Number(p.amount || 0), 0);
 
     months.push({
       month: format(monthDate, "MMM"),
