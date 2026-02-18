@@ -84,8 +84,10 @@ async function fetchRevenueGrowth(): Promise<MonthlyRevenue[]> {
       supabase
         .from("invoices")
         .select("final_amount")
-        .gte("created_at", start)
-        .lte("created_at", end),
+        // Use billing_period_start so invoices are attributed to the period they cover,
+        // not when they were created (avoids cross-month misattribution)
+        .gte("billing_period_start", start)
+        .lte("billing_period_start", end),
       supabase
         .from("payments")
         .select("amount")
@@ -100,7 +102,9 @@ async function fetchRevenueGrowth(): Promise<MonthlyRevenue[]> {
       month: format(monthDate, "MMM"),
       billed: Math.round(billed),
       collected: Math.round(collected),
-      pending: Math.round(billed - collected),
+      // Guard against negative pending: collected can exceed billed in a given month
+      // when customers pay old invoices (cross-month payments)
+      pending: Math.max(0, Math.round(billed - collected)),
     });
   }
 
@@ -213,8 +217,8 @@ async function fetchMonthComparison(): Promise<MonthComparison[]> {
   ] = await Promise.all([
     supabase.from("milk_production").select("quantity_liters").gte("production_date", thisMonthStart).lte("production_date", thisMonthEnd),
     supabase.from("milk_production").select("quantity_liters").gte("production_date", lastMonthStart).lte("production_date", lastMonthEnd),
-    supabase.from("invoices").select("final_amount").gte("created_at", thisMonthStart).lte("created_at", thisMonthEnd),
-    supabase.from("invoices").select("final_amount").gte("created_at", lastMonthStart).lte("created_at", lastMonthEnd),
+    supabase.from("invoices").select("final_amount").gte("billing_period_start", thisMonthStart).lte("billing_period_start", thisMonthEnd),
+    supabase.from("invoices").select("final_amount").gte("billing_period_start", lastMonthStart).lte("billing_period_start", lastMonthEnd),
     supabase.from("deliveries").select("id").gte("delivery_date", thisMonthStart).lte("delivery_date", thisMonthEnd),
     supabase.from("deliveries").select("id").gte("delivery_date", lastMonthStart).lte("delivery_date", lastMonthEnd),
   ]);

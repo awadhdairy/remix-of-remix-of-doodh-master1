@@ -52,12 +52,13 @@ export function AccountantDashboard() {
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
-    const [invoicesRes, expensesRes, paymentsRes, overdueRes, vendorBalanceRes] = await Promise.all([
+    const [invoicesRes, expensesRes, paymentsRes, overdueRes, vendorBalanceRes, pendingCustomersRes] = await Promise.all([
       supabase
         .from("invoices")
         .select("final_amount, paid_amount, payment_status")
-        .gte("created_at", monthStart)
-        .lte("created_at", monthEnd),
+        // Use billing_period_start for accurate period attribution (not created_at)
+        .gte("billing_period_start", monthStart)
+        .lte("billing_period_start", monthEnd),
       supabase
         .from("expenses")
         .select("amount")
@@ -82,10 +83,16 @@ export function AccountantDashboard() {
         .lt("due_date", todayStr)
         .order("due_date")
         .limit(5),
-      // FIX: Fetch vendor payables (amounts owed to milk vendors)
+      // Vendor payables (amounts owed to milk vendors)
       supabase
         .from("milk_vendors")
         .select("current_balance")
+        .eq("is_active", true),
+      // Ledger-accurate pending: credit_balance is synced by DB trigger from customer_ledger.
+      // Positive credit_balance means customer owes money (debits > credits).
+      supabase
+        .from("customers")
+        .select("credit_balance")
         .eq("is_active", true),
     ]);
 
@@ -94,15 +101,17 @@ export function AccountantDashboard() {
     const payments = paymentsRes.data || [];
     const overdue = overdueRes.data || [];
     const vendorBalances = vendorBalanceRes.data || [];
+    const pendingCustomers = pendingCustomersRes.data || [];
 
     const monthlyRevenue = invoices.reduce((sum, i) => sum + Number(i.final_amount), 0);
     const monthlyExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
     const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const pendingPayments = invoices
-      .filter(i => i.payment_status !== "paid")
-      .reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0);
+    // Ledger-accurate pending: sum positive credit_balance across all active customers.
+    // This handles overpayments correctly unlike the capped invoices.paid_amount approach.
+    const pendingPayments = pendingCustomers
+      .reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance || 0)), 0);
 
-    // FIX: Calculate vendor payables (amounts owed to milk vendors)
+    // Calculate vendor payables (amounts owed to milk vendors)
     const vendorPayables = vendorBalances
       .reduce((sum, v) => sum + Math.max(0, Number(v.current_balance || 0)), 0);
 

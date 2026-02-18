@@ -3,7 +3,7 @@ import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -24,10 +24,10 @@ import { format, parseISO, startOfMonth, endOfMonth } from "date-fns";
 import { 
   BookOpen, 
   Loader2, 
-  Download, 
   ArrowUpRight, 
   ArrowDownRight,
-  Filter
+  Filter,
+  Wallet
 } from "lucide-react";
 import { ExportButton } from "@/components/common/ExportButton";
 
@@ -58,6 +58,8 @@ export function CustomerLedger({
 }: CustomerLedgerProps) {
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  // Issue 4 fix: track the customer's lifetime ledger balance separately from period filter
+  const [lifetimeBalance, setLifetimeBalance] = useState<number | null>(null);
   const [startDate, setStartDate] = useState(
     format(startOfMonth(new Date()), "yyyy-MM-dd")
   );
@@ -69,8 +71,16 @@ export function CustomerLedger({
   useEffect(() => {
     if (open && customerId) {
       fetchLedger();
+      fetchLifetimeBalance();
     }
-  }, [open, customerId, startDate, endDate]);
+  }, [open, customerId]);
+
+  // Re-fetch filtered entries when dates change
+  useEffect(() => {
+    if (open && customerId) {
+      fetchLedger();
+    }
+  }, [startDate, endDate]);
 
   const fetchLedger = async () => {
     setLoading(true);
@@ -95,9 +105,22 @@ export function CustomerLedger({
     setLoading(false);
   };
 
+  // Fetch the customer's true lifetime balance from customers.credit_balance
+  // which is kept accurate by the update_customer_balance_from_ledger DB trigger.
+  const fetchLifetimeBalance = async () => {
+    const { data } = await supabase
+      .from("customers")
+      .select("credit_balance")
+      .eq("id", customerId)
+      .single();
+    if (data) {
+      setLifetimeBalance(Number(data.credit_balance || 0));
+    }
+  };
+
   const totalDebit = entries.reduce((sum, e) => sum + Number(e.debit_amount), 0);
   const totalCredit = entries.reduce((sum, e) => sum + Number(e.credit_amount), 0);
-  const netBalance = totalDebit - totalCredit;
+  const periodNet = totalDebit - totalCredit;
 
   const getTypeIcon = (type: string) => {
     if (type === "payment") {
@@ -139,6 +162,29 @@ export function CustomerLedger({
           </DialogTitle>
         </DialogHeader>
 
+        {/* Lifetime Balance Banner — always shows actual outstanding regardless of filter */}
+        {lifetimeBalance !== null && (
+          <Card className={lifetimeBalance > 0 ? "border-destructive/40 bg-destructive/5" : "border-success/40 bg-success/5"}>
+            <CardContent className="py-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wallet className={`h-5 w-5 ${lifetimeBalance > 0 ? "text-destructive" : "text-success"}`} />
+                <div>
+                  <p className="text-sm font-medium">Current Outstanding Balance</p>
+                  <p className="text-xs text-muted-foreground">Lifetime ledger balance — regardless of date filter</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className={`text-xl font-bold ${lifetimeBalance > 0 ? "text-destructive" : "text-success"}`}>
+                  ₹{Math.abs(lifetimeBalance).toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {lifetimeBalance > 0 ? "Amount Due" : lifetimeBalance < 0 ? "Credit Balance" : "Settled"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Date Filter */}
         <Card>
           <CardContent className="pt-4">
@@ -173,14 +219,15 @@ export function CustomerLedger({
           </CardContent>
         </Card>
 
-        {/* Summary Cards */}
+        {/* Period Summary Cards — clearly labelled as period-filtered */}
         <div className="grid gap-4 sm:grid-cols-3">
           <Card>
             <CardContent className="pt-4">
               <div className="text-2xl font-bold text-destructive">
                 ₹{totalDebit.toLocaleString()}
               </div>
-              <p className="text-sm text-muted-foreground">Total Debit</p>
+              <p className="text-sm text-muted-foreground">Period Debit</p>
+              <p className="text-xs text-muted-foreground">Charges in selected range</p>
             </CardContent>
           </Card>
           <Card>
@@ -188,17 +235,19 @@ export function CustomerLedger({
               <div className="text-2xl font-bold text-success">
                 ₹{totalCredit.toLocaleString()}
               </div>
-              <p className="text-sm text-muted-foreground">Total Credit</p>
+              <p className="text-sm text-muted-foreground">Period Credit</p>
+              <p className="text-xs text-muted-foreground">Payments in selected range</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="pt-4">
-              <div className={`text-2xl font-bold ${netBalance > 0 ? "text-destructive" : "text-success"}`}>
-                ₹{Math.abs(netBalance).toLocaleString()}
+              <div className={`text-2xl font-bold ${periodNet > 0 ? "text-destructive" : "text-success"}`}>
+                ₹{Math.abs(periodNet).toLocaleString()}
               </div>
               <p className="text-sm text-muted-foreground">
-                {netBalance > 0 ? "Amount Due" : "Amount Excess"}
+                {periodNet > 0 ? "Period Net Charge" : "Period Net Credit"}
               </p>
+              <p className="text-xs text-muted-foreground">For selected range only</p>
             </CardContent>
           </Card>
         </div>
