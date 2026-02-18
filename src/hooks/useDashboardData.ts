@@ -65,20 +65,24 @@ async function fetchDashboardData() {
 
   const customersPromise = supabase
     .from("customers")
-    .select("is_active");
+    .select("is_active, credit_balance");
 
-  // This month's invoices for revenue calculation
+  // This month's invoices for revenue calculation — filtered by billing_period_start
+  // so invoices are attributed to the period they cover, not when they were created.
   const invoicesPromise = supabase
     .from("invoices")
-    .select("final_amount, paid_amount")
-    .gte("created_at", monthStart)
-    .lte("created_at", monthEnd);
-  
-  // FIX: ALL unpaid invoices for accurate pending amount (not just this month)
-  const unpaidInvoicesPromise = supabase
-    .from("invoices")
-    .select("final_amount, paid_amount")
-    .neq("payment_status", "paid");
+    .select("final_amount")
+    .gte("billing_period_start", monthStart)
+    .lte("billing_period_start", monthEnd);
+
+  // Ledger-accurate pending: sum positive credit_balance values from customers table.
+  // customers.credit_balance is kept in sync by the update_customer_balance_from_ledger trigger.
+  // A positive credit_balance means the customer owes money (total debits > total credits).
+  // This avoids the capped invoices.paid_amount limitation and accounts for overpayments.
+  const pendingPromise = supabase
+    .from("customers")
+    .select("credit_balance")
+    .eq("is_active", true);
 
   const breedingPromise = supabase
     .from("breeding_records")
@@ -94,7 +98,7 @@ async function fetchDashboardData() {
     cattleRes,
     customersRes,
     invoicesRes,
-    unpaidInvoicesRes,
+    pendingRes,
     breedingRes,
     healthRes,
   ] = await Promise.all([
@@ -103,7 +107,7 @@ async function fetchDashboardData() {
     cattlePromise,
     customersPromise,
     invoicesPromise,
-    unpaidInvoicesPromise,
+    pendingPromise,
     breedingPromise,
     healthPromise,
   ]);
@@ -113,7 +117,7 @@ async function fetchDashboardData() {
   const cattleData = cattleRes.data || [];
   const customers = customersRes.data || [];
   const invoices = invoicesRes.data || [];
-  const unpaidInvoices = unpaidInvoicesRes.data || [];
+  const pendingCustomers = pendingRes.data || [];
   const breedingData = breedingRes.data || [];
   const healthData = healthRes.data || [];
 
@@ -142,8 +146,9 @@ async function fetchDashboardData() {
     totalCustomers: customers.length,
     activeCustomers: customers.filter(c => c.is_active).length,
     monthlyRevenue: invoices.reduce((sum, i) => sum + Number(i.final_amount), 0),
-    // FIX: Calculate pending from ALL unpaid invoices, not just this month
-    pendingAmount: unpaidInvoices.reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0),
+    // Ledger-accurate pending: sum positive credit_balance across all active customers.
+    // credit_balance is synced by DB trigger from customer_ledger, handling overpayments correctly.
+    pendingAmount: pendingCustomers.reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance || 0)), 0),
     lastProductionDate,
   };
 

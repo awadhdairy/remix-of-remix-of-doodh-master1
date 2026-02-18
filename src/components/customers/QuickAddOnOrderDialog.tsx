@@ -189,18 +189,10 @@ export function QuickAddOnOrderDialog({
 
       if (itemsError) throw itemsError;
 
-      // Step 3: Atomic ledger entry (prevents race conditions)
-      const { error: ledgerError } = await supabase.rpc("insert_ledger_with_balance", {
-        _customer_id: customerId,
-        _transaction_date: formattedDate,
-        _transaction_type: "delivery",
-        _description: `Add-on Order: ${orderItems.map((i) => `${i.product_name} × ${i.quantity}`).join(", ")}`,
-        _debit_amount: totalAmount,
-        _credit_amount: 0,
-        _reference_id: deliveryId,
-      });
-
-      if (ledgerError) throw ledgerError;
+      // NOTE: No ledger entry here — invoice-centric model.
+      // The month-end invoice covers all deliveries (including add-ons) as a single
+      // debit. Creating a delivery ledger entry here would cause double-counting
+      // when the invoice is generated for the same period.
 
       toast.success("Add-on order created successfully!");
       onOpenChange(false);
