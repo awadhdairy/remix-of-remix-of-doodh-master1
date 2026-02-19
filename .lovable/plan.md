@@ -1,25 +1,24 @@
 
-# Comprehensive Post-Fix Audit — Round 4
+# Round 5 Comprehensive Post-Fix Audit
 
-After reading every relevant financial file from scratch — including all payment entry points, ledger writes, dashboards, chart hooks, reporting, and deletion/edit flows — here is the definitive list of remaining issues and systematic errors.
+After reading every financial file from scratch — all dashboards, chart hooks, billing pages, customer ledger, invoice creation/edit/deletion paths, reports, and payment flows — here is the definitive list of remaining issues after the Round 4 fixes.
 
 ---
 
-## What Is Now Fully Correct
+## What Is Now Fully Correct After All Previous Rounds
 
-Before listing issues, it is worth confirming what is working perfectly:
-
-- All 6 payment entry points (Billing.tsx, Customers.tsx, CustomerDetailDialog.tsx, QuickAddOnOrderDialog.tsx, SmartInvoiceCreator.tsx, useLedgerAutomation.ts) use atomic `insert_ledger_with_balance` RPC
-- BulkInvoiceGenerator now uses atomic RPC with `reference_id`
-- useAutoInvoiceGenerator creates ledger entries for bulk invoices
-- Invoice edit recalculates running balances
-- Invoice deletion: deletes by `reference_id` first, then description fallback, then recalculates
-- EditInvoiceDialog: finds ledger by `reference_id` first, then description fallback
-- Revenue Growth Chart uses the `payments` table
-- Reports.tsx uses the `payments` table with `Math.max(0, ...)` guard
-- AccountantDashboard uses cash-basis profit
+- All ledger write points use atomic `insert_ledger_with_balance` RPC
+- All invoice creation (Smart, Bulk, Auto) captures `reference_id` for reliable deletion
+- QuickAddOnOrderDialog no longer creates ledger entries (invoice-centric model enforced)
+- Invoice deletion: deletes by `reference_id` + description fallback, then recalculates
+- EditInvoiceDialog: finds ledger by `reference_id` first, description fallback for legacy
+- Revenue Growth Chart uses payments table with `Math.max(0,...)` guard
+- Reports.tsx uses payments table with `Math.max(0,...)` guard
+- Dashboard pending uses `customers.credit_balance` (ledger-accurate)
+- AccountantDashboard pending uses `customers.credit_balance` (ledger-accurate)
+- Dashboard & chart revenue uses `billing_period_start` not `created_at`
+- CustomerLedger shows lifetime balance banner separate from period-filtered totals
 - `update_customer_balance_from_ledger` DB trigger syncs `customers.credit_balance`
-- Vendor payables tracking is accurate via DB triggers
 
 ---
 
@@ -27,208 +26,195 @@ Before listing issues, it is worth confirming what is working perfectly:
 
 ---
 
-### Issue 1: Dashboard `pendingAmount` Uses Invoice `paid_amount` Instead of Actual Ledger Balance (MEDIUM — Systematic Metric Error)
+### Issue 1: `Reports.tsx` Invoice Query Still Uses `created_at` Not `billing_period_start` (HIGH — Date Boundary Error Survives)
 
-**Location:** `src/hooks/useDashboardData.ts` (lines 78-81, 145-146)
+**Location:** `src/pages/Reports.tsx` (line 73-74)
 
-**Problem:**
+**Problem:** This is the exact same date boundary error that was fixed in `useDashboardData.ts`, `useDashboardCharts.ts`, and `AccountantDashboard.tsx` in Round 4 — but `Reports.tsx` was MISSED.
+
 ```typescript
-const unpaidInvoicesPromise = supabase
+supabase
   .from("invoices")
-  .select("final_amount, paid_amount")
-  .neq("payment_status", "paid");
-...
-pendingAmount: unpaidInvoices.reduce(
-  (sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0
-),
+  .select("created_at, final_amount, paid_amount")
+  .gte("created_at", format(startOfMonth(new Date()), "yyyy-MM-dd")),
 ```
 
-The Admin Dashboard "Pending Amount" stat card is derived from `invoices.paid_amount`. The `paid_amount` field is capped at `final_amount` per the overpayment fix from Round 2. This means:
+This means "Monthly Revenue" on the Reports page uses invoice creation date, not the billing period it covers. An invoice created March 2 for February's deliveries would appear in March's revenue on this page, while showing in February's revenue on the Dashboard and AccountantDashboard.
 
-- If a customer overpays (e.g., pays ₹700 on a ₹500 invoice), `paid_amount = 500` (capped) but the actual credit is ₹700
-- The "pending" figure overstates the real pending balance
-- The true source of truth for how much a customer still owes is the `customer_ledger` table, not `invoices.paid_amount`
+This creates a **3-way inconsistency**: Dashboard shows Feb revenue correctly (uses `billing_period_start`), AccountantDashboard shows Feb revenue correctly, but Reports page shows the same invoice in March revenue.
 
-**Correct approach:** The pending amount should be derived from `customers.credit_balance` (which is kept accurate by the DB trigger), or from the ledger sum directly. The invoice table's `paid_amount` is an invoice-level concept, not a ledger-level concept.
-
-**Fix:** Change the pending calculation to sum `credit_balance` from the `customers` table (which is always ledger-accurate):
+**Fix:** Change `created_at` to `billing_period_start`:
 ```typescript
-// Replace the unpaid invoices query with:
-const pendingFromCustomers = supabase
-  .from("customers")
-  .select("credit_balance")
-  .eq("is_active", true);
-...
-// credit_balance > 0 means customer owes money (debit > credit)
-pendingAmount: customersData.reduce(
-  (sum, c) => sum + Math.max(0, Number(c.credit_balance || 0)), 0
-)
-```
-
----
-
-### Issue 2: Revenue Growth Chart's `pending` Bar Is Systematically Wrong (MEDIUM — Display Logic Error)
-
-**Location:** `src/hooks/useDashboardCharts.ts` (lines 99-104)
-
-**Problem:**
-```typescript
-months.push({
-  month: format(monthDate, "MMM"),
-  billed: Math.round(billed),
-  collected: Math.round(collected),
-  pending: Math.round(billed - collected),  // <-- Can be negative
-});
-```
-
-`billed` is invoices created in a given calendar month. `collected` is payments received in that same calendar month. These two are not causally linked month-by-month:
-
-- A customer may pay an old invoice in the current month → `collected` exceeds `billed` for that month
-- Result: `pending` goes negative for that month in the chart
-- This is the same bug that was fixed in `Reports.tsx` but the `Math.max(0, ...)` guard was only applied in Reports, not in `useDashboardCharts.ts`
-
-**Fix:** Apply the same guard:
-```typescript
-pending: Math.max(0, Math.round(billed - collected)),
-```
-
----
-
-### Issue 3: Delivery Status Update Has NO Ledger Entry (MEDIUM — Financial Completeness Gap)
-
-**Location:** `src/pages/Deliveries.tsx` (lines 178-210) and `src/components/deliveries/BulkDeliveryActions.tsx`
-
-**Problem:** When a delivery is marked as "delivered" via the Deliveries page (the main delivery management screen), no ledger entry is created. The `useLedgerAutomation.ts` hook has a `logDeliveryCharge` function, but it is **never called** from `Deliveries.tsx` or `BulkDeliveryActions.tsx`.
-
-The only time delivery-based ledger entries are created is through `QuickAddOnOrderDialog`, which creates a `"delivery"` type ledger entry for add-on orders. But normal daily subscription deliveries that are simply marked "delivered" on the Deliveries page create **zero ledger entries**.
-
-This means: if a dairy uses the Deliveries page as the primary workflow (mark pending → delivered), the customer ledger will only contain invoice and payment entries. There will be no day-by-day delivery charge trail. The invoice then creates a single lump-sum debit, which means the ledger shows:
-- Invoice debit (lump sum at billing time)
-- Payments (credits as they come in)
-
-But it does NOT show:
-- Daily delivery debits (the granular record)
-
-This is actually an intentional design choice in most dairy billing systems — invoice is the debit, not individual deliveries. However, since the system appears to support both patterns (QuickAddOn creates delivery ledger entries), there is an inconsistency. If the intent is that invoices are the debit source, then `QuickAddOnOrderDialog` should NOT create ledger entries (it would create a double-debit when the invoice is later generated). If the intent is that each delivery is a debit, then the invoice should not also create a debit.
-
-**Current State (Double-Debit Risk):**
-1. Customer orders add-on → `QuickAddOnOrderDialog` creates a `"delivery"` debit ledger entry for ₹500
-2. End of month → `SmartInvoiceCreator` creates an invoice for ₹500 and creates an `"invoice"` debit ledger entry for ₹500
-3. Customer now has ₹1,000 in debits for ₹500 worth of goods
-
-This is a fundamental accounting architecture issue.
-
-**Fix Options (choose one):**
-- **Option A (Invoice-centric, simpler):** Remove the ledger entry from `QuickAddOnOrderDialog`. Delivery is recorded in delivery tables only. The invoice at billing time is the sole debit in the ledger.
-- **Option B (Delivery-centric, granular):** Keep delivery ledger entries but do NOT create an invoice ledger entry. The invoice is only a "statement" document, not a ledger transaction.
-
-Option A is the correct choice for this system because invoices already cover the full period's deliveries. The add-on ledger entry in `QuickAddOnOrderDialog` causes double-counting.
-
----
-
-### Issue 4: `CustomerLedger` Summary Shows Filtered-Period Balance, Not Full Lifetime Balance (LOW-MEDIUM — Misleading Display)
-
-**Location:** `src/components/customers/CustomerLedger.tsx` (lines 98-100, 195-203)
-
-**Problem:**
-```typescript
-const totalDebit = entries.reduce((sum, e) => sum + Number(e.debit_amount), 0);
-const totalCredit = entries.reduce((sum, e) => sum + Number(e.credit_amount), 0);
-const netBalance = totalDebit - totalCredit;
-```
-
-The `entries` are filtered by `startDate`/`endDate` (defaulting to current month). The "Amount Due" card at the bottom shows `netBalance` computed only for the filtered period. This is misleading because:
-
-- A customer might have outstanding balance from a previous month's invoice
-- The current month's ledger might show ₹0 due (because no transactions this month)
-- But the customer actually owes ₹3,000 from last month
-
-**Fix:** Always show the current `running_balance` of the last ledger entry (the actual lifetime balance) in a prominently labelled card, separate from the period-filtered totals. Or fetch `customers.credit_balance` (which is always accurate) and display it as "Current Balance."
-
----
-
-### Issue 5: `AccountantDashboard` Pending Payments Uses Invoice `payment_status` Not Due Date (LOW — Overcount)
-
-**Location:** `src/components/dashboard/AccountantDashboard.tsx` (lines 101-104)
-
-**Problem:**
-```typescript
-const pendingPayments = invoices
-  .filter(i => i.payment_status !== "paid")
-  .reduce((sum, i) => sum + (Number(i.final_amount) - Number(i.paid_amount || 0)), 0);
-```
-
-This uses `payment_status` from the database field, which is never automatically set to "overdue" by the system. The `getEffectivePaymentStatus` function exists specifically to compute overdue status from `due_date`, but `AccountantDashboard` does not use it. More importantly, `paid_amount` is capped at `final_amount` (from the overpayment fix), so for a partially-overpaid invoice, the balance calculation is already correct. However, if a customer has a general payment that reduces their overall credit balance (tracked via ledger) but the invoice still shows as "partial" in the database, this metric overstates pending.
-
-**Fix:** Minor — already partially mitigated by the overpayment capping fix. But use `customers.credit_balance` (sum of all positive balances) for a truly accurate pending figure.
-
----
-
-### Issue 6: `useDashboardData` Revenue Metric Uses Invoice `created_at` Not Billing Period (LOW — Date Boundary Error)
-
-**Location:** `src/hooks/useDashboardData.ts` (lines 71-75)
-
-**Problem:**
-```typescript
-const invoicesPromise = supabase
+supabase
   .from("invoices")
-  .select("final_amount, paid_amount")
-  .gte("created_at", monthStart)
-  .lte("created_at", monthEnd);
+  .select("billing_period_start, final_amount, paid_amount")
+  .gte("billing_period_start", format(startOfMonth(new Date()), "yyyy-MM-dd")),
 ```
+Also remove `paid_amount` from the select since Reports.tsx already uses the `payments` table (fetched separately) for collected amounts — `paid_amount` is fetched but never used after the fix.
 
-Monthly revenue is calculated from invoices created this calendar month (`created_at`). But invoices are often created at the end of the month for the previous month's deliveries. For example:
-- Invoice created on Feb 28 for Feb 1-28 deliveries → counted in February's revenue ✓
-- Invoice created on March 2 for February deliveries → counted in March's revenue ✗ (should be February)
+---
 
-The correct field to filter on is `billing_period_start` or `billing_period_end`, not `created_at`.
+### Issue 2: `Reports.tsx` `totalDue` Uses Raw `credit_balance` Sum — Can Be Negative (MEDIUM — Misleading Customer Stats)
 
-**Fix:**
+**Location:** `src/pages/Reports.tsx` (line 153)
+
+**Problem:**
 ```typescript
-.gte("billing_period_start", monthStart)
-.lte("billing_period_start", monthEnd)
+totalDue: customers.reduce((sum, c) => sum + Number(c.credit_balance), 0),
 ```
 
-This also applies to the same pattern in `AccountantDashboard.tsx` (line 59) and `useDashboardCharts.ts` (line 87).
+`credit_balance` can be negative (when a customer has overpaid / has advance credit, `debit < credit` means `credit_balance < 0`). Summing all credit balances without a `Math.max(0,...)` guard means this total can:
+- Show ₹5,000 as the "Total Due" when the real receivable is ₹8,000 (3,000 in advance credits netting against debts of other customers)
+- This misleads management into thinking less is owed than actually is from defaulting customers
+
+**Fix:** Apply `Math.max(0, ...)` guard:
+```typescript
+totalDue: customers.reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance)), 0),
+```
+
+Note: `totalAdvance` on line 154 has the opposite problem — it sums `advance_balance` which is a separate legacy field. This field is not the same as the ledger credit. The correct advance balance is `-credit_balance` when `credit_balance < 0`. But `advance_balance` is a redundant/legacy column. This needs investigation.
+
+---
+
+### Issue 3: `Customers.tsx` `totalDue` and `totalAdvance` Are Computed on ALL Customers Including Inactive (MEDIUM — Metric Scope Error)
+
+**Location:** `src/pages/Customers.tsx` (line 633-634)
+
+**Problem:**
+```typescript
+const totalDue = customers.reduce((sum, c) => sum + Number(c.credit_balance), 0);
+const totalAdvance = customers.reduce((sum, c) => sum + Number(c.advance_balance), 0);
+```
+
+The `customers` state includes ALL customers (active + inactive) fetched on line 147:
+```typescript
+supabase.from("customers").select("*, routes(name, area)").order("name")
+```
+— no `is_active` filter. So the `totalDue` and `totalAdvance` stat cards at the bottom of the Customers page include deactivated customers' balances.
+
+Compare this with `useDashboardData.ts` and `AccountantDashboard.tsx` which correctly filter by `.eq("is_active", true)`.
+
+Additionally, `totalDue` on this page does not apply a `Math.max(0,...)` guard either (same as Issue 2), so advance credits of some customers reduce the displayed "total due" figure.
+
+**Fix:** Filter `customers` to active ones for the totals:
+```typescript
+const totalDue = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance)), 0);
+const totalAdvance = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.advance_balance)), 0);
+```
+
+---
+
+### Issue 4: `Billing.tsx` Invoice Fetch Uses `created_at` for Date Filter (MEDIUM — Filter Inconsistency)
+
+**Location:** `src/pages/Billing.tsx` (lines 131-132)
+
+**Problem:**
+```typescript
+if (startDate) {
+  invoiceQuery = invoiceQuery.gte("created_at", startDate);
+}
+```
+
+The Billing page's date range filter (90 days, 30 days, etc.) filters invoices by `created_at`. This means when a user selects "Last 30 days", they see invoices created in the last 30 days — but NOT invoices created earlier that cover billing periods within the last 30 days.
+
+For example: An invoice created 35 days ago (billing period covering last month) would NOT show up in the "Last 30 days" view. This is counterintuitive for a billing view where users typically want to see invoices by their billing period, not creation date.
+
+The stat cards (Total Billed, Invoice Payments, Outstanding, Overdue) are all computed from the `invoices` state which is already filtered by `created_at`, making the stats date-filter dependent and potentially misleading.
+
+**Fix:** Change the date filter to use `billing_period_start`:
+```typescript
+if (startDate) {
+  invoiceQuery = invoiceQuery.gte("billing_period_start", startDate);
+}
+```
+
+---
+
+### Issue 5: `AccountantDashboard.tsx` Overdue Invoice List Shows `final_amount - paid_amount` Which Can Show ₹0 for Overpaid Invoices (LOW — Display Logic Gap)
+
+**Location:** `src/components/dashboard/AccountantDashboard.tsx` (line 136)
+
+**Problem:**
+```typescript
+final_amount: Number(inv.final_amount) - Number(inv.paid_amount || 0), // Show remaining balance
+```
+
+Since `paid_amount` is capped at `final_amount` by the overpayment fix, this correctly shows ₹0 for an overpaid invoice. However, an overpaid invoice could still appear in the overdue list because the filter is:
+```typescript
+.neq("payment_status", "paid")
+.lt("due_date", todayStr)
+```
+
+If a customer paid ₹700 on a ₹500 invoice, the `paid_amount` is capped at ₹500, `payment_status` becomes `"paid"` — so this would NOT appear in the list. That part is correct.
+
+BUT if a customer paid ₹200 on a ₹500 invoice (partial), `payment_status` = `"partial"` and the invoice correctly shows a ₹300 remaining balance. This case is handled correctly.
+
+However, the overdue list query fetches at most `limit(5)` overdue invoices. The displayed "X overdue invoices" count on the "Pending Payments" stat card is just `overdue.length` which is capped at 5. If there are 12 overdue invoices, the badge says "5 overdue invoices" not "12 overdue invoices".
+
+**Fix:** Run a separate COUNT query for the total overdue count rather than deriving it from the limited list:
+```typescript
+// For count: don't use the limited list
+const { count: totalOverdueCount } = await supabase
+  .from("invoices")
+  .select("id", { count: "exact", head: true })
+  .neq("payment_status", "paid")
+  .lt("due_date", todayStr);
+```
+
+---
+
+### Issue 6: `CustomerDetailDialog.tsx` "Amount Due" Shows Raw `credit_balance` Without Negative Guard (LOW — Negative Amount Display Risk)
+
+**Location:** `src/components/customers/CustomerDetailDialog.tsx` (line 522)
+
+**Problem:**
+```typescript
+<p className="font-bold text-xl text-red-700 dark:text-red-400">
+  ₹{Number(customer.credit_balance).toLocaleString()}
+</p>
+```
+
+If `credit_balance` is negative (customer has overpaid — advance credit exists), this will show a **negative number in red** like "₹-300" styled as "Amount Due". This is confusing and factually wrong — a negative `credit_balance` means no amount is due, the customer is in credit.
+
+**Fix:** Show "Amount Due" only when `credit_balance > 0`. When `credit_balance <= 0`, show a "Credit Balance" label with the absolute value in green:
+```tsx
+{customer.credit_balance > 0 ? (
+  <p className="font-bold text-xl text-red-700">₹{Number(customer.credit_balance).toLocaleString()}</p>
+) : (
+  <p className="font-bold text-xl text-green-700">Credit: ₹{Math.abs(Number(customer.credit_balance)).toLocaleString()}</p>
+)}
+```
 
 ---
 
 ## Summary Table
 
-| # | File | Issue | Impact | Type |
-|---|------|-------|--------|------|
-| 1 | `useDashboardData.ts` | `pendingAmount` uses capped `invoices.paid_amount` instead of ledger-accurate `customers.credit_balance` | Medium | Metric error |
-| 2 | `useDashboardCharts.ts` | `pending` bar in Revenue Growth chart can go negative (missing `Math.max(0,...)` guard) | Medium | Display logic |
-| 3 | `QuickAddOnOrderDialog.tsx` + `SmartInvoiceCreator.tsx` | Add-on orders create a delivery ledger entry AND invoices create a separate debit → double-counting every add-on in the ledger | Medium | Accounting architecture |
-| 4 | `CustomerLedger.tsx` | Period-filtered "Amount Due" card misleads — shows only filtered-period net, not lifetime customer balance | Low-Medium | Misleading display |
-| 5 | `AccountantDashboard.tsx` | Pending calculation uses `payment_status` field (not effective overdue status) and `invoices.paid_amount` | Low | Minor overcount |
-| 6 | `useDashboardData.ts` + `useDashboardCharts.ts` + `AccountantDashboard.tsx` | Revenue filtered by `invoice.created_at` instead of `billing_period_start` causing cross-month misattribution | Low | Date boundary error |
+| # | File | Issue | Impact | Fix Effort |
+|---|------|-------|--------|-----------|
+| 1 | `Reports.tsx` line 73 | Invoice revenue filtered by `created_at` not `billing_period_start` — missed from Round 4 fix | High | 2-line change |
+| 2 | `Reports.tsx` line 153 | `totalDue` sums raw `credit_balance` without `Math.max(0,...)` guard — negative advances reduce "Total Due" display | Medium | 1-line change |
+| 3 | `Customers.tsx` lines 633-634 | `totalDue`/`totalAdvance` includes inactive customers + no `Math.max(0,...)` guard | Medium | 2-line change |
+| 4 | `Billing.tsx` lines 131-132 | Invoice date filter uses `created_at` not `billing_period_start` — wrong invoices shown in date range | Medium | 1-line change |
+| 5 | `AccountantDashboard.tsx` | Overdue count capped at 5 (limited fetch) — stat badge shows wrong count if >5 overdue | Low | Add count query |
+| 6 | `CustomerDetailDialog.tsx` line 522 | Negative `credit_balance` shown as negative "Amount Due" in red — confusing and wrong | Low | Conditional display |
 
 ---
 
-## Recommended Fix Priority
+## Files to Modify
 
-1. **Issue 3 (Double-debit on add-on orders)** — Fix immediately. This is actively creating incorrect ledger data for every add-on order that is later invoiced. Remove the ledger entry creation from `QuickAddOnOrderDialog` since the invoice will debit the full amount including add-ons.
-2. **Issue 2 (Revenue chart negative pending bar)** — 1-line fix, do immediately.
-3. **Issue 1 (Dashboard pending metric)** — Switch to `customers.credit_balance` for accuracy.
-4. **Issue 6 (Revenue date boundary)** — Fix `created_at` → `billing_period_start` across 3 files.
-5. **Issue 4 (CustomerLedger period balance)** — Add a "Current Balance" card from `customers.credit_balance`.
-6. **Issue 5 (AccountantDashboard pending)** — Already partially correct, low priority.
+1. `src/pages/Reports.tsx` — Fix `created_at` → `billing_period_start` (Issue 1) and add `Math.max(0,...)` guard to `totalDue` (Issue 2)
+2. `src/pages/Customers.tsx` — Filter active-only + add guards for `totalDue`/`totalAdvance` (Issue 3)
+3. `src/pages/Billing.tsx` — Fix date filter to use `billing_period_start` (Issue 4)
+4. `src/components/dashboard/AccountantDashboard.tsx` — Add separate COUNT query for true overdue count (Issue 5)
+5. `src/components/customers/CustomerDetailDialog.tsx` — Conditional display for negative `credit_balance` (Issue 6)
 
-## Technical Notes on Issue 3 (Double-Debit)
+---
 
-The accounting model must be one of the two:
+## What This Round Closes
 
-```text
-Model A (Invoice-centric — RECOMMENDED):
-  Delivery recorded → delivery_items table only (no ledger)
-  Invoice generated → ledger debit (covers all deliveries in period)
-  Payment received  → ledger credit
-  
-Model B (Delivery-centric — NOT implemented here):
-  Delivery recorded → ledger debit per day
-  Invoice is just a PDF statement (no ledger entry)
-  Payment received  → ledger credit
-```
-
-The system currently uses Model A for subscription deliveries (no ledger on delivery status change) and accidentally uses Model B for add-on orders (`QuickAddOnOrderDialog` creates a delivery ledger entry). When the invoice is generated at month-end, it covers ALL deliveries including add-ons, creating a second debit for the same goods. The fix is to remove the `insert_ledger_with_balance` call from `QuickAddOnOrderDialog` so all debits come exclusively from invoices.
+After these 5 issues are fixed, the financial system will be fully consistent across all modules:
+- All revenue metrics will use `billing_period_start` as attribution date (all 4 locations: Dashboard, Charts, AccountantDashboard, Reports)
+- All "pending/due" metrics will use `Math.max(0, credit_balance)` guards (all locations)
+- All customer scope filters will correctly limit to active customers only
+- The overdue count badge will reflect the true database count, not the display-limited count
+- Customer detail views will correctly display credit vs. due states without showing negative money amounts
