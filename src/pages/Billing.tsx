@@ -129,7 +129,8 @@ export default function BillingPage() {
         .order(sortBy, { ascending: sortOrder === "asc" });
       
       if (startDate) {
-        invoiceQuery = invoiceQuery.gte("created_at", startDate);
+        // Filter by billing_period_start so invoices appear in the period they cover, not when created
+        invoiceQuery = invoiceQuery.gte("billing_period_start", startDate);
       }
       
       const [customerRes, invoiceRes, productRes] = await Promise.all([

@@ -630,8 +630,9 @@ export default function CustomersPage() {
     }
   };
 
-  const totalDue = customers.reduce((sum, c) => sum + Number(c.credit_balance), 0);
-  const totalAdvance = customers.reduce((sum, c) => sum + Number(c.advance_balance), 0);
+  // Active customers only; Math.max(0,...) prevents negative credits from reducing "total due"
+  const totalDue = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance)), 0);
+  const totalAdvance = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.advance_balance)), 0);
 
   const handleOpenDetail = (customer: Customer) => {
     setSelectedCustomer(customer);
