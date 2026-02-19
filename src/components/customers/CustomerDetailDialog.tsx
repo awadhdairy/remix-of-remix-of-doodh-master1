@@ -512,17 +512,32 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
 
             {/* Financial Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <Card className="bg-red-50 dark:bg-red-950/20">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-red-600 mb-1">
-                    <CreditCard className="h-4 w-4" />
-                    <span className="text-xs">Amount Due</span>
-                  </div>
-                  <p className="font-bold text-xl text-red-700 dark:text-red-400">
-                    ₹{Number(customer.credit_balance).toLocaleString()}
-                  </p>
-                </CardContent>
-              </Card>
+              {/* Show Amount Due (red) OR Credit Balance (green) based on credit_balance sign */}
+              {Number(customer.credit_balance) > 0 ? (
+                <Card className="bg-red-50 dark:bg-red-950/20">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2 text-red-600 mb-1">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="text-xs">Amount Due</span>
+                    </div>
+                    <p className="font-bold text-xl text-red-700 dark:text-red-400">
+                      ₹{Number(customer.credit_balance).toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="bg-green-50 dark:bg-green-950/20">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2 text-green-600 mb-1">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="text-xs">Credit Balance</span>
+                    </div>
+                    <p className="font-bold text-xl text-green-700 dark:text-green-400">
+                      ₹{Math.abs(Number(customer.credit_balance)).toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
               <Card className="bg-green-50 dark:bg-green-950/20">
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2 text-green-600 mb-1">

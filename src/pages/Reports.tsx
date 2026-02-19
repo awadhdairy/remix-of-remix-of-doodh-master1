@@ -70,8 +70,8 @@ export default function ReportsPage() {
           .gte("production_date", format(subDays(new Date(), 29), "yyyy-MM-dd")),
         supabase
           .from("invoices")
-          .select("created_at, final_amount, paid_amount")
-          .gte("created_at", format(startOfMonth(new Date()), "yyyy-MM-dd")),
+          .select("billing_period_start, final_amount")
+          .gte("billing_period_start", format(startOfMonth(new Date()), "yyyy-MM-dd")),
         supabase
           .from("expenses")
           .select("category, amount, expense_date")
@@ -150,8 +150,10 @@ export default function ReportsPage() {
       setCustomerStats({
         total: customers.length,
         active: customers.filter(c => c.is_active).length,
-        totalDue: customers.reduce((sum, c) => sum + Number(c.credit_balance), 0),
-        totalAdvance: customers.reduce((sum, c) => sum + Number(c.advance_balance), 0),
+        // Use Math.max(0,...) guard: negative credit_balance means customer has advance credit, not debt
+        totalDue: customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance)), 0),
+        // Advance balance = customers in credit (credit_balance < 0)
+        totalAdvance: customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, -Number(c.credit_balance)), 0),
       });
       
       // NEW: Process procurement stats

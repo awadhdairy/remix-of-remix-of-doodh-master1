@@ -52,7 +52,7 @@ export function AccountantDashboard() {
     const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
 
-    const [invoicesRes, expensesRes, paymentsRes, overdueRes, vendorBalanceRes, pendingCustomersRes] = await Promise.all([
+    const [invoicesRes, expensesRes, paymentsRes, overdueRes, overdueCountRes, vendorBalanceRes, pendingCustomersRes] = await Promise.all([
       supabase
         .from("invoices")
         .select("final_amount, paid_amount, payment_status")
@@ -83,6 +83,12 @@ export function AccountantDashboard() {
         .lt("due_date", todayStr)
         .order("due_date")
         .limit(5),
+      // Separate COUNT query for accurate overdue total (not capped at list limit)
+      supabase
+        .from("invoices")
+        .select("id", { count: "exact", head: true })
+        .neq("payment_status", "paid")
+        .lt("due_date", todayStr),
       // Vendor payables (amounts owed to milk vendors)
       supabase
         .from("milk_vendors")
@@ -115,8 +121,8 @@ export function AccountantDashboard() {
     const vendorPayables = vendorBalances
       .reduce((sum, v) => sum + Math.max(0, Number(v.current_balance || 0)), 0);
 
-    // Count overdue as invoices past due date that aren't fully paid
-    const overdueCount = overdue.length;
+    // Use separate COUNT query for true overdue total (the list is capped at 5 for display)
+    const overdueCount = overdueCountRes.count ?? overdue.length;
 
     setStats({
       monthlyRevenue,
