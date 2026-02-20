@@ -179,7 +179,7 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
           .from("invoices")
           .select("*")
           .eq("customer_id", customer.id)
-          .order("created_at", { ascending: false })
+          .order("billing_period_start", { ascending: false })
           .limit(30),
         // Fetch payments
         supabase
@@ -538,17 +538,19 @@ export function CustomerDetailDialog({ customer, open, onOpenChange }: CustomerD
                   </CardContent>
                 </Card>
               )}
-              <Card className="bg-green-50 dark:bg-green-950/20">
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-2 text-green-600 mb-1">
-                    <DollarSign className="h-4 w-4" />
-                    <span className="text-xs">Advance Balance</span>
-                  </div>
-                  <p className="font-bold text-xl text-green-700 dark:text-green-400">
-                    ₹{Number(customer.advance_balance).toLocaleString()}
-                  </p>
-                </CardContent>
-              </Card>
+              {Math.max(0, -Number(customer.credit_balance)) > 0 && (
+                <Card className="bg-green-50 dark:bg-green-950/20">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2 text-green-600 mb-1">
+                      <DollarSign className="h-4 w-4" />
+                      <span className="text-xs">Advance Credit</span>
+                    </div>
+                    <p className="font-bold text-xl text-green-700 dark:text-green-400">
+                      ₹{Math.max(0, -Number(customer.credit_balance)).toLocaleString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
               <Card className="bg-blue-50 dark:bg-blue-950/20">
                 <CardContent className="pt-4">
                   <div className="flex items-center gap-2 text-blue-600 mb-1">

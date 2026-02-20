@@ -105,12 +105,12 @@ export function BulkInvoiceGenerator({
       return;
     }
 
-    // Fetch existing invoices for the period
+    // Fetch existing invoices that overlap with the selected period (not just exact match)
     const { data: existingInvoices, error: invoiceError } = await supabase
       .from("invoices")
       .select("customer_id")
-      .eq("billing_period_start", startDate)
-      .eq("billing_period_end", endDate);
+      .lte("billing_period_start", endDate)
+      .gte("billing_period_end", startDate);
 
     if (invoiceError) {
       toast({

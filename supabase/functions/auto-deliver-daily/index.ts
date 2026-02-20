@@ -244,9 +244,10 @@ function shouldDeliverToday(customer: any, targetDate: string): boolean {
   let schedule: any = null;
   if (customer.notes) {
     try {
-      const scheduleMatch = customer.notes.match(/Schedule:\s*({[^}]+})/);
-      if (scheduleMatch) {
-        schedule = JSON.parse(scheduleMatch[1]);
+      const scheduleIdx = customer.notes.indexOf("Schedule:");
+      if (scheduleIdx !== -1) {
+        const jsonStr = customer.notes.substring(scheduleIdx + "Schedule:".length).trim();
+        schedule = JSON.parse(jsonStr);
       }
     } catch (_e) {
       // Ignore parse errors

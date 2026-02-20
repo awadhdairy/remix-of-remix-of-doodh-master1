@@ -184,9 +184,14 @@ export default function ExpensesPage() {
     ? expenses 
     : expenses.filter(e => e.category === categoryFilter);
 
+  // "This Month" stat: always based on current calendar month from the fetched data
+  // Note: if dateRange is narrower than the full month, this will show a partial total
+  const currentMonthStart = startOfMonth(new Date());
+  const currentMonthEnd = endOfMonth(new Date());
+  const isFullMonthAvailable = !getDateFilterValue(dateRange) || new Date(getDateFilterValue(dateRange)!) <= currentMonthStart;
   const monthlyExpenses = expenses.filter(e => {
     const date = new Date(e.expense_date);
-    return date >= startOfMonth(new Date()) && date <= endOfMonth(new Date());
+    return date >= currentMonthStart && date <= currentMonthEnd;
   });
 
   const totalThisMonth = monthlyExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
@@ -288,6 +293,7 @@ export default function ExpensesPage() {
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-destructive">₹{totalThisMonth.toLocaleString()}</div>
             <p className="text-sm text-muted-foreground">This Month</p>
+            {!isFullMonthAvailable && <p className="text-xs text-muted-foreground/70">Partial — filtered by date range</p>}
           </CardContent>
         </Card>
         <Card className="border-info/30">

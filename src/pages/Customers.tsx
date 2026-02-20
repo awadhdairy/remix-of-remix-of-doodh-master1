@@ -632,7 +632,7 @@ export default function CustomersPage() {
 
   // Active customers only; Math.max(0,...) prevents negative credits from reducing "total due"
   const totalDue = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.credit_balance)), 0);
-  const totalAdvance = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, Number(c.advance_balance)), 0);
+  const totalAdvance = customers.filter(c => c.is_active).reduce((sum, c) => sum + Math.max(0, -Number(c.credit_balance)), 0);
 
   const handleOpenDetail = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -748,11 +748,14 @@ export default function CustomersPage() {
     {
       key: "advance_balance",
       header: "Advance",
-      render: (item: Customer) => (
-        <span className={item.advance_balance > 0 ? "text-success font-medium" : ""}>
-          ₹{Number(item.advance_balance).toLocaleString()}
-        </span>
-      ),
+      render: (item: Customer) => {
+        const advance = Math.max(0, -Number(item.credit_balance));
+        return (
+          <span className={advance > 0 ? "text-success font-medium" : ""}>
+            ₹{advance.toLocaleString()}
+          </span>
+        );
+      },
     },
     {
       key: "is_active",
