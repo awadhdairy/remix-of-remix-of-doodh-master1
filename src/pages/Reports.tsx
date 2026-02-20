@@ -241,6 +241,7 @@ export default function ReportsPage() {
                 <p className="text-2xl font-bold text-primary">
                   ₹{((revenueData[1]?.value || 0) - totalExpenses).toLocaleString()}
                 </p>
+                <p className="text-xs text-muted-foreground/70">Cash basis: Collections − Expenses</p>
               </div>
               <IndianRupee className="h-8 w-8 text-primary/50" />
             </div>

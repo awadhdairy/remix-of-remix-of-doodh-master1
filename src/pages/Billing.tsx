@@ -462,18 +462,21 @@ export default function BillingPage() {
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">₹{stats.total.toLocaleString("en-IN")}</div>
             <p className="text-sm text-muted-foreground">Total Billed</p>
+            <p className="text-xs text-muted-foreground/70">In selected period</p>
           </CardContent>
         </Card>
         <Card className="border-success/30">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-success">₹{stats.collected.toLocaleString("en-IN")}</div>
             <p className="text-sm text-muted-foreground">Invoice Payments</p>
+            <p className="text-xs text-muted-foreground/70">In selected period</p>
           </CardContent>
         </Card>
         <Card className="border-warning/30">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-warning">₹{stats.outstanding.toLocaleString("en-IN")}</div>
             <p className="text-sm text-muted-foreground">Outstanding</p>
+            <p className="text-xs text-muted-foreground/70">In selected period</p>
           </CardContent>
         </Card>
         <Card className="border-destructive/30">
@@ -487,6 +490,7 @@ export default function BillingPage() {
             <p className="text-sm text-muted-foreground">
               Overdue {stats.overdueCount > 0 && `(${stats.overdueCount} invoices)`}
             </p>
+            <p className="text-xs text-muted-foreground/70">In selected period</p>
           </CardContent>
         </Card>
       </div>
