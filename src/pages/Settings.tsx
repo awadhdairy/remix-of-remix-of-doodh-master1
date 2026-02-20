@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUserRole } from "@/hooks/useUserRole";
 import { DataArchiveManager } from "@/components/settings/DataArchiveManager";
 import { DataIntegrityManager } from "@/components/settings/DataIntegrityManager";
+import { FinancialIntegrityChecker } from "@/components/settings/FinancialIntegrityChecker";
 import { TelegramSettings } from "@/components/settings/TelegramSettings";
 import { Settings as SettingsIcon, Building2, User, Bell, Shield, Loader2, Save, KeyRound, Database, ShieldCheck } from "lucide-react";
 
@@ -516,7 +517,10 @@ export default function SettingsPage() {
         {/* Data Integrity Tab - Super Admin Only */}
         {isSuperAdmin && (
           <TabsContent value="data-integrity">
-            <DataIntegrityManager />
+            <div className="space-y-6">
+              <DataIntegrityManager />
+              <FinancialIntegrityChecker />
+            </div>
           </TabsContent>
         )}
       </Tabs>
