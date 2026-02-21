@@ -1,62 +1,59 @@
 
 
-# Financial Integrity Health Check
+# Fix: Broken Schedule Parser in useAutoDeliveryScheduler + Edge Function delivery_days Support
 
-Add a new `FinancialIntegrityChecker` component to the existing **Settings > Data Integrity** tab (super_admin only), displayed below the existing `DataIntegrityManager`. It performs three read-only diagnostic checks and displays results as green/red cards.
+## Problem Summary
 
----
+There are two related issues:
 
-## Diagnostic Checks
+1. **Frontend hook broken regex (useAutoDeliveryScheduler.ts line 59):** The `parseScheduleFromNotes` function uses the regex `{[^}]+}` which cannot parse nested JSON objects. All custom schedules silently fail and customers default to daily delivery when scheduled from the dashboard UI.
 
-### Check A: Ledger vs Credit Balance Sync
-For each active customer, compute `SUM(debit_amount) - SUM(credit_amount)` from `customer_ledger` and compare it against `customers.credit_balance`. Any mismatch means the `update_customer_balance_from_ledger` DB trigger has drifted or failed silently.
+2. **Edge function ignores `delivery_days` (auto-deliver-daily/index.ts):** The edge function's `shouldDeliverToday` correctly parses the JSON (indexOf fix already applied), but only checks `schedule.frequency`, `schedule.day`, and `schedule.days`. The UI actually stores delivery configuration as `schedule.delivery_days` (with keys like `monday`, `tuesday`, etc.) and per-product schedules under `schedule.product_schedules`. The edge function never reads these fields, so customers with custom day selections are still treated as daily.
 
-- **Green card**: All customers match
-- **Red card**: Lists mismatched customer names with expected vs actual values
+## What the UI Actually Stores
 
-### Check B: Orphaned Invoices
-Count invoices that have a non-null `id` but NO corresponding `customer_ledger` entry where `reference_id = invoice.id` AND `transaction_type = 'invoice'`. These are invoices that were created but never debited to the ledger.
-
-- **Green card**: 0 orphaned invoices
-- **Red card**: Shows count of orphaned invoices
-
-### Check C: Orphaned Ledger Entries
-Count `customer_ledger` entries where `transaction_type = 'invoice'` and `reference_id IS NOT NULL` but no matching `invoices.id` exists. These are ledger debits for invoices that were deleted without cleaning up the ledger (should not happen with the current deletion flow, but a safety check).
-
-- **Green card**: 0 orphaned ledger entries
-- **Red card**: Shows count of orphaned entries
-
----
-
-## Implementation
-
-### New File: `src/components/settings/FinancialIntegrityChecker.tsx`
-- A single Card component with a "Run Financial Health Check" button
-- On click, runs 3 parallel Supabase queries:
-  1. Fetch all active customers with their `credit_balance`, then for each, query `customer_ledger` to compute `SUM(debit) - SUM(credit)`. Compare.
-  2. Fetch all invoice IDs, then query `customer_ledger` for entries with `transaction_type = 'invoice'` and matching `reference_id`. Compute the set difference.
-  3. Fetch all ledger entries with `transaction_type = 'invoice'` and `reference_id IS NOT NULL`, then check if each `reference_id` exists in `invoices`.
-- Display 3 diagnostic cards (green `CheckCircle` / red `AlertTriangle`) with counts and details
-- Read-only — no data modification
-
-### Modified File: `src/pages/Settings.tsx`
-- Import and render `FinancialIntegrityChecker` below `DataIntegrityManager` in the `data-integrity` tab:
+When a customer is saved, the notes field contains:
 ```
-<TabsContent value="data-integrity">
-  <div className="space-y-6">
-    <DataIntegrityManager />
-    <FinancialIntegrityChecker />
-  </div>
-</TabsContent>
+Schedule: {"delivery_days":{"monday":true,"tuesday":true,"wednesday":false,...},"auto_deliver":true,"product_schedules":{"<product-uuid>":{"frequency":"weekly","delivery_days":{"monday":true,...}}}}
 ```
 
----
+Key fields:
+- `delivery_days` — global day-of-week toggles (named keys: monday, tuesday, etc.)
+- `auto_deliver` — boolean flag
+- `product_schedules` — per-product overrides with `frequency` and `delivery_days`
+
+## Changes
+
+### File 1: `src/hooks/useAutoDeliveryScheduler.ts`
+
+**Fix the broken regex** at line 59. Replace:
+```typescript
+const scheduleMatch = notes.match(/Schedule:\s*({[^}]+})/);
+```
+With the same indexOf + substring approach used in the edge function:
+```typescript
+const scheduleIdx = notes.indexOf("Schedule:");
+if (scheduleIdx !== -1) {
+  const jsonStr = notes.substring(scheduleIdx + "Schedule:".length).trim();
+  return JSON.parse(jsonStr);
+}
+```
+
+### File 2: `supabase/functions/auto-deliver-daily/index.ts`
+
+**Add `delivery_days` support** to `shouldDeliverToday`. After parsing the schedule, check if `schedule.delivery_days` exists (the UI-written format with named day keys). If it does, map the current day-of-week number to the named key and return whether that day is enabled.
+
+The updated logic priority becomes:
+1. If `schedule.delivery_days` exists (UI format) -- use it directly
+2. Else fall back to `schedule.frequency` / `schedule.days` / `schedule.day` (legacy format)
+3. Else fall back to `customer.subscription_type`
+
+This ensures both the UI-written schedule format and any legacy formats are handled correctly.
 
 ## Technical Details
 
-- Uses `externalSupabase` client (same as all other components)
-- Paginated fetching for ledger data (handles >1000 rows using range-based pagination)
-- No new DB tables, migrations, or edge functions required
-- Guarded by `isSuperAdmin` check (inherited from the tab visibility)
-- Follows the exact same UI pattern as the existing `DataIntegrityManager` (Card, Alert, Badge, green/red states)
-
+- Day-of-week mapping: JS `getDay()` returns 0=Sunday, 1=Monday, etc.
+- Named key mapping: `{0: "sunday", 1: "monday", 2: "tuesday", 3: "wednesday", 4: "thursday", 5: "friday", 6: "saturday"}`
+- The edge function will be redeployed after the change
+- No database changes required
+- No other files affected -- the Customers.tsx parser at line 242 already uses `[\s\S]*` (greedy, handles nested JSON correctly)
