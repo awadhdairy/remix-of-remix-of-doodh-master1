@@ -241,6 +241,12 @@ function shouldDeliverToday(customer: any, targetDate: string): boolean {
   const dayOfWeek = targetDateObj.getDay();
   const dayOfMonth = targetDateObj.getDate();
 
+  // Day-of-week number to named key mapping
+  const dayNameMap: Record<number, string> = {
+    0: "sunday", 1: "monday", 2: "tuesday", 3: "wednesday",
+    4: "thursday", 5: "friday", 6: "saturday",
+  };
+
   let schedule: any = null;
   if (customer.notes) {
     try {
@@ -254,6 +260,14 @@ function shouldDeliverToday(customer: any, targetDate: string): boolean {
     }
   }
 
+  // Priority 1: UI-written delivery_days format (named day keys)
+  if (schedule?.delivery_days && typeof schedule.delivery_days === "object") {
+    const dayKey = dayNameMap[dayOfWeek];
+    // If the key exists, use its boolean value; otherwise default to true
+    return schedule.delivery_days[dayKey] !== false;
+  }
+
+  // Priority 2: Legacy frequency/days/day fields
   const frequency = schedule?.frequency || customer.subscription_type || "daily";
 
   switch (frequency) {
