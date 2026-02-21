@@ -56,9 +56,10 @@ function parseScheduleFromNotes(notes: string | null): DeliverySchedule | null {
   if (!notes) return null;
   
   try {
-    const scheduleMatch = notes.match(/Schedule:\s*({[^}]+})/);
-    if (scheduleMatch) {
-      return JSON.parse(scheduleMatch[1]);
+    const scheduleIdx = notes.indexOf("Schedule:");
+    if (scheduleIdx !== -1) {
+      const jsonStr = notes.substring(scheduleIdx + "Schedule:".length).trim();
+      return JSON.parse(jsonStr);
     }
   } catch (e) {
     console.error("Failed to parse schedule from notes:", e);
