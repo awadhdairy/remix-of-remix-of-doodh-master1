@@ -186,8 +186,8 @@ export function useAutoInvoiceGenerator() {
       const { data: existingInvoices } = await supabase
         .from("invoices")
         .select("customer_id")
-        .eq("billing_period_start", periodStart)
-        .eq("billing_period_end", periodEnd);
+        .lte("billing_period_start", periodEnd)
+        .gte("billing_period_end", periodStart);
 
       const existingCustomerIds = new Set(existingInvoices?.map(i => i.customer_id) || []);
 

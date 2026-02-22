@@ -462,22 +462,6 @@ export default function CustomersPage() {
         }
       }
 
-      // Store delivery schedule in customer notes as JSON metadata
-      // This can be used by the auto-delivery scheduler
-      const scheduleMetadata = {
-        delivery_days: subscriptionData.delivery_days,
-        auto_deliver: subscriptionData.auto_deliver,
-      };
-
-      await supabase
-        .from("customers")
-        .update({ 
-          notes: formData.notes 
-            ? `${formData.notes}\n\n---\nSchedule: ${JSON.stringify(scheduleMetadata)}`
-            : `Schedule: ${JSON.stringify(scheduleMetadata)}`
-        })
-        .eq("id", newCustomer.id);
-
       setSaving(false);
       toast({
         title: "Customer added",

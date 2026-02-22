@@ -273,8 +273,13 @@ function shouldDeliverToday(customer: any, targetDate: string): boolean {
   switch (frequency) {
     case "daily":
       return true;
-    case "alternate":
-      return dayOfMonth % 2 === 1;
+    case "alternate": {
+      const refDate = new Date(2024, 0, 1);
+      const daysSinceRef = Math.floor(
+        (targetDateObj.getTime() - refDate.getTime()) / 86400000
+      );
+      return daysSinceRef % 2 === 0;
+    }
     case "weekly": {
       const deliveryDay = schedule?.day ?? 0;
       return dayOfWeek === deliveryDay;
