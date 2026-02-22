@@ -77,7 +77,7 @@ export default function ReportsPage() {
           .select("category, amount, expense_date")
           .gte("expense_date", format(startOfMonth(new Date()), "yyyy-MM-dd")),
         supabase.from("cattle").select("status, lactation_status"),
-        supabase.from("customers").select("is_active, credit_balance, advance_balance"),
+        supabase.from("customers").select("is_active, credit_balance"),
         // Fetch procurement data for this month
         supabase
           .from("milk_procurement")
