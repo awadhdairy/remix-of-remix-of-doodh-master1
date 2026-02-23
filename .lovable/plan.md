@@ -1,206 +1,94 @@
 
 
-# Post-Implementation Comprehensive Audit — Fresh Analysis
-
-After reading every relevant file from scratch, here are all issues found, categorized by severity.
-
----
-
-## Verified Correct (No Issues)
-
-These areas have been confirmed fully correct after the recent fixes:
-
-- All 6 payment entry points use `insert_ledger_with_balance` RPC (atomic)
-- SmartInvoiceCreator, BulkInvoiceGenerator, useAutoInvoiceGenerator all use `reference_id` in ledger entries
-- Invoice deletion cleans up ledger by `reference_id` + description fallback, then recalculates
-- EditInvoiceDialog finds ledger by `reference_id` first, then description fallback
-- QuickAddOnOrderDialog does NOT create ledger entries (invoice-centric model correct)
-- `auto-deliver-daily` edge function does NOT create ledger entries (correct)
-- Revenue Growth Chart uses `billing_period_start`, `payments` table, `Math.max(0,...)` guard
-- AccountantDashboard uses `billing_period_start`, `credit_balance` for pending, separate COUNT for overdue
-- Reports.tsx uses `billing_period_start`, `payments` table, `Math.max(0,...)` guards
-- Customers.tsx `totalDue` and `totalAdvance` now correctly derived from `credit_balance`
-- Customers.tsx "Advance" column now uses `Math.max(0, -Number(item.credit_balance))`
-- CustomerDetailDialog financial cards correctly show conditional Due/Credit based on `credit_balance` sign
-- Billing.tsx stat cards now labeled "In selected period"
-- Reports.tsx Net Profit labeled "Cash basis: Collections - Expenses"
-- Expenses.tsx "This Month" stat shows partial warning when date range is narrower
-- Edge function schedule parser uses `indexOf` + `substring` (not broken regex)
-- Frontend `useAutoDeliveryScheduler` schedule parser also uses `indexOf` + `substring`
-- Edge function supports `delivery_days` named-key format from the UI
-- BulkInvoiceGenerator uses overlap-based duplicate detection
-
----
+# Vendor Payment System -- Integration Issues and Fixes
 
 ## Issues Found
 
-### Issue 1: New Customer Save Writes Schedule to Notes TWICE (LOW-MEDIUM -- Data Corruption)
+### Issue 1: Double Balance Update Creates Race Condition (MEDIUM)
 
-**Location:** `src/pages/Customers.tsx`, lines 314-334 (first write) and lines 465-479 (second write)
+**Location:** `src/components/procurement/VendorPaymentsDialog.tsx` lines 182-194
 
-**Problem:** When creating a NEW customer:
+**Problem:** After inserting a vendor payment, the code does THREE balance updates:
+1. **Line 183-187:** Direct `.update({ current_balance: newBalance })` using stale local state (`vendorBalance`)
+2. **DB trigger** on `vendor_payments` INSERT automatically fires `recalculate_vendor_balance()` (authoritative)
+3. **Line 191:** Explicit RPC call to `recalculate_vendor_balance` (redundant backup)
 
-1. Lines 314-323 build `scheduleMetadata` with `delivery_days`, `auto_deliver`, AND `product_schedules`, then set it into `payload.notes` as `notesWithSchedule`. The customer is inserted with this complete schedule at line 405.
+The direct update at step 1 uses `vendorBalance` from React state, which may be stale if another tab/user modified data. The DB trigger (step 2) then recalculates correctly. But the explicit RPC (step 3) runs AFTER the trigger and produces the same result. The real problem: step 1 may briefly set an incorrect balance before the trigger fixes it, and if there is a timing issue, the stale value could persist.
 
-2. Lines 465-479 then do a SECOND `.update()` that overwrites `notes` with a NEW `scheduleMetadata` object that contains only `delivery_days` and `auto_deliver` -- it OMITS `product_schedules`.
-
-The second write at line 467-470 creates a simpler object:
-```typescript
-const scheduleMetadata = {
-  delivery_days: subscriptionData.delivery_days,
-  auto_deliver: subscriptionData.auto_deliver,
-  // product_schedules is MISSING here
-};
-```
-
-This means for NEW customers, the `product_schedules` per-product frequency/day configuration is immediately lost after creation. The edge function and frontend scheduler will not see per-product schedules for new customers.
-
-For EXISTING customers (update path), this second write does NOT execute, so editing a customer preserves `product_schedules` correctly.
-
-**Fix:** Remove the second `.update()` block at lines 465-479 entirely. The initial insert at line 405 already contains the complete schedule with `product_schedules`. The second write is a leftover from before the schedule was consolidated into the payload.
+**Fix:** Remove the direct `.update()` call (lines 183-187) and the explicit RPC call (lines 190-194). The database trigger already handles balance recalculation atomically on INSERT. Just rely on the trigger, then refetch the balance.
 
 ---
 
-### Issue 2: Alternate-Day Algorithm Mismatch Between Frontend and Edge Function (MEDIUM -- Inconsistent Behavior)
+### Issue 2: No Vendor Payment History Outside the Dialog (MEDIUM -- Missing Integration)
 
-**Location:** 
-- `src/hooks/useAutoDeliveryScheduler.ts` lines 93-96 (reference-point algorithm)
-- `supabase/functions/auto-deliver-daily/index.ts` line 277 (`dayOfMonth % 2`)
+**Location:** Entire `MilkProcurement.tsx` page and `ProcurementAnalytics.tsx`
 
-**Problem:** The frontend hook uses the standardized reference-point algorithm:
-```typescript
-const refDate = new Date(2024, 0, 1);
-const daysSinceRef = Math.floor((targetDate.getTime() - refDate.getTime()) / (1000 * 60 * 60 * 24));
-return daysSinceRef % 2 === 0;
-```
+**Problem:** Vendor payments are ONLY visible inside the `VendorPaymentsDialog` (a modal). There is no:
+- "Total Paid" stat card on the Procurement page (only "Pending Payment" exists)
+- Payment history tab in the Procurement page
+- Payment data in `ProcurementAnalytics.tsx` (analytics only shows procurement quantities/amounts, not payments made)
 
-The edge function uses a completely different algorithm:
-```typescript
-return dayOfMonth % 2 === 1;
-```
+Users have to open each vendor's payment dialog individually to see payment history. There is no consolidated view across all vendors.
 
-These produce DIFFERENT results. For example, on Feb 28 (day of month 28, even), the edge function says NO delivery. But `daysSinceRef` for Feb 28, 2026 from Jan 1, 2024 = 789 days, 789 % 2 = 1, so the frontend also says NO. But on March 1 (day 1, odd), the edge function says YES, while `daysSinceRef` = 790, 790 % 2 = 0, frontend says YES. They happen to agree here, but the fundamental issue is that `dayOfMonth % 2` resets every month-boundary, causing consecutive deliveries on the 31st and 1st (both odd), while the reference-point algorithm provides truly alternating days.
-
-Per the project memory: "The system utilizes a standardized reference-point algorithm for alternate day delivery scheduling."
-
-**Fix:** Update the edge function's `alternate` case to use the same reference-point algorithm:
-```typescript
-case "alternate": {
-  const refDate = new Date(2024, 0, 1);
-  const daysSinceRef = Math.floor(
-    (targetDateObj.getTime() - refDate.getTime()) / (86400000)
-  );
-  return daysSinceRef % 2 === 0;
-}
-```
+**Fix:** 
+- Add a "Total Paid" stat card on the Procurement page that queries `vendor_payments` for the current month
+- Add a "Payments" sub-tab or section showing recent payments across all vendors in the Procurement page
+- Include payment totals in `ProcurementAnalytics.tsx` summary
 
 ---
 
-### Issue 3: `useAutoInvoiceGenerator` Uses Exact Period Match for Duplicate Detection (MEDIUM -- Inconsistency)
+### Issue 3: Vendor Payments Not Shown in Reports (LOW-MEDIUM)
 
-**Location:** `src/hooks/useAutoInvoiceGenerator.ts` lines 186-192
+**Location:** `src/pages/Reports.tsx`
 
-**Problem:** While `BulkInvoiceGenerator` was fixed to use overlap-based detection (`.lte("billing_period_start", endDate).gte("billing_period_end", startDate)`), the `useAutoInvoiceGenerator` still uses exact match:
-```typescript
-.eq("billing_period_start", periodStart)
-.eq("billing_period_end", periodEnd);
-```
+**Problem:** The Reports page shows expenses (which would include auto-logged vendor payment expenses), but it does NOT show a dedicated "Vendor Payments" breakdown. Since vendor payments are auto-logged as expenses under category "feed" with title "Vendor Payment - {name}", they are mixed in with feed purchases and not distinguishable in the Reports page.
 
-If a manual invoice was created for a slightly different period, the auto-generator will not detect it and will create a duplicate.
-
-**Fix:** Update the duplicate detection query to use the same overlap logic as `BulkInvoiceGenerator`:
-```typescript
-.lte("billing_period_start", periodEnd)
-.gte("billing_period_end", periodStart);
-```
+**Fix:** This is partially mitigated by the expense auto-logging, but the category "feed" for vendor payments is misleading. Vendor payments are payments to milk vendors, not feed purchases. Consider either:
+- Adding a "vendor_payment" expense category
+- Or keeping "feed" but adding a filter/tag in reports to distinguish vendor payments from feed purchases
 
 ---
 
-### Issue 4: CustomerDetailDialog Shows Redundant "Advance Credit" Card (LOW -- UI Duplication)
+### Issue 4: `fetchVendorBalance` Redundant After Payment Save (LOW)
 
-**Location:** `src/components/customers/CustomerDetailDialog.tsx` lines 541-553
+**Location:** `VendorPaymentsDialog.tsx` lines 223-224
 
-**Problem:** When `credit_balance < 0` (customer has advance), the dialog shows:
-1. A green "Credit Balance" card (line 528-539) -- correct, shows the advance amount
-2. An ADDITIONAL green "Advance Credit" card (lines 541-553) showing the same value
+**Problem:** After saving a payment, `fetchVendorBalance()` is called to refresh the displayed balance. But because the direct `.update()` at line 183 already modified the balance BEFORE the trigger runs, the fetched value may be the stale direct-update value, not the trigger-recalculated value. This is a timing issue.
 
-Both cards display `Math.abs(credit_balance)` / `Math.max(0, -credit_balance)` which are identical values. The user sees the same number twice.
-
-**Fix:** Remove the "Advance Credit" card at lines 541-553. The "Credit Balance" card already communicates the advance status.
+**Fix:** After removing the direct update (Issue 1 fix), add a small delay or rely on the trigger having completed before fetching. Alternatively, use the RPC's return value (it returns the new balance) to set state directly.
 
 ---
 
-### Issue 5: `parseScheduleFromNotes` May Parse Trailing Text as Part of JSON (LOW -- Potential Parse Error)
+## Priority and Implementation Plan
 
-**Location:** `src/hooks/useAutoDeliveryScheduler.ts` lines 59-63 and `supabase/functions/auto-deliver-daily/index.ts` lines 253-256
+### Step 1: Fix the double balance update (Issue 1)
+- Remove lines 182-194 (direct update + RPC call) from `VendorPaymentsDialog.tsx`
+- The DB trigger handles everything
+- After insert, just call `fetchVendorBalance()` (already done at line 224) -- the trigger will have run by then since the INSERT completes before `.select().single()` returns
 
-**Problem:** Both parsers use `notes.substring(scheduleIdx + "Schedule:".length).trim()` which takes EVERYTHING after "Schedule:" as JSON. If the notes field contains text AFTER the JSON block (unlikely with current save logic but possible with manual edits), `JSON.parse` will fail because the string contains trailing non-JSON text.
+### Step 2: Add "Total Paid" stat and recent payments section (Issue 2)
+- In `MilkProcurement.tsx`, add a query to `vendor_payments` for the current month to get total paid amount
+- Add a "Total Paid (Month)" stat card alongside existing stats
+- Add a "Recent Payments" section/tab showing the last 20 payments across all vendors, with vendor name, amount, date, and payment mode
 
-The save logic at `Customers.tsx` line 322 stores schedule as the LAST element in notes (`...Schedule: {json}`), so this is safe with normal usage. But the `Customers.tsx` regex parser at line 242 uses `\{[\s\S]*\}` which greedily matches to the LAST `}`, which is more robust.
+### Step 3: Include payments in ProcurementAnalytics (Issue 2 continued)
+- In `ProcurementAnalytics.tsx`, fetch `vendor_payments` for the selected date range
+- Add a "Total Paid" summary stat alongside existing Total Quantity / Total Amount
+- Optionally add a payment trend line to the daily chart
 
-**Impact:** Low -- only affects manually edited notes. But adding a simple guard improves robustness.
-
-**Fix:** In both parsers, extract only the JSON object by finding the matching closing brace, or wrap the `JSON.parse` in a try-catch with a fallback that tries to extract just the JSON portion. The current try-catch already handles failures gracefully (returns null / ignores), so this is already safe. No code change needed -- just noting it as a known limitation.
-
----
-
-### Issue 6: Reports.tsx Still Fetches `advance_balance` from Customers (LOW -- Stale Field Reference)
-
-**Location:** `src/pages/Reports.tsx` line 80
-
-**Problem:**
-```typescript
-supabase.from("customers").select("is_active, credit_balance, advance_balance")
-```
-
-The `advance_balance` column is still being fetched even though the computed `totalAdvance` on line 156 correctly uses `-credit_balance`. The `advance_balance` field is fetched but never used after the fix. This is a dead fetch -- it wastes bandwidth but doesn't cause incorrect data.
-
-**Fix:** Remove `advance_balance` from the select:
-```typescript
-supabase.from("customers").select("is_active, credit_balance")
-```
-
----
-
-## Summary Table
-
-| # | File | Issue | Severity | Category |
-|---|------|-------|----------|----------|
-| 1 | `Customers.tsx` (new customer path) | Schedule saved twice; second write drops `product_schedules` | Medium | Data loss |
-| 2 | `auto-deliver-daily/index.ts` | Alternate-day uses `dayOfMonth % 2` instead of reference-point algorithm | Medium | Inconsistency |
-| 3 | `useAutoInvoiceGenerator.ts` | Exact period match for duplicates (not overlap-based like BulkInvoiceGenerator) | Medium | Logic gap |
-| 4 | `CustomerDetailDialog.tsx` | Duplicate "Advance Credit" card shows same value as "Credit Balance" card | Low | UI clutter |
-| 5 | `useAutoDeliveryScheduler.ts` + edge function | `substring` parser may include trailing text in JSON | Low | Robustness |
-| 6 | `Reports.tsx` | Fetches unused `advance_balance` column | Low | Dead code |
-
----
-
-## Priority Ranking
-
-**Fix Immediately:**
-
-1. **Issue 1** -- New customer schedule data loss. Every new customer loses their per-product delivery schedule configuration immediately after creation. The second `.update()` overwrites the complete schedule with a partial one.
-
-2. **Issue 2** -- Alternate-day algorithm mismatch. The edge function (which runs daily via cron) uses a different algorithm than the frontend, violating the documented standard. Customers on alternate-day schedules may get deliveries on consecutive days at month boundaries.
-
-3. **Issue 3** -- Auto-invoice generator duplicate detection. Uses exact period match while the bulk generator was already fixed to use overlap detection. Inconsistent safety net.
-
-**Fix When Convenient:**
-
-4. **Issue 4** -- Remove duplicate Advance Credit card
-5. **Issue 6** -- Remove dead `advance_balance` fetch from Reports.tsx
-
-**No Code Change Needed:**
-
-6. **Issue 5** -- Already handled by try-catch; documenting as known limitation
+### Step 4: Fix expense category for vendor payments (Issue 3)
+- Change the expense category from `"feed"` to `"vendor_payment"` in `useExpenseAutomation.ts` `logVendorPaymentExpense`
+- Add `"vendor_payment"` to the `categoryLabels` and `categoryColors` in `Expenses.tsx`
+- Update `ExpenseAutomationCard.tsx` categorization to account for the new category
 
 ---
 
 ## Files to Modify
 
-1. `src/pages/Customers.tsx` -- Remove the second schedule `.update()` block for new customers (Issue 1)
-2. `supabase/functions/auto-deliver-daily/index.ts` -- Fix alternate-day algorithm to use reference-point (Issue 2)
-3. `src/hooks/useAutoInvoiceGenerator.ts` -- Change duplicate detection to overlap-based (Issue 3)
-4. `src/components/customers/CustomerDetailDialog.tsx` -- Remove redundant Advance Credit card (Issue 4)
-5. `src/pages/Reports.tsx` -- Remove `advance_balance` from select query (Issue 6)
+1. **`src/components/procurement/VendorPaymentsDialog.tsx`** -- Remove redundant direct balance update and RPC call
+2. **`src/pages/MilkProcurement.tsx`** -- Add "Total Paid" stat card, add recent payments section across all vendors
+3. **`src/components/procurement/ProcurementAnalytics.tsx`** -- Include vendor payment totals in analytics
+4. **`src/hooks/useExpenseAutomation.ts`** -- Change vendor payment expense category from "feed" to "vendor_payment"
+5. **`src/pages/Expenses.tsx`** -- Add "vendor_payment" to category labels and colors
+6. **`src/components/dashboard/ExpenseAutomationCard.tsx`** -- Update categorization for new "vendor_payment" category
 
