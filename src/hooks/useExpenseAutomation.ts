@@ -302,7 +302,7 @@ export function useExpenseAutomation() {
     if (amount <= 0) return false;
 
     return await createExpense({
-      category: "feed",
+      category: "vendor_payment",
       title: `Vendor Payment - ${vendorName}`,
       amount,
       expense_date: paymentDate,

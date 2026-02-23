@@ -179,19 +179,8 @@ export function VendorPaymentsDialog({
     if (error) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     } else {
-      // Update vendor balance directly (defensive - works even if DB triggers missing)
-      const newBalance = vendorBalance - amount;
-      await supabase
-        .from("milk_vendors")
-        .update({ current_balance: newBalance })
-        .eq("id", vendor.id);
-      
-      // Also try RPC recalculation as backup (gracefully fails if function missing)
-      try {
-        await supabase.rpc("recalculate_vendor_balance", { p_vendor_id: vendor.id });
-      } catch {
-        // Silently ignore - direct update above is the primary method
-      }
+      // DB trigger `update_vendor_balance_on_payment` automatically recalculates balance
+      // No need for direct update or RPC call — the trigger is authoritative
 
       // Auto-log expense for vendor payment
       let expenseLogged = false;
