@@ -44,7 +44,11 @@ import {
   Phone,
   MapPin,
   Wallet,
+  Banknote,
+  CreditCard,
+  History,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { VendorPaymentsDialog } from "@/components/procurement/VendorPaymentsDialog";
 import { ProcurementAnalytics } from "@/components/procurement/ProcurementAnalytics";
 
@@ -131,7 +135,7 @@ const sortOptions = [
 ];
 
 export default function MilkProcurementPage() {
-  const [activeTab, setActiveTab] = useState<"records" | "vendors" | "analytics">("records");
+  const [activeTab, setActiveTab] = useState<"records" | "vendors" | "analytics" | "payments">("records");
   const [vendors, setVendors] = useState<MilkVendor[]>([]);
   const [procurements, setProcurements] = useState<MilkProcurement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -162,10 +166,15 @@ export default function MilkProcurementPage() {
     todayTotal: 0,
     monthTotal: 0,
     totalPending: 0,
+    totalPaidMonth: 0,
     activeVendors: 0,
     avgFat: 0,
     avgRate: 0,
   });
+
+  // Recent vendor payments across all vendors
+  const [recentPayments, setRecentPayments] = useState<any[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -193,8 +202,38 @@ export default function MilkProcurementPage() {
 
   const fetchData = async () => {
     setLoading(true);
-    await Promise.all([fetchVendors(), fetchProcurements()]);
+    await Promise.all([fetchVendors(), fetchProcurements(), fetchRecentPayments(), fetchMonthlyPaidTotal()]);
     setLoading(false);
+  };
+
+  const fetchMonthlyPaidTotal = async () => {
+    const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
+    const monthEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
+    
+    const { data, error } = await supabase
+      .from("vendor_payments")
+      .select("amount")
+      .gte("payment_date", monthStart)
+      .lte("payment_date", monthEnd);
+
+    if (!error && data) {
+      const total = data.reduce((sum, p) => sum + Number(p.amount), 0);
+      setStats(prev => ({ ...prev, totalPaidMonth: total }));
+    }
+  };
+
+  const fetchRecentPayments = async () => {
+    setPaymentsLoading(true);
+    const { data, error } = await supabase
+      .from("vendor_payments")
+      .select("*, vendor:vendor_id(id, name)")
+      .order("payment_date", { ascending: false })
+      .limit(30);
+
+    if (!error) {
+      setRecentPayments(data || []);
+    }
+    setPaymentsLoading(false);
   };
 
   const fetchVendors = async () => {
@@ -272,14 +311,15 @@ export default function MilkProcurementPage() {
         ? rateRecords.reduce((sum, p) => sum + Number(p.rate_per_liter), 0) / rateRecords.length
         : 0;
 
-      setStats({
+      setStats(prev => ({
+        ...prev,
         todayTotal,
         monthTotal,
         totalPending,
         activeVendors: vendors.filter((v) => v.is_active).length,
         avgFat,
         avgRate,
-      });
+      }));
     }
   };
 
@@ -725,6 +765,18 @@ export default function MilkProcurementPage() {
           </CardContent>
         </Card>
 
+        <Card className="border-success/30">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Paid (Month)</p>
+                <p className="text-2xl font-bold text-success">₹{stats.totalPaidMonth.toLocaleString()}</p>
+              </div>
+              <Banknote className="h-8 w-8 text-success opacity-80" />
+            </div>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent className="pt-4">
             <div className="flex items-center justify-between">
@@ -775,10 +827,11 @@ export default function MilkProcurementPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "records" | "vendors")}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "records" | "vendors" | "analytics" | "payments")}>
         <TabsList>
           <TabsTrigger value="records">Procurement Records</TabsTrigger>
           <TabsTrigger value="vendors">Vendors</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
@@ -818,6 +871,52 @@ export default function MilkProcurementPage() {
                 searchPlaceholder="Search vendors..."
                 emptyMessage="No vendors found"
               />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="payments" className="mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Recent Vendor Payments
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {paymentsLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : recentPayments.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No vendor payments recorded yet
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {recentPayments.map((payment) => (
+                    <div key={payment.id} className="flex items-center justify-between p-3 rounded-lg border">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-success/10">
+                          <Banknote className="h-4 w-4 text-success" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{payment.vendor?.name || "Unknown Vendor"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(payment.payment_date), "dd MMM yyyy")}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-success">₹{Number(payment.amount).toLocaleString()}</p>
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {payment.payment_mode?.replace("_", " ") || "cash"}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

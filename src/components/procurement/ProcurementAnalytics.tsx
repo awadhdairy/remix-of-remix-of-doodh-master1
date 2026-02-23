@@ -35,6 +35,7 @@ import {
   Loader2,
   Activity,
   Target,
+  Wallet,
 } from "lucide-react";
 
 interface ProcurementRecord {
@@ -92,6 +93,7 @@ export function ProcurementAnalytics() {
   const [summaryStats, setSummaryStats] = useState({
     totalQuantity: 0,
     totalAmount: 0,
+    totalPaid: 0,
     avgFat: 0,
     avgSnf: 0,
     avgRate: 0,
@@ -129,26 +131,37 @@ export function ProcurementAnalytics() {
   const fetchAnalyticsData = async () => {
     setLoading(true);
     const { start, end } = getDateRange();
+    const startStr = format(start, "yyyy-MM-dd");
+    const endStr = format(end, "yyyy-MM-dd");
 
-    const { data, error } = await supabase
-      .from("milk_procurement")
-      .select("*")
-      .gte("procurement_date", format(start, "yyyy-MM-dd"))
-      .lte("procurement_date", format(end, "yyyy-MM-dd"))
-      .order("procurement_date", { ascending: true });
+    const [procResult, payResult] = await Promise.all([
+      supabase
+        .from("milk_procurement")
+        .select("*")
+        .gte("procurement_date", startStr)
+        .lte("procurement_date", endStr)
+        .order("procurement_date", { ascending: true }),
+      supabase
+        .from("vendor_payments")
+        .select("amount")
+        .gte("payment_date", startStr)
+        .lte("payment_date", endStr),
+    ]);
 
-    if (error) {
-      console.error("Error fetching analytics:", error);
+    if (procResult.error) {
+      console.error("Error fetching analytics:", procResult.error);
       setLoading(false);
       return;
     }
 
-    setProcurements(data || []);
-    processAnalyticsData(data || [], start, end);
+    const totalPaid = (payResult.data || []).reduce((sum, p) => sum + Number(p.amount), 0);
+
+    setProcurements(procResult.data || []);
+    processAnalyticsData(procResult.data || [], start, end, totalPaid);
     setLoading(false);
   };
 
-  const processAnalyticsData = (data: ProcurementRecord[], start: Date, end: Date) => {
+  const processAnalyticsData = (data: ProcurementRecord[], start: Date, end: Date, totalPaid: number = 0) => {
     // Daily trends
     const days = eachDayOfInterval({ start, end });
     const dailyMap = new Map<string, DailyTrend>();
@@ -256,6 +269,7 @@ export function ProcurementAnalytics() {
     setSummaryStats({
       totalQuantity: totalQty,
       totalAmount: totalAmt,
+      totalPaid,
       avgFat: fatCount ? totalFat / fatCount : 0,
       avgSnf: snfCount ? totalSnf / snfCount : 0,
       avgRate,
@@ -293,11 +307,11 @@ export function ProcurementAnalytics() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Procured</CardTitle>
-            <Droplets className="h-4 w-4 text-blue-500" />
+            <Droplets className="h-4 w-4 text-info" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summaryStats.totalQuantity.toLocaleString()} L</div>
@@ -308,7 +322,7 @@ export function ProcurementAnalytics() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Spend</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
+            <TrendingUp className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">₹{summaryStats.totalAmount.toLocaleString()}</div>
@@ -316,10 +330,25 @@ export function ProcurementAnalytics() {
           </CardContent>
         </Card>
 
+        <Card className="border-success/30">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Paid</CardTitle>
+            <Wallet className="h-4 w-4 text-success" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-success">₹{summaryStats.totalPaid.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground">
+              {summaryStats.totalAmount > 0
+                ? `${((summaryStats.totalPaid / summaryStats.totalAmount) * 100).toFixed(0)}% of spend`
+                : "Payments made"}
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Avg Fat %</CardTitle>
-            <Target className="h-4 w-4 text-amber-500" />
+            <Target className="h-4 w-4 text-warning" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summaryStats.avgFat.toFixed(2)}%</div>
@@ -330,7 +359,7 @@ export function ProcurementAnalytics() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Avg SNF %</CardTitle>
-            <Activity className="h-4 w-4 text-purple-500" />
+            <Activity className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{summaryStats.avgSnf.toFixed(2)}%</div>

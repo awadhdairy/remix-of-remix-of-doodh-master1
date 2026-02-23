@@ -44,6 +44,7 @@ interface Expense {
 
 const categoryColors: Record<string, string> = {
   feed: "bg-success/10 text-success border-success/20",
+  vendor_payment: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
   medicine: "bg-info/10 text-info border-info/20",
   salary: "bg-primary/10 text-primary border-primary/20",
   transport: "bg-warning/10 text-warning border-warning/20",
@@ -53,7 +54,8 @@ const categoryColors: Record<string, string> = {
 };
 
 const categoryLabels: Record<string, string> = {
-  feed: "Feed & Procurement",
+  feed: "Feed & Fodder",
+  vendor_payment: "Vendor Payments",
   medicine: "Medicine",
   salary: "Salary",
   transport: "Transport",

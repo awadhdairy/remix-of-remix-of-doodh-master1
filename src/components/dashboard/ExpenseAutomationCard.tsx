@@ -48,9 +48,9 @@ async function fetchAutoExpenseStats() {
   const feedExpenses = expenses.filter(e => 
     e.notes?.includes("feed_purchase:") || 
     e.notes?.includes("feed_") || 
-    e.notes?.includes("vendor_payment:") ||
     e.notes?.includes("milk_procurement:")
   );
+  const vendorPaymentExpenses = expenses.filter(e => e.notes?.includes("vendor_payment:"));
   const equipmentExpenses = expenses.filter(e => e.notes?.includes("equipment:"));
   const maintenanceExpenses = expenses.filter(e => e.notes?.includes("maintenance:"));
   const healthExpenses = expenses.filter(e => e.notes?.includes("health:"));
@@ -67,12 +67,21 @@ async function fetchAutoExpenseStats() {
     },
     {
       category: "feed",
-      label: "Feed & Procurement",
+      label: "Feed & Fodder",
       icon: Package,
       color: "text-success",
       bgColor: "bg-success/10",
       total: feedExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
       count: feedExpenses.length,
+    },
+    {
+      category: "vendor_payment",
+      label: "Vendor Payments",
+      icon: Wallet,
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-500/10",
+      total: vendorPaymentExpenses.reduce((sum, e) => sum + Number(e.amount), 0),
+      count: vendorPaymentExpenses.length,
     },
     {
       category: "equipment",
