@@ -2,14 +2,14 @@ import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion } from "framer-motion";
-import { Activity, Droplets, Truck, Receipt, Beef, Clock, Loader2, Syringe } from "lucide-react";
+import { Activity, Droplets, Truck, Receipt, Beef, Clock, Loader2, Syringe, Wallet, TrendingDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
 import { formatDistanceToNow } from "date-fns";
 
 interface ActivityItem {
   id: string;
-  type: "production" | "delivery" | "payment" | "cattle" | "health" | "other";
+  type: "production" | "delivery" | "payment" | "cattle" | "health" | "vendor_payment" | "expense" | "other";
   title: string;
   description: string;
   time: string;
@@ -61,7 +61,7 @@ async function fetchRecentActivities(): Promise<ActivityItem[]> {
     });
   }
 
-  // Fetch recent payments
+  // Fetch recent customer payments
   const { data: payments } = await supabase
     .from("payments")
     .select("id, created_at, amount, customer:customer_id(name)")
@@ -103,10 +103,52 @@ async function fetchRecentActivities(): Promise<ActivityItem[]> {
     });
   }
 
-  // Sort all by created_at and take top 10
+  // Fetch recent vendor payments
+  const { data: vendorPayments } = await supabase
+    .from("vendor_payments")
+    .select("id, created_at, amount, payment_mode, vendor:vendor_id(name)")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (vendorPayments) {
+    vendorPayments.forEach((vp) => {
+      const vendor = vp.vendor as { name: string } | null;
+      const modeLabel = vp.payment_mode === "bank_transfer" ? "Bank" : vp.payment_mode === "upi" ? "UPI" : vp.payment_mode?.charAt(0).toUpperCase() + vp.payment_mode?.slice(1);
+      activities.push({
+        id: `vpay-${vp.id}`,
+        type: "vendor_payment",
+        title: "Vendor Payment",
+        description: `₹${Number(vp.amount).toLocaleString()} to ${vendor?.name || "Unknown"} via ${modeLabel || "Cash"}`,
+        time: formatDistanceToNow(new Date(vp.created_at), { addSuffix: true }),
+        created_at: vp.created_at,
+      });
+    });
+  }
+
+  // Fetch recent expenses
+  const { data: expenses } = await supabase
+    .from("expenses")
+    .select("id, created_at, title, amount, category")
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  if (expenses) {
+    expenses.forEach((e) => {
+      activities.push({
+        id: `exp-${e.id}`,
+        type: "expense",
+        title: e.title,
+        description: `₹${Number(e.amount).toLocaleString()} — ${e.category}`,
+        time: formatDistanceToNow(new Date(e.created_at), { addSuffix: true }),
+        created_at: e.created_at,
+      });
+    });
+  }
+
+  // Sort all by created_at and take top 12
   return activities
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 10);
+    .slice(0, 12);
 }
 
 const typeIcons = {
@@ -115,6 +157,8 @@ const typeIcons = {
   payment: Receipt,
   cattle: Beef,
   health: Syringe,
+  vendor_payment: Wallet,
+  expense: TrendingDown,
   other: Activity,
 };
 
@@ -124,6 +168,8 @@ const typeColors = {
   payment: "bg-success/10 text-success",
   cattle: "bg-primary/10 text-primary",
   health: "bg-accent/10 text-accent",
+  vendor_payment: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  expense: "bg-destructive/10 text-destructive",
   other: "bg-muted text-muted-foreground",
 };
 
