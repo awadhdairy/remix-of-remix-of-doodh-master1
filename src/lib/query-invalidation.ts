@@ -31,9 +31,11 @@ export function invalidateExpenseRelated(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
   queryClient.invalidateQueries({ queryKey: ["expense-breakdown-chart"] });
   queryClient.invalidateQueries({ queryKey: ["month-comparison-chart"] });
+  queryClient.invalidateQueries({ queryKey: ["recent-activities"] });
 }
 
 export function invalidateProcurementRelated(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: ["dashboard-data"] });
   queryClient.invalidateQueries({ queryKey: ["procurement-vs-production-chart"] });
+  queryClient.invalidateQueries({ queryKey: ["recent-activities"] });
 }

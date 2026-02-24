@@ -201,12 +201,22 @@ export function VendorPaymentsDialog({
       invalidateExpenseRelated(queryClient);
       invalidateProcurementRelated(queryClient);
       
-      toast({
-        title: expenseLogged ? "Payment recorded & expense logged" : "Payment recorded",
-        description: expenseLogged
-          ? `₹${amount.toLocaleString()} paid to ${vendor.name} - auto-tracked in expenses`
-          : `₹${amount.toLocaleString()} paid to ${vendor.name}${data ? " (expense may already exist)" : ""}`,
-      });
+      if (expenseLogged) {
+        toast({
+          title: "Payment recorded & expense logged",
+          description: `₹${amount.toLocaleString()} paid to ${vendor.name} - auto-tracked in expenses`,
+        });
+      } else if (data) {
+        toast({
+          title: "Payment recorded",
+          description: `₹${amount.toLocaleString()} paid to ${vendor.name}`,
+        });
+        toast({
+          title: "⚠️ Expense not auto-logged",
+          description: "The expense could not be created automatically. This may be due to permissions — please add it manually or contact admin.",
+          variant: "destructive",
+        });
+      }
       setPaymentForm(emptyPaymentForm);
       setShowAddForm(false);
       fetchPayments();
