@@ -16,7 +16,6 @@ import {
   BarChart3,
   Settings,
   ChevronLeft,
-  ChevronRight,
   LogOut,
   UserCircle,
   Milk,
@@ -94,7 +93,9 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ onLogout }: AppSidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
+  const [hovered, setHovered] = useState(false);
+  const isExpanded = !collapsed || hovered;
   const location = useLocation();
   const { role, loading, userName } = useUserRole();
 
@@ -117,7 +118,7 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
   const NavLink = ({ item }: { item: NavItem }) => {
     const isActive = location.pathname === item.href;
     
-    return (
+      return (
       <Link
         to={item.href}
         className={cn(
@@ -126,14 +127,14 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           isActive
             ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-sm"
             : "text-sidebar-foreground/80",
-          collapsed && "justify-center px-2"
+          !isExpanded && "justify-center px-2"
         )}
       >
         <item.icon className={cn("h-[18px] w-[18px] shrink-0 transition-transform duration-200", isActive && "text-sidebar-primary-foreground")} />
-        {!collapsed && (
+        {isExpanded && (
           <span className="truncate">{item.title}</span>
         )}
-        {!collapsed && item.badge && (
+        {isExpanded && item.badge && (
           <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sidebar-primary text-[10px] font-semibold text-sidebar-primary-foreground">
             {item.badge}
           </span>
@@ -146,14 +147,16 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
 
   return (
     <aside
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       className={cn(
         "fixed left-0 top-0 z-40 flex h-screen flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300",
-        collapsed ? "w-[70px]" : "w-[260px]"
+        isExpanded ? "w-[260px]" : "w-[70px]"
       )}
     >
       {/* Header */}
       <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-        {!collapsed && (
+        {isExpanded ? (
           <div className="flex items-center gap-2">
             <img 
               src={awadhDairyLogo} 
@@ -165,8 +168,7 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
               <span className="text-[10px] text-sidebar-foreground/60">Dairy Management</span>
             </div>
           </div>
-        )}
-        {collapsed && (
+        ) : (
           <img 
             src={awadhDairyLogo} 
             alt="Awadh Dairy" 
@@ -195,7 +197,7 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
               <>
                 <Separator className="my-4 bg-sidebar-border" />
 
-                {!collapsed && (
+                {isExpanded && (
                   <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
                     Management
                   </p>
@@ -215,7 +217,7 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
       {/* Footer */}
       <div className="border-t border-sidebar-border p-2">
         {/* Theme Toggle */}
-        <ThemeToggle collapsed={collapsed} />
+        <ThemeToggle collapsed={!isExpanded} />
 
         {canAccessSettings && (
           <Link
@@ -224,11 +226,11 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
               "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-300 ease-out",
               "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:translate-x-0.5",
               location.pathname === "/settings" && "bg-sidebar-accent text-sidebar-accent-foreground",
-              collapsed && "justify-center px-2"
+              !isExpanded && "justify-center px-2"
             )}
           >
             <Settings className="h-[18px] w-[18px] shrink-0" />
-            {!collapsed && <span>Settings</span>}
+            {isExpanded && <span>Settings</span>}
           </Link>
         )}
 
@@ -238,20 +240,20 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
           className={cn(
             "mt-1 w-full justify-start gap-3 px-3 py-2.5 text-sm font-medium h-auto",
             "text-sidebar-foreground/80 hover:bg-destructive/10 hover:text-destructive transition-all duration-300 ease-out",
-            collapsed && "justify-center px-2"
+            !isExpanded && "justify-center px-2"
           )}
         >
           <LogOut className="h-[18px] w-[18px] shrink-0" />
-          {!collapsed && <span>Logout</span>}
+          {isExpanded && <span>Logout</span>}
         </Button>
 
         <Separator className="my-2 bg-sidebar-border" />
 
-        <div className={cn("flex items-center gap-2.5 px-2.5", collapsed && "justify-center px-0")}>
+        <div className={cn("flex items-center gap-2.5 px-2.5", !isExpanded && "justify-center px-0")}>
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-sidebar-accent transition-transform duration-200 hover:scale-105">
             <UserCircle className="h-4 w-4 text-sidebar-accent-foreground" />
           </div>
-          {!collapsed && (
+          {isExpanded && (
             <div className="flex flex-col overflow-hidden">
               <span className="truncate text-[12px] font-medium text-sidebar-foreground">
                 {userName || "User"}
@@ -265,17 +267,6 @@ export function AppSidebar({ onLogout }: AppSidebarProps) {
         </div>
       </div>
 
-      {/* Collapse Button */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="absolute -right-3 top-20 flex h-6 w-6 items-center justify-center rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-sm transition-colors hover:bg-sidebar-accent"
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3" />
-        ) : (
-          <ChevronLeft className="h-3 w-3" />
-        )}
-      </button>
     </aside>
   );
 }

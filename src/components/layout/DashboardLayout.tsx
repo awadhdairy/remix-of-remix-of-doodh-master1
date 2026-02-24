@@ -96,7 +96,7 @@ export function DashboardLayout() {
       
       <main className={cn(
         "min-h-screen transition-all duration-300",
-        !isMobile && "ml-[260px]", // Sidebar width on desktop
+        !isMobile && "ml-[70px]",
         isMobile && "pb-20" // Bottom nav padding on mobile
       )}>
         <div className={cn(
