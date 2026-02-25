@@ -1,83 +1,64 @@
 
 
-# Vendor Payment System — Bug Analysis and Fix Plan
+# Procurement Payment Integration -- Comprehensive Fix
 
-## Issues Found
+## Core Problem
 
-### Bug 1: Expense Auto-Logging Silently Fails Due to Missing Query Invalidation for `recent-activities`
+The procurement dialog's "Payment Status" dropdown is **purely cosmetic**. When a user selects "Paid", it only saves a text label to `milk_procurement.payment_status` -- it does NOT:
+- Create a `vendor_payments` record
+- Trigger the `recalculate_vendor_balance` DB function
+- Auto-log an expense
+- Show in payment history, recent activities, or anywhere else
 
-**Not the root cause** — this is a secondary issue. The `recent-activities` query key is never invalidated after a vendor payment is saved (line 200-202 of `VendorPaymentsDialog.tsx`). Even if we add vendor payments to the Recent Activity feed, the card would show stale data until manual page refresh.
-
-**Fix:** Add `queryClient.invalidateQueries({ queryKey: ["recent-activities"] })` inside `invalidateExpenseRelated` or directly in `VendorPaymentsDialog.tsx` after payment success.
-
----
-
-### Bug 2: Recent Activity Card Does NOT Fetch Vendor Payments or Expenses
-
-**Location:** `src/components/dashboard/RecentActivityCard.tsx`
-
-**Problem:** The `fetchRecentActivities` function queries exactly 4 tables:
-- `milk_production` → production activities
-- `deliveries` → delivery activities  
-- `payments` → customer payment activities
-- `cattle_health` → health activities
-
-It does **not** query `vendor_payments` or `expenses`. So vendor payments will never appear in Recent Activity regardless of whether they were recorded correctly.
-
-**Fix:** Add a 5th query block to fetch recent `vendor_payments` with vendor name join, and add a new activity type `"vendor_payment"` with an appropriate icon (Wallet) and color.
+Meanwhile, the `recalculate_vendor_balance` function calculates: `balance = SUM(milk_procurement.total_amount) - SUM(vendor_payments.amount)`. So even when marked "Paid", the balance still shows the full amount as owed because no payment was recorded.
 
 ---
 
-### Bug 3: Expense Auto-Logging May Fail Silently — No User Feedback on RLS Denial
+## What Needs to Change
 
-**Location:** `src/hooks/useExpenseAutomation.ts` line 47-63
+### 1. Procurement Dialog: Show Vendor Due & Enable Inline Payment (MilkProcurement.tsx)
 
-**Problem:** The `createExpense` function catches errors and logs them, but returns `false` without throwing. In `VendorPaymentsDialog.tsx` (line 186-196), if `logVendorPaymentExpense` returns `false`, the toast just says "Payment recorded" instead of "Payment recorded & expense logged". But the user gets no explicit warning that the expense was NOT logged. 
+When user selects a vendor in the procurement form:
+- Display the vendor's **current balance** (amount owed to them) below the vendor selector
+- When "Paid" is selected as payment status, show a **Payment Mode** selector (Cash, UPI, Bank Transfer, Cheque) and optional **Reference Number** field
+- On save with status "Paid": insert into `vendor_payments` with the procurement's `total_amount`, auto-log expense, invalidate queries
+- On save with status "Partial": show a **Paid Amount** field so user can specify how much was paid on the spot; insert that partial amount into `vendor_payments`
+- On save with status "Pending": no payment record created (vendor balance increases by the procurement amount via the DB trigger on `milk_procurement`)
 
-This could happen if:
-- The user's role doesn't have INSERT permission on `expenses` (only `super_admin`, `manager`, and `accountant` can insert expenses per RLS)
-- A `farm_worker` can insert `vendor_payments` (per RLS) but CANNOT insert `expenses` — so the payment is recorded but the expense is silently skipped
+### 2. Form State Changes (MilkProcurement.tsx)
 
-**This is the most likely root cause.** If a farm_worker user makes a vendor payment, the payment goes into `vendor_payments` (allowed by RLS) but the auto-expense insert into `expenses` is denied by RLS (farm_worker has no policy on `expenses`).
+Add to `ProcurementFormData`:
+- `payment_mode: string` (default "cash")
+- `reference_number: string` (default "")  
+- `paid_amount: string` (default "", used only for partial)
 
-**Fix:** 
-1. Add explicit warning feedback in `VendorPaymentsDialog.tsx` when expense logging fails
-2. Optionally add an RLS policy allowing farm_workers to INSERT expenses (or handle this via a database trigger on `vendor_payments` INSERT that auto-creates the expense using SECURITY DEFINER, bypassing RLS)
+Update `emptyProcurementForm` and `handleOpenProcurementDialog` accordingly.
 
----
+### 3. Save Logic Enhancement (MilkProcurement.tsx -- `handleSaveProcurement`)
 
-### Bug 4: `invalidateExpenseRelated` Does Not Invalidate `recent-activities`
+After successful procurement insert/update:
+- If `payment_status === "paid"` and `totalAmount > 0`:
+  - Insert into `vendor_payments` with `amount = totalAmount`, `payment_mode`, `reference_number`, `notes = "Payment during procurement"`
+  - Call `logVendorPaymentExpense()` to auto-create expense
+  - Invalidate expense + recent-activities queries
+- If `payment_status === "partial"` and `paidAmount > 0`:
+  - Insert into `vendor_payments` with `amount = paidAmount`
+  - Same expense + invalidation flow
+- If `payment_status === "pending"`: no payment action needed
 
-**Location:** `src/lib/query-invalidation.ts`
+### 4. Edit Procurement: Handle Status Changes
 
-**Problem:** When expenses or vendor payments change, `invalidateExpenseRelated` invalidates `dashboard-data`, `expense-breakdown-chart`, and `month-comparison-chart` — but NOT `recent-activities`. The Recent Activity card uses `staleTime: 30000` (30 seconds), so even after recording a payment, the dashboard won't show it until the stale time expires or the user navigates away and back.
+When editing an existing procurement and changing payment_status from "pending" to "paid":
+- Check if a vendor_payment already exists for this procurement (by checking notes pattern or a reference)
+- If not, create the payment record
+- If changing from "paid" back to "pending", warn user that the payment record already exists and won't be auto-deleted (manual deletion via Payments tab)
 
-**Fix:** Add `recent-activities` to the invalidation lists for both `invalidateExpenseRelated` and `invalidateProcurementRelated`.
+### 5. Calculated Total + Due Display in Dialog
 
----
-
-## Implementation Plan
-
-### Step 1: Add Vendor Payments to Recent Activity Card
-**File:** `src/components/dashboard/RecentActivityCard.tsx`
-- Add a 5th query block fetching from `vendor_payments` with `vendor:vendor_id(name)` join
-- Add new type `"vendor_payment"` to the ActivityItem type union  
-- Add Wallet icon and emerald color for vendor_payment type
-- Map results to activity items with description like "₹5,000 to Vendor Name via Cash"
-
-### Step 2: Fix Query Invalidation
-**File:** `src/lib/query-invalidation.ts`
-- Add `queryClient.invalidateQueries({ queryKey: ["recent-activities"] })` to both `invalidateExpenseRelated` and `invalidateProcurementRelated`
-
-### Step 3: Add Explicit Warning When Expense Logging Fails  
-**File:** `src/components/procurement/VendorPaymentsDialog.tsx`
-- When `expenseLogged` is `false` and `data` exists (payment was saved but expense wasn't), show a more explicit warning toast mentioning the expense was not auto-tracked (likely a permissions issue)
-
-### Step 4: Add Expenses to Recent Activity Card
-**File:** `src/components/dashboard/RecentActivityCard.tsx`
-- Add a 6th query block fetching recent `expenses` 
-- Add new type `"expense"` with Wallet icon and destructive color
-- This ensures manually added expenses AND auto-logged expenses both appear in activity feed
+Show a summary card in the procurement dialog:
+- **Today's Total**: calculated amount for this procurement (qty × rate)
+- **Vendor Current Due**: fetched from `milk_vendors.current_balance`
+- **New Due After Save**: current_balance + today's total (if pending) or current_balance (if paid)
 
 ---
 
@@ -85,12 +66,39 @@ This could happen if:
 
 | File | Changes |
 |------|---------|
-| `src/components/dashboard/RecentActivityCard.tsx` | Add vendor_payments + expenses queries, new types, icons, colors |
-| `src/lib/query-invalidation.ts` | Add `recent-activities` to invalidation functions |
-| `src/components/procurement/VendorPaymentsDialog.tsx` | Better feedback when expense logging fails |
+| `src/pages/MilkProcurement.tsx` | Add payment fields to form, show vendor balance, create vendor_payment on paid/partial status, expense logging, query invalidation |
 
-## No New Bugs Risk
-- All changes are additive (new queries, new types, new invalidation keys)
-- No existing functionality is removed or altered
-- RLS policies are read-only queries in RecentActivityCard (SELECT only), which are already permitted for managers/admins
+No new files needed. No database changes needed -- existing `vendor_payments` table and `recalculate_vendor_balance` trigger handle everything.
+
+---
+
+## Financial Flow After Fix
+
+```text
+Procurement Saved (Pending)
+  → milk_procurement INSERT
+  → DB trigger recalculates vendor balance (+total_amount)
+  → Vendor balance increases (owed more)
+
+Procurement Saved (Paid)
+  → milk_procurement INSERT
+  → DB trigger recalculates vendor balance (+total_amount)
+  → vendor_payments INSERT (same amount)
+  → DB trigger recalculates vendor balance (-payment)
+  → Net effect: vendor balance unchanged
+  → Expense auto-logged
+  → Shows in: Payments tab, Recent Activities, Expenses page
+
+Procurement Saved (Partial, e.g. ₹500 of ₹1000)
+  → milk_procurement INSERT (+₹1000)
+  → vendor_payments INSERT (₹500)
+  → Net effect: vendor balance increases by ₹500
+  → Expense auto-logged for ₹500
+```
+
+## No Functionality Loss
+- All existing vendor dialog payment flow remains untouched
+- Existing procurement records with "paid" status are not retroactively modified
+- The payment_status field on procurement still serves as a visual indicator
+- The DB triggers remain the authoritative source for vendor balance
 
