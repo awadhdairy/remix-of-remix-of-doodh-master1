@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { externalSupabase as supabase } from "@/lib/external-supabase";
-import { invalidateProcurementRelated } from "@/lib/query-invalidation";
+import { invalidateProcurementRelated, invalidateExpenseRelated } from "@/lib/query-invalidation";
 import { useTelegramNotify } from "@/hooks/useTelegramNotify";
+import { useExpenseAutomation } from "@/hooks/useExpenseAutomation";
 import { PageHeader } from "@/components/common/PageHeader";
 import { DataTable } from "@/components/common/DataTable";
 import { DataFilters, DateRange, SortOrder, getDateFilterValue } from "@/components/common/DataFilters";
@@ -105,6 +106,9 @@ interface ProcurementFormData {
   snf_percentage: string;
   rate_per_liter: string;
   payment_status: string;
+  payment_mode: string;
+  reference_number: string;
+  paid_amount: string;
   notes: string;
 }
 
@@ -125,6 +129,9 @@ const emptyProcurementForm: ProcurementFormData = {
   snf_percentage: "",
   rate_per_liter: "",
   payment_status: "pending",
+  payment_mode: "cash",
+  reference_number: "",
+  paid_amount: "",
   notes: "",
 };
 
@@ -179,6 +186,7 @@ export default function MilkProcurementPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { notifyProcurementRecorded } = useTelegramNotify();
+  const { logVendorPaymentExpense } = useExpenseAutomation();
   
   // Fetch data when filters change
   useEffect(() => {
@@ -400,6 +408,9 @@ export default function MilkProcurementPage() {
         snf_percentage: procurement.snf_percentage ? String(procurement.snf_percentage) : "",
         rate_per_liter: procurement.rate_per_liter ? String(procurement.rate_per_liter) : "",
         payment_status: procurement.payment_status,
+        payment_mode: "cash",
+        reference_number: "",
+        paid_amount: "",
         notes: procurement.notes || "",
       });
     } else {
@@ -417,6 +428,19 @@ export default function MilkProcurementPage() {
         variant: "destructive",
       });
       return;
+    }
+
+    // Validate partial payment amount
+    if (procurementForm.payment_status === "partial") {
+      const paidAmt = parseFloat(procurementForm.paid_amount);
+      if (!paidAmt || paidAmt <= 0) {
+        toast({
+          title: "Validation Error",
+          description: "Please enter the paid amount for partial payment",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     setSaving(true);
@@ -444,6 +468,61 @@ export default function MilkProcurementPage() {
       notes: procurementForm.notes || null,
     };
 
+    // Helper to create vendor payment + expense after procurement save
+    const createPaymentRecord = async (procurementId: string) => {
+      const paymentAmount =
+        procurementForm.payment_status === "paid"
+          ? totalAmount
+          : procurementForm.payment_status === "partial"
+          ? parseFloat(procurementForm.paid_amount)
+          : 0;
+
+      if (!paymentAmount || paymentAmount <= 0 || !procurementForm.vendor_id) return;
+
+      const { data: paymentData, error: paymentError } = await supabase
+        .from("vendor_payments")
+        .insert({
+          vendor_id: procurementForm.vendor_id,
+          amount: paymentAmount,
+          payment_date: procurementForm.procurement_date,
+          payment_mode: procurementForm.payment_mode,
+          reference_number: procurementForm.reference_number || null,
+          notes: `Payment during procurement #${procurementId.slice(0, 8)}`,
+        })
+        .select("id")
+        .single();
+
+      if (paymentError) {
+        toast({
+          title: "Warning",
+          description: "Procurement saved but payment record failed: " + paymentError.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Auto-log expense
+      if (paymentData) {
+        const expenseLogged = await logVendorPaymentExpense(
+          vendor?.name || "Unknown",
+          paymentAmount,
+          procurementForm.procurement_date,
+          paymentData.id,
+          procurementForm.payment_mode,
+          procurementForm.reference_number || undefined
+        );
+
+        if (!expenseLogged) {
+          toast({
+            title: "⚠️ Expense not logged",
+            description: "Payment recorded but auto-expense failed (possible permission issue). Contact admin.",
+          });
+        }
+      }
+
+      invalidateExpenseRelated(queryClient);
+    };
+
     if (selectedProcurement) {
       const { error } = await supabase
         .from("milk_procurement")
@@ -453,17 +532,48 @@ export default function MilkProcurementPage() {
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
+        // If status changed to paid/partial AND original was pending, create payment
+        const originalStatus = selectedProcurement.payment_status;
+        const newStatus = procurementForm.payment_status;
+
+        if (
+          (newStatus === "paid" || newStatus === "partial") &&
+          originalStatus === "pending"
+        ) {
+          await createPaymentRecord(selectedProcurement.id);
+        } else if (
+          (originalStatus === "paid" || originalStatus === "partial") &&
+          newStatus === "pending"
+        ) {
+          toast({
+            title: "Note",
+            description: "Status changed to Pending. Previously recorded payment was NOT auto-deleted. Use the Payments tab to manage it manually.",
+          });
+        }
+
         toast({ title: "Record updated", description: "Procurement record updated" });
         setProcurementDialogOpen(false);
         invalidateProcurementRelated(queryClient);
         fetchData();
       }
     } else {
-      const { error } = await supabase.from("milk_procurement").insert(payload);
+      const { data: insertedData, error } = await supabase
+        .from("milk_procurement")
+        .insert(payload)
+        .select("id")
+        .single();
 
       if (error) {
         toast({ title: "Error", description: error.message, variant: "destructive" });
       } else {
+        // Create payment record if paid/partial
+        if (
+          insertedData &&
+          (procurementForm.payment_status === "paid" || procurementForm.payment_status === "partial")
+        ) {
+          await createPaymentRecord(insertedData.id);
+        }
+
         toast({
           title: "Procurement recorded",
           description: `${quantity}L from ${vendor?.name || "vendor"}`,
@@ -1054,6 +1164,27 @@ export default function MilkProcurementPage() {
               </div>
             </div>
 
+            {/* Vendor Balance Display */}
+            {(() => {
+              const selectedVendorData = vendors.find((v) => v.id === procurementForm.vendor_id);
+              if (!selectedVendorData) return null;
+              const balance = Number(selectedVendorData.current_balance) || 0;
+              return (
+                <div className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Current Due:</span>
+                  </div>
+                  <span className={`font-bold ${balance > 0 ? "text-destructive" : "text-success"}`}>
+                    ₹{Math.abs(balance).toLocaleString()}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">
+                      {balance > 0 ? "(owed)" : balance < 0 ? "(advance)" : "(settled)"}
+                    </span>
+                  </span>
+                </div>
+              );
+            })()}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="proc-session">Session *</Label>
@@ -1151,19 +1282,111 @@ export default function MilkProcurementPage() {
               </div>
             </div>
 
-            {/* Show calculated total */}
-            {procurementForm.quantity_liters && procurementForm.rate_per_liter && (
-              <div className="p-3 bg-muted rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Calculated Total:</span>
-                  <span className="text-lg font-bold text-green-600">
-                    ₹
-                    {(
-                      parseFloat(procurementForm.quantity_liters) *
-                      parseFloat(procurementForm.rate_per_liter)
-                    ).toFixed(2)}
-                  </span>
+            {/* Payment fields - shown when paid or partial */}
+            {(procurementForm.payment_status === "paid" || procurementForm.payment_status === "partial") && (
+              <div className="space-y-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Payment Details
+                </p>
+
+                {procurementForm.payment_status === "partial" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="proc-paid-amount">Paid Amount (₹) *</Label>
+                    <Input
+                      id="proc-paid-amount"
+                      type="number"
+                      step="0.01"
+                      value={procurementForm.paid_amount}
+                      onChange={(e) =>
+                        setProcurementForm({ ...procurementForm, paid_amount: e.target.value })
+                      }
+                      placeholder="Amount paid now"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="proc-payment-mode">Payment Mode</Label>
+                    <Select
+                      value={procurementForm.payment_mode}
+                      onValueChange={(v) =>
+                        setProcurementForm({ ...procurementForm, payment_mode: v })
+                      }
+                    >
+                      <SelectTrigger id="proc-payment-mode">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="upi">UPI</SelectItem>
+                        <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="cheque">Cheque</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="proc-ref">Reference No.</Label>
+                    <Input
+                      id="proc-ref"
+                      value={procurementForm.reference_number}
+                      onChange={(e) =>
+                        setProcurementForm({ ...procurementForm, reference_number: e.target.value })
+                      }
+                      placeholder="Optional"
+                    />
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* Financial Summary Card */}
+            {procurementForm.quantity_liters && procurementForm.rate_per_liter && (
+              <div className="p-3 bg-muted rounded-lg space-y-2">
+                {(() => {
+                  const calcTotal = parseFloat(procurementForm.quantity_liters) * parseFloat(procurementForm.rate_per_liter);
+                  const selectedVendorData = vendors.find((v) => v.id === procurementForm.vendor_id);
+                  const currentDue = Number(selectedVendorData?.current_balance) || 0;
+                  const paidAmount =
+                    procurementForm.payment_status === "paid"
+                      ? calcTotal
+                      : procurementForm.payment_status === "partial"
+                      ? parseFloat(procurementForm.paid_amount) || 0
+                      : 0;
+                  const newDue = currentDue + calcTotal - paidAmount;
+
+                  return (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Today&apos;s Total:</span>
+                        <span className="text-lg font-bold text-foreground">₹{calcTotal.toFixed(2)}</span>
+                      </div>
+                      {procurementForm.payment_status === "partial" && paidAmount > 0 && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm text-muted-foreground">Paying Now:</span>
+                          <span className="text-sm font-semibold text-success">₹{paidAmount.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {selectedVendorData && (
+                        <>
+                          <div className="border-t border-border pt-2 flex justify-between items-center">
+                            <span className="text-sm text-muted-foreground">Existing Due:</span>
+                            <span className="text-sm font-medium">₹{currentDue.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">New Due After Save:</span>
+                            <span className={`text-lg font-bold ${newDue > 0 ? "text-destructive" : "text-success"}`}>
+                              ₹{Math.abs(newDue).toFixed(0)}
+                              {newDue <= 0 && <span className="text-xs ml-1">(settled)</span>}
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
 
